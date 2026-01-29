@@ -34,6 +34,16 @@ response = client.chat.completions.create(
 )
 ```
 
+### Enable Langfuse Tracing (Optional)
+
+```bash
+export PANOPTES_LANGFUSE__PUBLIC_KEY=pk-lf-...
+export PANOPTES_LANGFUSE__SECRET_KEY=sk-lf-...
+# For self-hosted: export PANOPTES_LANGFUSE__HOST=https://langfuse.your-company.com
+```
+
+Get keys from [cloud.langfuse.com](https://cloud.langfuse.com). Traces appear automatically grouped by session.
+
 ---
 
 ## Codebase Conventions

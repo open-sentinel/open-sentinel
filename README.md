@@ -135,6 +135,17 @@ Environment variables (prefix: `PANOPTES_`):
 | `PANOPTES_LANGFUSE__SECRET_KEY` | Langfuse secret key | - |
 | `PANOPTES_CLASSIFIER__MODEL_NAME` | Embedding model | all-MiniLM-L6-v2 |
 
+### Langfuse Setup (Optional)
+
+To enable tracing, get API keys from [cloud.langfuse.com](https://cloud.langfuse.com) and set:
+
+```bash
+export PANOPTES_LANGFUSE__PUBLIC_KEY=pk-lf-...
+export PANOPTES_LANGFUSE__SECRET_KEY=sk-lf-...
+```
+
+For self-hosted Langfuse, also set `PANOPTES_LANGFUSE__HOST`. Traces will appear automatically in your Langfuse dashboard grouped by session.
+
 ## Documentation
 
 - [Architecture Guide](ARCHITECTURE.md) - Detailed system design
