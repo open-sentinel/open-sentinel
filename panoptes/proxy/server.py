@@ -156,7 +156,11 @@ class PanoptesProxy:
 
         # For programmatic usage, we use uvicorn directly
         import uvicorn
+        import litellm.proxy.proxy_server
         from litellm.proxy.proxy_server import app
+
+        # Inject our configured router into LiteLLM
+        litellm.proxy.proxy_server.llm_router = self.router
 
         config = uvicorn.Config(
             app=app,

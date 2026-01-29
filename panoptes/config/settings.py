@@ -173,4 +173,12 @@ class PanoptesSettings(BaseSettings):
                 "model_name": "replicate-mistral-7b",
                 "litellm_params": {"model": "replicate/mistral-7b"},
             },
+            {
+                "model_name": "openrouter/openai/gpt-3.5-turbo",
+                "litellm_params": {"model": "openrouter/openai/gpt-3.5-turbo"},
+            },
+            {
+                "model_name": "gemini/gemini-2.5-flash",
+                "litellm_params": {"model": "gemini/gemini-2.5-flash"},
+            }
         ]
