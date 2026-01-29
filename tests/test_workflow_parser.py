@@ -59,58 +59,71 @@ class TestWorkflowSchema:
     def test_requires_initial_state(self):
         """Test that workflow must have an initial state."""
         with pytest.raises(ValueError, match="initial state"):
-            WorkflowDefinition.model_validate({
-                "name": "test",
-                "states": [{"name": "not_initial"}],
-            })
+            WorkflowDefinition.model_validate(
+                {
+                    "name": "test",
+                    "states": [{"name": "not_initial"}],
+                }
+            )
 
     def test_transition_references_valid_states(self):
         """Test that transitions must reference valid states."""
         with pytest.raises(ValueError, match="unknown state"):
-            WorkflowDefinition.model_validate({
-                "name": "test",
-                "states": [{"name": "start", "is_initial": True}],
-                "transitions": [
-                    {"from_state": "start", "to_state": "nonexistent"}
-                ],
-            })
+            WorkflowDefinition.model_validate(
+                {
+                    "name": "test",
+                    "states": [{"name": "start", "is_initial": True}],
+                    "transitions": [{"from_state": "start", "to_state": "nonexistent"}],
+                }
+            )
 
     def test_constraint_references_valid_states(self):
         """Test that constraints must reference valid states."""
+        # Use 'eventually' type since 'never' constraints are allowed to reference
+        # conceptual forbidden states that don't exist in the workflow
         with pytest.raises(ValueError, match="unknown"):
-            WorkflowDefinition.model_validate({
-                "name": "test",
-                "states": [{"name": "start", "is_initial": True}],
-                "constraints": [
-                    {
-                        "name": "test",
-                        "type": "never",
-                        "target": "nonexistent",
-                    }
-                ],
-            })
+            WorkflowDefinition.model_validate(
+                {
+                    "name": "test",
+                    "states": [{"name": "start", "is_initial": True}],
+                    "constraints": [
+                        {
+                            "name": "test",
+                            "type": "eventually",
+                            "target": "nonexistent",
+                        }
+                    ],
+                }
+            )
 
     def test_constraint_requires_parameters(self):
         """Test that constraints require appropriate parameters."""
         with pytest.raises(ValueError, match="requires"):
-            WorkflowDefinition.model_validate({
-                "name": "test",
-                "states": [{"name": "start", "is_initial": True}],
-                "constraints": [
-                    {
-                        "name": "test",
-                        "type": "precedence",
-                        # Missing trigger and target
-                    }
-                ],
-            })
+            WorkflowDefinition.model_validate(
+                {
+                    "name": "test",
+                    "states": [{"name": "start", "is_initial": True}],
+                    "constraints": [
+                        {
+                            "name": "test",
+                            "type": "precedence",
+                            # Missing trigger and target
+                        }
+                    ],
+                }
+            )
 
     def test_valid_constraint_types(self, simple_workflow):
         """Test all constraint types are valid."""
         for ctype in ConstraintType:
             assert ctype.value in [
-                "eventually", "always", "never", "until",
-                "next", "response", "precedence"
+                "eventually",
+                "always",
+                "never",
+                "until",
+                "next",
+                "response",
+                "precedence",
             ]
 
     def test_get_state(self, simple_workflow):

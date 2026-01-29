@@ -17,14 +17,14 @@ class TestStateClassifier:
                 name="greeting",
                 is_initial=True,
                 classification=ClassificationHint(
-                    patterns=["hello", "hi", "welcome"],
+                    patterns=[r"\bhello\b", r"\bhi\b", r"\bwelcome\b"],
                 ),
             ),
             State(
                 name="search",
                 classification=ClassificationHint(
                     tool_calls=["search_kb", "lookup"],
-                    patterns=["searching", "looking up"],
+                    patterns=[r"\bsearching\b", r"\blooking up\b"],
                 ),
             ),
             State(
@@ -100,7 +100,9 @@ class TestStateClassifier:
 
         assert result is None
 
-    def test_tool_call_priority_over_pattern(self, classifier, mock_llm_response, mock_tool_call):
+    def test_tool_call_priority_over_pattern(
+        self, classifier, mock_llm_response, mock_tool_call
+    ):
         """Test that tool calls have priority over patterns."""
         # Content matches "greeting" pattern, but tool matches "search"
         response = mock_llm_response(
@@ -117,9 +119,7 @@ class TestStateClassifier:
     def test_extract_content_from_dict(self, classifier):
         """Test extracting content from various response formats."""
         # OpenAI format
-        response1 = {
-            "choices": [{"message": {"content": "Hello"}}]
-        }
+        response1 = {"choices": [{"message": {"content": "Hello"}}]}
         assert classifier._extract_content(response1) == "Hello"
 
         # Simple format
@@ -133,15 +133,17 @@ class TestStateClassifier:
     def test_extract_tool_calls(self, classifier, mock_tool_call):
         """Test extracting tool calls from response."""
         response = {
-            "choices": [{
-                "message": {
-                    "content": "",
-                    "tool_calls": [
-                        mock_tool_call("search_kb"),
-                        mock_tool_call("lookup"),
-                    ],
+            "choices": [
+                {
+                    "message": {
+                        "content": "",
+                        "tool_calls": [
+                            mock_tool_call("search_kb"),
+                            mock_tool_call("lookup"),
+                        ],
+                    }
                 }
-            }]
+            ]
         }
 
         tools = classifier._extract_tool_calls(response)

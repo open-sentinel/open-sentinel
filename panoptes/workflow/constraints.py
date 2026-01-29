@@ -71,7 +71,9 @@ class ConstraintEvaluator:
 
     def __init__(self, constraints: List[Constraint]):
         self.constraints = constraints
-        logger.debug(f"ConstraintEvaluator initialized with {len(constraints)} constraints")
+        logger.debug(
+            f"ConstraintEvaluator initialized with {len(constraints)} constraints"
+        )
 
     def evaluate_all(
         self,
@@ -154,10 +156,14 @@ class ConstraintEvaluator:
                 return self._eval_next(constraint.target, history)
 
             case ConstraintType.RESPONSE:
-                return self._eval_response(constraint.trigger, constraint.target, history)
+                return self._eval_response(
+                    constraint.trigger, constraint.target, history
+                )
 
             case ConstraintType.PRECEDENCE:
-                return self._eval_precedence(constraint.trigger, constraint.target, history)
+                return self._eval_precedence(
+                    constraint.trigger, constraint.target, history
+                )
 
         return EvaluationResult.PENDING
 
@@ -256,9 +262,7 @@ class ConstraintEvaluator:
 
         return EvaluationResult.PENDING
 
-    def _eval_next(
-        self, target: Optional[str], history: List[str]
-    ) -> EvaluationResult:
+    def _eval_next(self, target: Optional[str], history: List[str]) -> EvaluationResult:
         """
         X(target): Next state must be target.
 
@@ -321,22 +325,22 @@ class ConstraintEvaluator:
         history: List[str],
     ) -> EvaluationResult:
         """
-        !target U trigger OR G(!target): Target cannot occur before trigger.
+        Target must precede trigger (trigger cannot occur before target).
 
-        This is the "precedence" pattern - target requires trigger first.
+        This is the "precedence" pattern - target is required before trigger.
 
         Example: "identity_verified must precede account_action"
-        means account_action cannot happen before identity_verified.
+        means account_action (trigger) cannot happen before identity_verified (target).
         """
         if not trigger or not target:
             return EvaluationResult.PENDING
 
-        trigger_seen = False
+        target_seen = False
         for state in history:
-            if state == trigger:
-                trigger_seen = True
-            if state == target and not trigger_seen:
-                # Target occurred before trigger - VIOLATED
+            if state == target:
+                target_seen = True
+            if state == trigger and not target_seen:
+                # Trigger occurred before target - VIOLATED
                 return EvaluationResult.VIOLATED
 
         return EvaluationResult.SATISFIED

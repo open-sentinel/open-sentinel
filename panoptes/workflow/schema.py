@@ -103,9 +103,7 @@ class State(BaseModel):
     def validate_name(cls, v: str) -> str:
         """Validate state name is a valid identifier."""
         if not v.replace("_", "").replace("-", "").isalnum():
-            raise ValueError(
-                f"State name must be alphanumeric (with _ or -): {v}"
-            )
+            raise ValueError(f"State name must be alphanumeric (with _ or -): {v}")
         return v
 
 
@@ -290,13 +288,9 @@ class WorkflowDefinition(BaseModel):
         # Check transitions
         for t in self.transitions:
             if t.from_state not in state_names:
-                raise ValueError(
-                    f"Transition references unknown state: {t.from_state}"
-                )
+                raise ValueError(f"Transition references unknown state: {t.from_state}")
             if t.to_state not in state_names:
-                raise ValueError(
-                    f"Transition references unknown state: {t.to_state}"
-                )
+                raise ValueError(f"Transition references unknown state: {t.to_state}")
 
         # Check constraints
         for c in self.constraints:
@@ -304,7 +298,13 @@ class WorkflowDefinition(BaseModel):
                 raise ValueError(
                     f"Constraint '{c.name}' references unknown trigger state: {c.trigger}"
                 )
-            if c.target and c.target not in state_names:
+            # NEVER constraints can reference conceptual forbidden states
+            # that don't exist in the workflow (they represent states that should never occur)
+            if (
+                c.target
+                and c.target not in state_names
+                and c.type != ConstraintType.NEVER
+            ):
                 raise ValueError(
                     f"Constraint '{c.name}' references unknown target state: {c.target}"
                 )

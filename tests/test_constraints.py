@@ -1,7 +1,7 @@
 """Tests for constraint evaluation."""
 
 import pytest
-from datetime import datetime
+from datetime import datetime, UTC
 
 from panoptes.workflow.constraints import (
     ConstraintEvaluator,
@@ -15,8 +15,7 @@ from panoptes.workflow.state_machine import SessionState, StateHistoryEntry
 def make_session(states: list[str]) -> SessionState:
     """Helper to create a session with given state history."""
     history = [
-        StateHistoryEntry(state_name=s, entered_at=datetime.utcnow())
-        for s in states
+        StateHistoryEntry(state_name=s, entered_at=datetime.now(UTC)) for s in states
     ]
     return SessionState(
         session_id="test",

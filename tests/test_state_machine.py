@@ -1,7 +1,7 @@
 """Tests for workflow state machine."""
 
 import pytest
-from datetime import datetime
+from datetime import datetime, UTC
 
 from panoptes.workflow.state_machine import (
     WorkflowStateMachine,
@@ -138,9 +138,9 @@ class TestSessionState:
             workflow_name="test",
             current_state="end",
             history=[
-                StateHistoryEntry(state_name="start", entered_at=datetime.utcnow()),
-                StateHistoryEntry(state_name="middle", entered_at=datetime.utcnow()),
-                StateHistoryEntry(state_name="end", entered_at=datetime.utcnow()),
+                StateHistoryEntry(state_name="start", entered_at=datetime.now(UTC)),
+                StateHistoryEntry(state_name="middle", entered_at=datetime.now(UTC)),
+                StateHistoryEntry(state_name="end", entered_at=datetime.now(UTC)),
             ],
         )
 
