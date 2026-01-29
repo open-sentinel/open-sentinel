@@ -33,6 +33,7 @@ dependencies = [
     "sentence-transformers>=2.2.0",
     "numpy>=1.24.0",
     "click>=8.0.0",
+    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -42,6 +43,11 @@ dev = [
     "pytest-cov>=4.1.0",
     "ruff>=0.1.0",
     "mypy>=1.6.0",
+    "httpx>=0.25.0",
+]
+examples = [
+    "langchain>=0.3.0",
+    "langchain-openai>=0.2.0",
     "httpx>=0.25.0",
 ]
 
