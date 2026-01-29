@@ -1,0 +1,131 @@
+"""
+Panoptes configuration management using Pydantic Settings.
+
+Configuration can be provided via:
+1. Environment variables (prefixed with PANOPTES_)
+2. .env file
+3. Direct instantiation
+
+Environment variable examples:
+    PANOPTES_DEBUG=true
+    PANOPTES_WORKFLOW_PATH=/path/to/workflow.yaml
+    PANOPTES_LANGFUSE__PUBLIC_KEY=pk-...
+    PANOPTES_LANGFUSE__SECRET_KEY=sk-...
+    PANOPTES_PROXY__PORT=4000
+"""
+
+from typing import Optional, Literal, List
+from pydantic import BaseModel, Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class LangfuseConfig(BaseModel):
+    """Langfuse tracing configuration."""
+
+    enabled: bool = True
+    public_key: Optional[str] = None
+    secret_key: Optional[str] = None
+    host: str = "https://cloud.langfuse.com"
+    flush_interval: float = 1.0
+    debug: bool = False
+
+
+class ProxyConfig(BaseModel):
+    """LiteLLM proxy server configuration."""
+
+    host: str = "0.0.0.0"
+    port: int = 4000
+    workers: int = 1
+    timeout: int = 600
+    master_key: Optional[str] = None
+    # Model routing
+    default_model: str = "gpt-4"
+    model_list: List[dict] = Field(default_factory=list)
+
+
+class ClassifierConfig(BaseModel):
+    """State classifier configuration."""
+
+    # Model for semantic similarity
+    model_name: str = "all-MiniLM-L6-v2"
+    # Use ONNX backend for faster inference (<50ms)
+    backend: Literal["pytorch", "onnx"] = "pytorch"
+    # Minimum similarity score to consider a match
+    similarity_threshold: float = 0.7
+    # Cache embeddings for workflow states
+    cache_embeddings: bool = True
+    # Device for inference
+    device: str = "cpu"
+
+
+class InterventionConfig(BaseModel):
+    """Intervention system configuration."""
+
+    # Default strategy when not specified in workflow
+    default_strategy: Literal[
+        "system_prompt_append", "user_message_inject", "hard_block"
+    ] = "system_prompt_append"
+    # Maximum times to apply same intervention before escalating
+    max_intervention_attempts: int = 3
+    # Include intervention metadata in response headers
+    include_headers: bool = True
+
+
+class PanoptesSettings(BaseSettings):
+    """
+    Main Panoptes configuration.
+
+    All settings can be overridden via environment variables with PANOPTES_ prefix.
+    Nested settings use double underscore: PANOPTES_LANGFUSE__PUBLIC_KEY
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="PANOPTES_",
+        env_nested_delimiter="__",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # General settings
+    debug: bool = False
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+
+    # Workflow configuration
+    workflow_path: Optional[str] = None
+    workflows_dir: Optional[str] = None
+
+    # Component configurations
+    langfuse: LangfuseConfig = Field(default_factory=LangfuseConfig)
+    proxy: ProxyConfig = Field(default_factory=ProxyConfig)
+    classifier: ClassifierConfig = Field(default_factory=ClassifierConfig)
+    intervention: InterventionConfig = Field(default_factory=InterventionConfig)
+
+    def get_model_list(self) -> List[dict]:
+        """Get model list for LiteLLM router."""
+        if self.proxy.model_list:
+            return self.proxy.model_list
+
+        # Default model configuration
+        return [
+            {
+                "model_name": "gpt-4",
+                "litellm_params": {"model": "gpt-4"},
+            },
+            {
+                "model_name": "gpt-4-turbo",
+                "litellm_params": {"model": "gpt-4-turbo"},
+            },
+            {
+                "model_name": "gpt-3.5-turbo",
+                "litellm_params": {"model": "gpt-3.5-turbo"},
+            },
+            {
+                "model_name": "claude-3-opus",
+                "litellm_params": {"model": "claude-3-opus-20240229"},
+            },
+            {
+                "model_name": "claude-3-sonnet",
+                "litellm_params": {"model": "claude-3-sonnet-20240229"},
+            },
+        ]

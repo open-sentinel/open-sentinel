@@ -1,0 +1,338 @@
+"""
+Workflow state classifier.
+
+Classification strategies (in priority order):
+1. Tool calls: Exact match on function/tool names (instant)
+2. Patterns: Regex matching on response content (~1ms)
+3. Embeddings: Semantic similarity using sentence-transformers (~50ms)
+
+Performance target: <50ms total for classification.
+Model: all-MiniLM-L6-v2 (22MB, ~14k sentences/sec on CPU)
+"""
+
+import logging
+import re
+from typing import Optional, List, Dict, Any
+from dataclasses import dataclass
+
+from panoptes.workflow.schema import State, ClassificationHint
+from panoptes.config.settings import ClassifierConfig
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ClassificationResult:
+    """Result of state classification."""
+
+    state_name: str
+    confidence: float  # 0.0 to 1.0
+    method: str  # "tool_call", "pattern", "embedding", "fallback"
+    details: Dict[str, Any]
+
+
+class StateClassifier:
+    """
+    Classifies LLM responses to workflow states.
+
+    Uses a cascade of classification methods for accuracy and speed:
+    1. Tool calls (exact match, instant) - highest confidence
+    2. Patterns (regex, ~1ms) - high confidence
+    3. Embeddings (semantic similarity, ~50ms) - semantic fallback
+
+    Example:
+        ```python
+        from panoptes.monitor import StateClassifier
+
+        classifier = StateClassifier(workflow.states)
+
+        result = classifier.classify(llm_response)
+        print(f"State: {result.state_name}, Confidence: {result.confidence}")
+        ```
+    """
+
+    def __init__(
+        self,
+        states: List[State],
+        config: Optional[ClassifierConfig] = None,
+    ):
+        self.states = {s.name: s for s in states}
+        self.config = config or ClassifierConfig()
+
+        # Lazy-load embedding model
+        self._model = None
+        self._state_embeddings: Optional[Dict[str, Any]] = None
+
+        # Pre-compile regex patterns for performance
+        self._compiled_patterns: Dict[str, List[re.Pattern]] = {}
+        for state in states:
+            if state.classification.patterns:
+                self._compiled_patterns[state.name] = [
+                    re.compile(p, re.IGNORECASE) for p in state.classification.patterns
+                ]
+
+        logger.debug(f"StateClassifier initialized with {len(states)} states")
+
+    @property
+    def model(self):
+        """Lazy-load sentence transformer model."""
+        if self._model is None:
+            try:
+                from sentence_transformers import SentenceTransformer
+
+                logger.info(f"Loading embedding model: {self.config.model_name}")
+                self._model = SentenceTransformer(
+                    self.config.model_name,
+                    device=self.config.device,
+                )
+                logger.info("Embedding model loaded successfully")
+            except ImportError:
+                logger.warning(
+                    "sentence-transformers not installed, embedding classification disabled"
+                )
+                return None
+            except Exception as e:
+                logger.error(f"Failed to load embedding model: {e}")
+                return None
+
+        return self._model
+
+    def _get_state_embeddings(self) -> Dict[str, Any]:
+        """Compute and cache state exemplar embeddings."""
+        if self._state_embeddings is not None:
+            return self._state_embeddings
+
+        if not self.model:
+            return {}
+
+        import numpy as np
+
+        self._state_embeddings = {}
+
+        for name, state in self.states.items():
+            if state.classification.exemplars:
+                try:
+                    # Compute embeddings for all exemplars
+                    embeddings = self.model.encode(
+                        state.classification.exemplars,
+                        convert_to_numpy=True,
+                    )
+                    # Average embedding of all exemplars
+                    self._state_embeddings[name] = np.mean(embeddings, axis=0)
+                except Exception as e:
+                    logger.error(f"Failed to compute embeddings for state {name}: {e}")
+
+        logger.debug(
+            f"Computed embeddings for {len(self._state_embeddings)} states"
+        )
+        return self._state_embeddings
+
+    def classify(
+        self,
+        response: Any,
+        current_state: Optional[str] = None,
+    ) -> ClassificationResult:
+        """
+        Classify an LLM response to a workflow state.
+
+        Args:
+            response: The LLM response (dict with content, tool_calls, etc.)
+            current_state: Current state (for transition-aware classification)
+
+        Returns:
+            ClassificationResult with state name, confidence, and method used.
+        """
+        # Extract content and tool calls from response
+        content = self._extract_content(response)
+        tool_calls = self._extract_tool_calls(response)
+
+        logger.debug(
+            f"Classifying response: {len(content)} chars, "
+            f"{len(tool_calls)} tool calls"
+        )
+
+        # Strategy 1: Tool call matching (exact, instant)
+        if tool_calls:
+            result = self._classify_by_tools(tool_calls)
+            if result:
+                logger.debug(f"Classified by tool call: {result.state_name}")
+                return result
+
+        # Strategy 2: Pattern matching (regex, fast)
+        if content:
+            result = self._classify_by_patterns(content)
+            if result:
+                logger.debug(f"Classified by pattern: {result.state_name}")
+                return result
+
+        # Strategy 3: Embedding similarity (semantic, ~50ms)
+        if content and self.model:
+            result = self._classify_by_embeddings(content)
+            if result:
+                logger.debug(
+                    f"Classified by embedding: {result.state_name} "
+                    f"(similarity={result.confidence:.2f})"
+                )
+                return result
+
+        # Fallback: Stay in current state or return unknown
+        fallback_state = current_state or "unknown"
+        logger.debug(f"Fallback classification: {fallback_state}")
+
+        return ClassificationResult(
+            state_name=fallback_state,
+            confidence=0.0,
+            method="fallback",
+            details={"reason": "No classification method matched"},
+        )
+
+    def _classify_by_tools(
+        self,
+        tool_calls: List[str],
+    ) -> Optional[ClassificationResult]:
+        """Classify by matching tool call names."""
+        for state_name, state in self.states.items():
+            hint = state.classification
+            if hint.tool_calls:
+                matches = set(tool_calls) & set(hint.tool_calls)
+                if matches:
+                    return ClassificationResult(
+                        state_name=state_name,
+                        confidence=1.0,
+                        method="tool_call",
+                        details={"matched_tools": list(matches)},
+                    )
+        return None
+
+    def _classify_by_patterns(
+        self,
+        content: str,
+    ) -> Optional[ClassificationResult]:
+        """Classify by regex pattern matching."""
+        for state_name, patterns in self._compiled_patterns.items():
+            for pattern in patterns:
+                match = pattern.search(content)
+                if match:
+                    return ClassificationResult(
+                        state_name=state_name,
+                        confidence=0.9,
+                        method="pattern",
+                        details={
+                            "matched_pattern": pattern.pattern,
+                            "match": match.group(),
+                        },
+                    )
+        return None
+
+    def _classify_by_embeddings(
+        self,
+        content: str,
+    ) -> Optional[ClassificationResult]:
+        """Classify by semantic similarity to state exemplars."""
+        state_embeddings = self._get_state_embeddings()
+        if not state_embeddings:
+            return None
+
+        import numpy as np
+
+        try:
+            # Compute content embedding
+            content_embedding = self.model.encode(content, convert_to_numpy=True)
+
+            # Find most similar state
+            best_state = None
+            best_similarity = -1.0
+
+            for state_name, state_embedding in state_embeddings.items():
+                # Cosine similarity
+                similarity = np.dot(content_embedding, state_embedding) / (
+                    np.linalg.norm(content_embedding) * np.linalg.norm(state_embedding)
+                )
+                if similarity > best_similarity:
+                    best_similarity = similarity
+                    best_state = state_name
+
+            if best_state:
+                # Get threshold from state config
+                threshold = self.states[best_state].classification.min_similarity
+
+                if best_similarity >= threshold:
+                    return ClassificationResult(
+                        state_name=best_state,
+                        confidence=float(best_similarity),
+                        method="embedding",
+                        details={"similarity": float(best_similarity)},
+                    )
+
+        except Exception as e:
+            logger.error(f"Embedding classification failed: {e}")
+
+        return None
+
+    def _extract_content(self, response: Any) -> str:
+        """Extract text content from response."""
+        if isinstance(response, dict):
+            # OpenAI format
+            if "choices" in response:
+                message = response["choices"][0].get("message", {})
+                return message.get("content", "") or ""
+
+            # Simple message format
+            if "content" in response:
+                return response.get("content", "") or ""
+
+            # Role-based message
+            if "role" in response:
+                return response.get("content", "") or ""
+
+        if hasattr(response, "content"):
+            return response.content or ""
+
+        return str(response) if response else ""
+
+    def _extract_tool_calls(self, response: Any) -> List[str]:
+        """Extract tool call names from response."""
+        tool_names = []
+
+        if isinstance(response, dict):
+            # OpenAI format
+            if "choices" in response:
+                message = response["choices"][0].get("message", {})
+                for tc in message.get("tool_calls", []):
+                    if func := tc.get("function", {}).get("name"):
+                        tool_names.append(func)
+
+            # Direct tool_calls field
+            elif "tool_calls" in response:
+                for tc in response.get("tool_calls", []):
+                    if isinstance(tc, dict):
+                        if func := tc.get("function", {}).get("name"):
+                            tool_names.append(func)
+                        elif name := tc.get("name"):
+                            tool_names.append(name)
+
+        return tool_names
+
+    def classify_from_tool_call(
+        self,
+        tool_name: str,
+        tool_args: Optional[Dict[str, Any]] = None,
+    ) -> Optional[ClassificationResult]:
+        """
+        Quick classification based on tool usage.
+
+        Useful when you only have the tool call info, not full response.
+        """
+        for state_name, state in self.states.items():
+            hint = state.classification
+            if hint.tool_calls and tool_name in hint.tool_calls:
+                return ClassificationResult(
+                    state_name=state_name,
+                    confidence=1.0,
+                    method="tool_call",
+                    details={
+                        "tool_name": tool_name,
+                        "tool_args": tool_args,
+                    },
+                )
+        return None
