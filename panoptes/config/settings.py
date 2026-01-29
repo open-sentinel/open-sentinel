@@ -128,19 +128,19 @@ class PanoptesSettings(BaseSettings):
             # Anthropic Claude
             {
                 "model_name": "anthropic-claude-opus-4.1",
-                "litellm_params": {"model": "claude-opus-4-1"},
+                "litellm_params": {"model": "anthropic/claude-opus-4-1"},
             },
             {
                 "model_name": "anthropic-claude-sonnet-4.5",
-                "litellm_params": {"model": "claude-sonnet-4-5"},
+                "litellm_params": {"model": "anthropic/claude-sonnet-4-5"},
             },
             {
                 "model_name": "anthropic-claude-3.7",
-                "litellm_params": {"model": "claude-3-7-sonnet"},
+                "litellm_params": {"model": "anthropic/claude-3-7-sonnet"},
             },
             {
                 "model_name": "anthropic-claude-instant-1.2",
-                "litellm_params": {"model": "claude-instant-1.2"},
+                "litellm_params": {"model": "anthropic/claude-instant-1.2"},
             },
             # Google Gemini (text/chat)
             {
@@ -154,11 +154,15 @@ class PanoptesSettings(BaseSettings):
             # TogetherAI (LLaMA & Falcon via Together)
             {
                 "model_name": "together-llama-2-70b-chat",
-                "litellm_params": {"model": "togethercomputer/llama-2-70b-chat"},
+                "litellm_params": {
+                    "model": "together_ai/togethercomputer/llama-2-70b-chat"
+                },
             },
             {
                 "model_name": "together-falcon-40b-instruct",
-                "litellm_params": {"model": "togethercomputer/falcon-40b-instruct"},
+                "litellm_params": {
+                    "model": "together_ai/togethercomputer/falcon-40b-instruct"
+                },
             },
             # Replicate / HuggingFace Example (if you have keys)
             {
