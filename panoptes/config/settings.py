@@ -108,24 +108,65 @@ class PanoptesSettings(BaseSettings):
 
         # Default model configuration
         return [
+            # OpenAI
             {
-                "model_name": "gpt-4",
-                "litellm_params": {"model": "gpt-4"},
+                "model_name": "openai-gpt-5.2",
+                "litellm_params": {"model": "gpt-5.2"},
             },
             {
-                "model_name": "gpt-4-turbo",
-                "litellm_params": {"model": "gpt-4-turbo"},
+                "model_name": "openai-gpt-5-pro",
+                "litellm_params": {"model": "gpt-5-pro"},
             },
             {
-                "model_name": "gpt-3.5-turbo",
+                "model_name": "openai-gpt-4o",
+                "litellm_params": {"model": "gpt-4o"},
+            },
+            {
+                "model_name": "openai-gpt-3.5-turbo",
                 "litellm_params": {"model": "gpt-3.5-turbo"},
             },
+            # Anthropic Claude
             {
-                "model_name": "claude-3-opus",
-                "litellm_params": {"model": "claude-3-opus-20240229"},
+                "model_name": "anthropic-claude-opus-4.1",
+                "litellm_params": {"model": "claude-opus-4-1"},
             },
             {
-                "model_name": "claude-3-sonnet",
-                "litellm_params": {"model": "claude-3-sonnet-20240229"},
+                "model_name": "anthropic-claude-sonnet-4.5",
+                "litellm_params": {"model": "claude-sonnet-4-5"},
+            },
+            {
+                "model_name": "anthropic-claude-3.7",
+                "litellm_params": {"model": "claude-3-7-sonnet"},
+            },
+            {
+                "model_name": "anthropic-claude-instant-1.2",
+                "litellm_params": {"model": "claude-instant-1.2"},
+            },
+            # Google Gemini (text/chat)
+            {
+                "model_name": "gemini-1.5-pro",
+                "litellm_params": {"model": "gemini/1.5-pro"},
+            },
+            {
+                "model_name": "gemini-1.5-flash",
+                "litellm_params": {"model": "gemini/1.5-flash"},
+            },
+            # TogetherAI (LLaMA & Falcon via Together)
+            {
+                "model_name": "together-llama-2-70b-chat",
+                "litellm_params": {"model": "togethercomputer/llama-2-70b-chat"},
+            },
+            {
+                "model_name": "together-falcon-40b-instruct",
+                "litellm_params": {"model": "togethercomputer/falcon-40b-instruct"},
+            },
+            # Replicate / HuggingFace Example (if you have keys)
+            {
+                "model_name": "huggingface-llama-3-13b",
+                "litellm_params": {"model": "huggingface/llama-3-13b"},
+            },
+            {
+                "model_name": "replicate-mistral-7b",
+                "litellm_params": {"model": "replicate/mistral-7b"},
             },
         ]
