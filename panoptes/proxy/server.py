@@ -65,17 +65,17 @@ class PanoptesProxy:
             litellm.set_verbose = True
 
     def _register_hooks(self) -> None:
-        """Set up environment variables and shutdown handler for Langfuse tracing."""
+        """Set up environment variables and LiteLLM's Langfuse OTEL callback."""
         if self._hooks_registered:
             return
 
-        # Register shutdown handler to flush traces
+        # Register shutdown handler
         atexit.register(self._shutdown_tracer)
 
         self._hooks_registered = True
 
         if self.settings.langfuse.enabled and self.settings.langfuse.public_key:
-            logger.info("Langfuse tracing enabled")
+            logger.info("Langfuse tracing enabled via LiteLLM OTEL callback")
 
             # Set environment variables required by Langfuse
             os.environ["LANGFUSE_PUBLIC_KEY"] = self.settings.langfuse.public_key
@@ -83,11 +83,17 @@ class PanoptesProxy:
                 os.environ["LANGFUSE_SECRET_KEY"] = self.settings.langfuse.secret_key
             os.environ["LANGFUSE_HOST"] = self.settings.langfuse.host
 
+            # Add langfuse_otel to LiteLLM's success callback (NOT "langfuse")
+            # The legacy "langfuse" callback is incompatible with Langfuse SDK v3
+            if "langfuse_otel" not in litellm.success_callback:
+                litellm.success_callback.append("langfuse_otel")
+
+            logger.info(f"LiteLLM success_callback: {litellm.success_callback}")
+
     def _shutdown_tracer(self) -> None:
-        """Shutdown tracer and flush any pending traces."""
-        if self._callback and self._callback._tracer:
-            logger.info("Shutting down Langfuse tracer...")
-            self._callback._tracer.shutdown()
+        """Shutdown callback and flush any pending data."""
+        # LiteLLM's langfuse_otel callback handles cleanup automatically
+        logger.info("Panoptes proxy shutting down...")
 
     def _load_workflow(self) -> Optional[Any]:
         """Load workflow definition if configured."""
@@ -149,9 +155,9 @@ class PanoptesProxy:
             },
         }
 
-        # Add Langfuse if configured
+        # Add Langfuse if configured (use langfuse_otel for Langfuse v3 compatibility)
         if self.settings.langfuse.enabled and self.settings.langfuse.public_key:
-            config["litellm_settings"]["success_callback"] = ["langfuse"]
+            config["litellm_settings"]["success_callback"] = ["langfuse_otel"]
             config["environment_variables"] = {
                 "LANGFUSE_PUBLIC_KEY": self.settings.langfuse.public_key,
                 "LANGFUSE_SECRET_KEY": self.settings.langfuse.secret_key or "",

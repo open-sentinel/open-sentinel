@@ -5,7 +5,6 @@ This module implements the core hook system that intercepts LLM calls:
 
 1. async_pre_call_hook: Runs BEFORE LLM call
    - Injects correction prompts when deviation was detected in previous call
-   - Starts Langfuse trace span
 
 2. async_moderation_hook: Runs IN PARALLEL with LLM call (non-blocking)
    - Evaluates workflow constraints
@@ -15,7 +14,9 @@ This module implements the core hook system that intercepts LLM calls:
 3. async_post_call_success_hook: Runs AFTER LLM call succeeds
    - Classifies response to determine workflow state
    - Updates state machine
-   - Completes Langfuse trace
+
+Note: Langfuse tracing is handled by LiteLLM's built-in langfuse_otel callback,
+not by this module. See server.py for langfuse_otel configuration.
 
 Based on LiteLLM's CustomLogger API:
 https://docs.litellm.ai/docs/observability/custom_callback
@@ -73,9 +74,6 @@ class PanoptesCallback(CustomLogger):
         # Maps session_id -> intervention config
         self._pending_interventions: Dict[str, Dict[str, Any]] = {}
 
-        # Tracer instance (lazy initialized)
-        self._tracer = None
-
         # Workflow tracker (lazy initialized)
         self._tracker = None
 
@@ -83,19 +81,6 @@ class PanoptesCallback(CustomLogger):
         self._injector = None
 
         logger.info("PanoptesCallback initialized")
-
-    @property
-    def tracer(self):
-        """Lazy-load tracer to avoid import issues."""
-        if self._tracer is None and self.settings.langfuse.enabled:
-            from panoptes.tracing.langfuse_integration import PanoptesTracer
-
-            logger.info(
-                f"Initializing Langfuse tracer (host={self.settings.langfuse.host}, "
-                f"public_key={'set' if self.settings.langfuse.public_key else 'missing'})"
-            )
-            self._tracer = PanoptesTracer(self.settings.langfuse)
-        return self._tracer
 
     @property
     def tracker(self):
@@ -175,34 +160,6 @@ class PanoptesCallback(CustomLogger):
                     context=intervention.get("context", {}),
                 )
 
-            # Log intervention application to tracer
-            if self.tracer:
-                self.tracer.log_event(
-                    session_id,
-                    "intervention_applied",
-                    {
-                        "intervention_name": intervention.get("name"),
-                        "strategy": intervention.get("strategy"),
-                    },
-                )
-
-        # Start trace span
-        if self.tracer:
-            current_state = "unknown"
-            if self.tracker:
-                current_state = await self.tracker.get_current_state(session_id)
-
-            self.tracer.start_generation(
-                session_id=session_id,
-                name=f"llm-{call_type}",
-                input_data=data,
-                model=data.get("model"),
-                metadata={
-                    "workflow_state": current_state,
-                    "call_type": call_type,
-                },
-            )
-
         return data
 
     async def async_moderation_hook(
@@ -272,19 +229,6 @@ class PanoptesCallback(CustomLogger):
                 f"Intervention scheduled for session {session_id}: {result.intervention_needed}"
             )
 
-            # Log deviation to tracer
-            if self.tracer:
-                self.tracer.log_event(
-                    session_id,
-                    "workflow_deviation",
-                    {
-                        "current_state": result.classified_state,
-                        "previous_state": result.previous_state,
-                        "violations": [v.constraint_name for v in result.constraint_violations],
-                        "intervention": result.intervention_needed,
-                    },
-                )
-
     async def async_post_call_success_hook(
         self,
         data: dict,
@@ -312,7 +256,6 @@ class PanoptesCallback(CustomLogger):
         logger.debug(f"post_call_success_hook: session={session_id}")
 
         # Track the response (classify state, update machine)
-        tracking_result = None
         if self.tracker:
             tracking_result = await self.tracker.process_response(
                 session_id=session_id,
@@ -326,25 +269,6 @@ class PanoptesCallback(CustomLogger):
                 f"(confidence={tracking_result.classification_confidence:.2f})"
             )
 
-        # Complete trace span
-        if self.tracer:
-            metadata = {}
-            if tracking_result:
-                metadata = {
-                    "state_from": tracking_result.previous_state,
-                    "state_to": tracking_result.classified_state,
-                    "classification_method": tracking_result.classification_method,
-                    "classification_confidence": tracking_result.classification_confidence,
-                }
-
-            self.tracer.end_generation(
-                session_id=session_id,
-                output=response,
-                metadata=metadata,
-            )
-            # Flush to ensure traces are sent immediately
-            self.tracer.flush()
-
         return response
 
     async def async_post_call_failure_hook(
@@ -357,23 +281,11 @@ class PanoptesCallback(CustomLogger):
         """
         Execute AFTER failed LLM call.
 
-        Logs the failure to tracer.
+        Logs the failure.
         """
         session_id = self._extract_session_id(request_data)
 
         logger.warning(f"LLM call failed for session {session_id}: {original_exception}")
-
-        if self.tracer:
-            self.tracer.log_event(
-                session_id,
-                "llm_call_failed",
-                {
-                    "error": str(original_exception),
-                    "error_type": type(original_exception).__name__,
-                },
-            )
-            # Flush to ensure failure events are sent
-            self.tracer.flush()
 
     # Synchronous hooks (for logging/metrics)
 
@@ -427,27 +339,14 @@ class PanoptesCallback(CustomLogger):
         """
         Called AFTER successful LLM response (library/router mode).
 
-        This is the async equivalent of log_success_event and is called
-        by LiteLLM for Router-based completions. This is where we do
-        Langfuse tracing since the proxy-only hooks aren't called.
+        LiteLLM's langfuse_otel callback handles Langfuse tracing.
+        We only do Panoptes workflow tracking here.
         """
         session_id = self._extract_session_id(kwargs)
 
         logger.debug(f"async_log_success_event: session={session_id}")
 
-        # Start and immediately end a generation trace
-        if self.tracer:
-            model = kwargs.get("model")
-            self.tracer.start_generation(
-                session_id=session_id,
-                name="llm-completion",
-                input_data=kwargs,
-                model=model,
-                metadata={"call_type": "completion"},
-            )
-
         # Track the response (classify state, update machine)
-        tracking_result = None
         if self.tracker:
             tracking_result = await self.tracker.process_response(
                 session_id=session_id,
@@ -461,24 +360,6 @@ class PanoptesCallback(CustomLogger):
                 f"(confidence={tracking_result.classification_confidence:.2f})"
             )
 
-        # Complete trace span
-        if self.tracer:
-            metadata = {}
-            if tracking_result:
-                metadata = {
-                    "state_from": tracking_result.previous_state,
-                    "state_to": tracking_result.classified_state,
-                    "classification_method": tracking_result.classification_method,
-                    "classification_confidence": tracking_result.classification_confidence,
-                }
-
-            self.tracer.end_generation(
-                session_id=session_id,
-                output=response_obj,
-                metadata=metadata,
-            )
-            self.tracer.flush()
-
     async def async_log_failure_event(
         self,
         kwargs: dict,
@@ -488,20 +369,7 @@ class PanoptesCallback(CustomLogger):
     ) -> None:
         """
         Called AFTER failed LLM call (library/router mode).
-
-        Logs the failure to Langfuse tracer.
         """
         session_id = self._extract_session_id(kwargs)
 
         logger.warning(f"LLM call failed for session {session_id}: {response_obj}")
-
-        if self.tracer:
-            self.tracer.log_event(
-                session_id,
-                "llm_call_failed",
-                {
-                    "error": str(response_obj),
-                    "error_type": type(response_obj).__name__,
-                },
-            )
-            self.tracer.flush()
