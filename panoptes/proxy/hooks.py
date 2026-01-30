@@ -80,6 +80,9 @@ class PanoptesCallback(CustomLogger):
         # Prompt injector (lazy initialized)
         self._injector = None
 
+        # Langfuse tracer for Panoptes events (lazy initialized)
+        self._tracer = None
+
         logger.info("PanoptesCallback initialized")
 
     @property
@@ -103,6 +106,19 @@ class PanoptesCallback(CustomLogger):
             workflow = WorkflowParser.parse_file(self.settings.workflow_path)
             self._injector = PromptInjector(workflow)
         return self._injector
+
+    @property
+    def tracer(self):
+        """Lazy-load tracer for Panoptes event logging to Langfuse."""
+        if self._tracer is None:
+            logger.debug(f"Tracer check: langfuse.enabled={self.settings.langfuse.enabled}, "
+                        f"public_key={bool(self.settings.langfuse.public_key)}, "
+                        f"secret_key={bool(self.settings.langfuse.secret_key)}")
+            if self.settings.langfuse.enabled:
+                from panoptes.tracing.langfuse_integration import PanoptesTracer
+                self._tracer = PanoptesTracer(self.settings.langfuse)
+                logger.info(f"PanoptesTracer initialized: {self._tracer}")
+        return self._tracer
 
     def _extract_session_id(self, data: dict) -> str:
         """
@@ -160,6 +176,14 @@ class PanoptesCallback(CustomLogger):
                     context=intervention.get("context", {}),
                 )
 
+            # Log intervention to Langfuse
+            if self.tracer:
+                self.tracer.log_intervention(
+                    session_id=session_id,
+                    intervention_name=intervention.get("name"),
+                    context=intervention.get("context", {}),
+                )
+
         return data
 
     async def async_moderation_hook(
@@ -213,6 +237,15 @@ class PanoptesCallback(CustomLogger):
             context={"messages": messages},
         )
 
+        # Log any constraint violations to Langfuse
+        if result.constraint_violations and self.tracer:
+            for violation in result.constraint_violations:
+                self.tracer.log_deviation(
+                    session_id=session_id,
+                    constraint_name=violation.constraint_name,
+                    severity=getattr(violation, "severity", "warning"),
+                )
+
         # If intervention needed, record for next call
         if result.intervention_needed:
             self._pending_interventions[session_id] = {
@@ -253,9 +286,10 @@ class PanoptesCallback(CustomLogger):
         """
         session_id = self._extract_session_id(data)
 
-        logger.debug(f"post_call_success_hook: session={session_id}")
+        logger.info(f"post_call_success_hook: session={session_id}, has_tracker={self.tracker is not None}, has_tracer={self.tracer is not None}")
 
         # Track the response (classify state, update machine)
+        tracking_result = None
         if self.tracker:
             tracking_result = await self.tracker.process_response(
                 session_id=session_id,
@@ -267,6 +301,44 @@ class PanoptesCallback(CustomLogger):
                 f"State transition: {tracking_result.previous_state} -> "
                 f"{tracking_result.classified_state} "
                 f"(confidence={tracking_result.classification_confidence:.2f})"
+            )
+
+        # Log state transition to Langfuse (if we tracked state)
+        if self.tracer and tracking_result:
+            self.tracer.log_state_transition(
+                session_id=session_id,
+                previous_state=tracking_result.previous_state or "unknown",
+                new_state=tracking_result.classified_state or "unknown",
+                confidence=tracking_result.classification_confidence,
+            )
+        elif self.tracer:
+            # Log request/response even without workflow tracking
+            # Extract response content
+            response_content = None
+            if hasattr(response, "choices") and response.choices:
+                first_choice = response.choices[0]
+                if hasattr(first_choice, "message") and first_choice.message:
+                    response_content = first_choice.message.content
+                elif hasattr(first_choice, "text"):
+                    response_content = first_choice.text
+
+            # Extract usage info
+            usage_info = None
+            if hasattr(response, "usage") and response.usage:
+                usage_info = {
+                    "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
+                    "completion_tokens": getattr(response.usage, "completion_tokens", 0),
+                    "total_tokens": getattr(response.usage, "total_tokens", 0),
+                }
+
+            self.tracer.log_llm_call(
+                session_id=session_id,
+                model=data.get("model", "unknown"),
+                messages=data.get("messages", []),
+                response_content=response_content,
+                response_model=getattr(response, "model", None),
+                usage=usage_info,
+                metadata={"has_workflow": False, "hook": "post_call_success"},
             )
 
         return response
@@ -344,9 +416,10 @@ class PanoptesCallback(CustomLogger):
         """
         session_id = self._extract_session_id(kwargs)
 
-        logger.debug(f"async_log_success_event: session={session_id}")
+        logger.info(f"async_log_success_event: session={session_id}, has_tracker={self.tracker is not None}, has_tracer={self.tracer is not None}")
 
         # Track the response (classify state, update machine)
+        tracking_result = None
         if self.tracker:
             tracking_result = await self.tracker.process_response(
                 session_id=session_id,
@@ -358,6 +431,44 @@ class PanoptesCallback(CustomLogger):
                 f"State transition: {tracking_result.previous_state} -> "
                 f"{tracking_result.classified_state} "
                 f"(confidence={tracking_result.classification_confidence:.2f})"
+            )
+
+        # Log state transition to Langfuse (if we tracked state)
+        if self.tracer and tracking_result:
+            self.tracer.log_state_transition(
+                session_id=session_id,
+                previous_state=tracking_result.previous_state or "unknown",
+                new_state=tracking_result.classified_state or "unknown",
+                confidence=tracking_result.classification_confidence,
+            )
+        elif self.tracer:
+            # Log request/response even without workflow tracking
+            # Extract response content
+            response_content = None
+            if hasattr(response_obj, "choices") and response_obj.choices:
+                first_choice = response_obj.choices[0]
+                if hasattr(first_choice, "message") and first_choice.message:
+                    response_content = first_choice.message.content
+                elif hasattr(first_choice, "text"):
+                    response_content = first_choice.text
+
+            # Extract usage info
+            usage_info = None
+            if hasattr(response_obj, "usage") and response_obj.usage:
+                usage_info = {
+                    "prompt_tokens": getattr(response_obj.usage, "prompt_tokens", 0),
+                    "completion_tokens": getattr(response_obj.usage, "completion_tokens", 0),
+                    "total_tokens": getattr(response_obj.usage, "total_tokens", 0),
+                }
+
+            self.tracer.log_llm_call(
+                session_id=session_id,
+                model=kwargs.get("model", "unknown"),
+                messages=kwargs.get("messages", []),
+                response_content=response_content,
+                response_model=getattr(response_obj, "model", None),
+                usage=usage_info,
+                metadata={"has_workflow": False, "hook": "async_log_success"},
             )
 
     async def async_log_failure_event(

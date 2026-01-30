@@ -128,6 +128,11 @@ class PanoptesProxy:
             litellm.callbacks = []
         litellm.callbacks.append(callback)
 
+        # Also register for async success callbacks (required for async_log_success_event)
+        # This is what LiteLLM uses for async callbacks in proxy mode
+        litellm.logging_callback_manager.add_litellm_async_success_callback(callback)
+        logger.info(f"Registered PanoptesCallback for async success callbacks")
+
         router = Router(
             model_list=model_list,
             routing_strategy="simple-shuffle",
