@@ -13,6 +13,7 @@ The proxy intercepts all LLM calls, enabling:
 """
 
 import asyncio
+import atexit
 import logging
 import os
 import sys
@@ -51,6 +52,7 @@ class PanoptesProxy:
         self.router: Optional[Router] = None
         self._hooks_registered = False
         self._workflow = None
+        self._callback = None  # Store reference to callback for shutdown
 
     def _setup_logging(self) -> None:
         """Configure logging based on settings."""
@@ -63,23 +65,29 @@ class PanoptesProxy:
             litellm.set_verbose = True
 
     def _register_hooks(self) -> None:
-        """Register Panoptes hooks with LiteLLM."""
+        """Set up environment variables and shutdown handler for Langfuse tracing."""
         if self._hooks_registered:
             return
 
-        # Import here to avoid circular imports
-        from panoptes.proxy.hooks import PanoptesCallback
-
-        # Create callback instance with settings
-        callback = PanoptesCallback(self.settings)
-
-        # Register with LiteLLM
-        if litellm.callbacks is None:
-            litellm.callbacks = []
-        litellm.callbacks.append(callback)
+        # Register shutdown handler to flush traces
+        atexit.register(self._shutdown_tracer)
 
         self._hooks_registered = True
-        logger.info("Panoptes hooks registered with LiteLLM")
+
+        if self.settings.langfuse.enabled and self.settings.langfuse.public_key:
+            logger.info("Langfuse tracing enabled")
+
+            # Set environment variables required by Langfuse
+            os.environ["LANGFUSE_PUBLIC_KEY"] = self.settings.langfuse.public_key
+            if self.settings.langfuse.secret_key:
+                os.environ["LANGFUSE_SECRET_KEY"] = self.settings.langfuse.secret_key
+            os.environ["LANGFUSE_HOST"] = self.settings.langfuse.host
+
+    def _shutdown_tracer(self) -> None:
+        """Shutdown tracer and flush any pending traces."""
+        if self._callback and self._callback._tracer:
+            logger.info("Shutting down Langfuse tracer...")
+            self._callback._tracer.shutdown()
 
     def _load_workflow(self) -> Optional[Any]:
         """Load workflow definition if configured."""
@@ -98,8 +106,21 @@ class PanoptesProxy:
         return workflow
 
     def _create_router(self) -> Router:
-        """Create LiteLLM Router with model configuration."""
+        """Create LiteLLM Router with model configuration and callbacks."""
         model_list = self.settings.get_model_list()
+
+        # Import here to avoid circular imports
+        from panoptes.proxy.hooks import PanoptesCallback
+
+        # Create callback instance with settings
+        callback = PanoptesCallback(self.settings)
+        self._callback = callback  # Store reference for shutdown
+
+        # Register callback globally with litellm BEFORE creating router
+        # This ensures callbacks are picked up by the proxy server
+        if litellm.callbacks is None:
+            litellm.callbacks = []
+        litellm.callbacks.append(callback)
 
         router = Router(
             model_list=model_list,
@@ -107,7 +128,7 @@ class PanoptesProxy:
             set_verbose=self.settings.debug,
         )
 
-        logger.info(f"Created LiteLLM router with {len(model_list)} models")
+        logger.info(f"Created LiteLLM router with {len(model_list)} models and PanoptesCallback")
         return router
 
     def generate_litellm_config(self) -> str:

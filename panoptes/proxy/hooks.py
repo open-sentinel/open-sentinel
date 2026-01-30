@@ -90,6 +90,10 @@ class PanoptesCallback(CustomLogger):
         if self._tracer is None and self.settings.langfuse.enabled:
             from panoptes.tracing.langfuse_integration import PanoptesTracer
 
+            logger.info(
+                f"Initializing Langfuse tracer (host={self.settings.langfuse.host}, "
+                f"public_key={'set' if self.settings.langfuse.public_key else 'missing'})"
+            )
             self._tracer = PanoptesTracer(self.settings.langfuse)
         return self._tracer
 
@@ -192,9 +196,9 @@ class PanoptesCallback(CustomLogger):
                 session_id=session_id,
                 name=f"llm-{call_type}",
                 input_data=data,
+                model=data.get("model"),
                 metadata={
                     "workflow_state": current_state,
-                    "model": data.get("model"),
                     "call_type": call_type,
                 },
             )
@@ -338,21 +342,24 @@ class PanoptesCallback(CustomLogger):
                 output=response,
                 metadata=metadata,
             )
+            # Flush to ensure traces are sent immediately
+            self.tracer.flush()
 
         return response
 
     async def async_post_call_failure_hook(
         self,
-        data: dict,
+        request_data: dict,
         user_api_key_dict: UserAPIKeyAuth,
         original_exception: Exception,
+        **kwargs: Any,
     ) -> None:
         """
         Execute AFTER failed LLM call.
 
         Logs the failure to tracer.
         """
-        session_id = self._extract_session_id(data)
+        session_id = self._extract_session_id(request_data)
 
         logger.warning(f"LLM call failed for session {session_id}: {original_exception}")
 
@@ -365,6 +372,8 @@ class PanoptesCallback(CustomLogger):
                     "error_type": type(original_exception).__name__,
                 },
             )
+            # Flush to ensure failure events are sent
+            self.tracer.flush()
 
     # Synchronous hooks (for logging/metrics)
 
@@ -380,8 +389,11 @@ class PanoptesCallback(CustomLogger):
         end_time: datetime,
     ) -> None:
         """Log after API call (sync)."""
-        duration = (end_time - start_time).total_seconds()
-        logger.debug(f"API call completed: duration={duration:.2f}s")
+        if end_time and start_time:
+            duration = (end_time - start_time).total_seconds()
+            logger.debug(f"API call completed: duration={duration:.2f}s")
+        else:
+            logger.debug("API call completed")
 
     def log_success_event(
         self,
@@ -402,3 +414,94 @@ class PanoptesCallback(CustomLogger):
     ) -> None:
         """Log failed completion (sync)."""
         logger.error(f"LLM call failed: {response_obj}")
+
+    # Async logging hooks (called by LiteLLM Router in library mode)
+
+    async def async_log_success_event(
+        self,
+        kwargs: dict,
+        response_obj: Any,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> None:
+        """
+        Called AFTER successful LLM response (library/router mode).
+
+        This is the async equivalent of log_success_event and is called
+        by LiteLLM for Router-based completions. This is where we do
+        Langfuse tracing since the proxy-only hooks aren't called.
+        """
+        session_id = self._extract_session_id(kwargs)
+
+        logger.debug(f"async_log_success_event: session={session_id}")
+
+        # Start and immediately end a generation trace
+        if self.tracer:
+            model = kwargs.get("model")
+            self.tracer.start_generation(
+                session_id=session_id,
+                name="llm-completion",
+                input_data=kwargs,
+                model=model,
+                metadata={"call_type": "completion"},
+            )
+
+        # Track the response (classify state, update machine)
+        tracking_result = None
+        if self.tracker:
+            tracking_result = await self.tracker.process_response(
+                session_id=session_id,
+                response=response_obj,
+                context={"request_data": kwargs},
+            )
+
+            logger.debug(
+                f"State transition: {tracking_result.previous_state} -> "
+                f"{tracking_result.classified_state} "
+                f"(confidence={tracking_result.classification_confidence:.2f})"
+            )
+
+        # Complete trace span
+        if self.tracer:
+            metadata = {}
+            if tracking_result:
+                metadata = {
+                    "state_from": tracking_result.previous_state,
+                    "state_to": tracking_result.classified_state,
+                    "classification_method": tracking_result.classification_method,
+                    "classification_confidence": tracking_result.classification_confidence,
+                }
+
+            self.tracer.end_generation(
+                session_id=session_id,
+                output=response_obj,
+                metadata=metadata,
+            )
+            self.tracer.flush()
+
+    async def async_log_failure_event(
+        self,
+        kwargs: dict,
+        response_obj: Any,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> None:
+        """
+        Called AFTER failed LLM call (library/router mode).
+
+        Logs the failure to Langfuse tracer.
+        """
+        session_id = self._extract_session_id(kwargs)
+
+        logger.warning(f"LLM call failed for session {session_id}: {response_obj}")
+
+        if self.tracer:
+            self.tracer.log_event(
+                session_id,
+                "llm_call_failed",
+                {
+                    "error": str(response_obj),
+                    "error_type": type(response_obj).__name__,
+                },
+            )
+            self.tracer.flush()
