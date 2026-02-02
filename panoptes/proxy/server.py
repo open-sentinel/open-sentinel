@@ -120,6 +120,21 @@ class PanoptesProxy:
     def _load_workflow(self) -> Optional[Any]:
         """Load workflow definition if configured."""
         if not self.settings.workflow_path:
+            # Check if any other policy engine is configured
+            policy_config = self.settings.get_policy_config()
+            engine_type = policy_config.get("type")
+            engine_conf = policy_config.get("config", {})
+            
+            # If NeMo is configured with a path, we are not in pass-through mode
+            if engine_type == "nemo" and engine_conf.get("config_path"):
+                logger.info("Running with NeMo Guardrails engine")
+                return None
+            
+            # If Composite is configured with engines, we are not in pass-through mode
+            if engine_type == "composite" and engine_conf.get("engines"):
+                logger.info("Running with Composite policy engine")
+                return None
+
             logger.warning("No workflow_path configured - running in pass-through mode")
             return None
 
