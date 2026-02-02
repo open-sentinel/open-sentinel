@@ -89,12 +89,21 @@ Extracts session IDs and workflow context from requests.
 
 ---
 
-### 2. Workflow Layer (`panoptes/workflow/`)
+### 2. Policy Layer (`panoptes/policy/`)
 
-Defines and manages workflow state machines.
+Panoptes supports pluggable policy engines. The default distribution includes:
 
-#### `schema.py` - Data Models
-Pydantic models for workflow definitions:
+#### FSM Engine (`panoptes/policy/engines/fsm/`)
+
+Wraps the workflow state machine, monitor, and injector for workflow-based enforcement.
+
+**Components**:
+- **Workflow**: Schema, Parser, StateMachine, Constraints (formerly top-level `workflow` module)
+- **Monitor**: StateClassifier, WorkflowTracker (formerly top-level `monitor` module)
+- **Injector**: PromptInjector for FSM-based interventions
+
+#### `schema.py` - Workflow Data Models
+Located in `panoptes/policy/engines/fsm/workflow/schema.py`. Pydantic models for workflow definitions:
 
 ```python
 WorkflowDefinition
@@ -121,112 +130,19 @@ WorkflowDefinition
 └── interventions: Dict[str, str]  # name → prompt template
 ```
 
-#### `parser.py` - WorkflowParser
-Parses YAML/JSON workflow files into validated `WorkflowDefinition` objects.
-
-```python
-workflow = WorkflowParser.parse_file("workflow.yaml")
-workflow = WorkflowParser.parse_string(yaml_content)
-workflow = WorkflowParser.parse_dict(data_dict)
-```
-
-Also includes `WorkflowRegistry` for multi-workflow scenarios (assign different workflows to different sessions).
-
-#### `state_machine.py` - WorkflowStateMachine
-Manages workflow execution state per session:
-
-```python
-class WorkflowStateMachine:
-    async def get_or_create_session(session_id) -> SessionState
-    async def transition(session_id, target_state, ...) -> (TransitionResult, error)
-    async def get_valid_transitions(session_id) -> Set[str]
-    async def get_state_history(session_id) -> List[str]
-```
-
-**SessionState** tracks:
-- `current_state`: Current workflow state name
-- `history`: List of `StateHistoryEntry` (for constraint evaluation)
-- `pending_intervention`: Intervention to apply next call
-- `constraint_violations`: List of violated constraint names
-
-#### `constraints.py` - ConstraintEvaluator
-Evaluates LTL-lite constraints against execution history.
-
-**Constraint Types**:
-
-| Type | Syntax | Meaning | Example |
-|------|--------|---------|---------|
-| `eventually` | F(target) | Must eventually reach target | "Must reach resolution" |
-| `always` | G(condition) | Condition always holds | "Always maintain session" |
-| `never` | G(!target) | Target must never occur | "Never share credentials" |
-| `precedence` | !B U A | B cannot occur before A | "Verify identity before account actions" |
-| `response` | G(A → F(B)) | If A occurs, B must follow | "If escalate, must resolve" |
-| `until` | A U B | Stay in A until B | "Stay in greeting until issue identified" |
-| `next` | X(target) | Next state must be target | "Next must be verification" |
-
-**Evaluation Results**: `SATISFIED`, `VIOLATED`, or `PENDING` (can't determine yet)
+#### `monitor` Components
+Now integrated into the FSM engine:
+- **StateClassifier** (`monitor/classifier.py`): Classifies LLM responses.
+- **WorkflowTracker** (`monitor/tracker.py`): Orchestrates classification and state updates.
 
 ---
 
-### 3. Monitor Layer (`panoptes/monitor/`)
+### 3. Core Layer (`panoptes/core/`)
 
-Classifies LLM outputs and orchestrates tracking.
+Shared components used across different policy engines.
 
-#### `classifier.py` - StateClassifier
-Classifies LLM responses to workflow states using a cascade:
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    Classification Cascade                           │
-├─────────────────────────────────────────────────────────────────────┤
-│  1. Tool Calls (instant)                                            │
-│     - Exact match on function names                                 │
-│     - Confidence: 1.0                                               │
-│     - Example: update_account → account_action state                │
-├─────────────────────────────────────────────────────────────────────┤
-│  2. Patterns (regex, ~1ms)                                          │
-│     - Regex patterns in response content                            │
-│     - Confidence: 0.9                                               │
-│     - Example: "let me.*search" → lookup_info state                 │
-├─────────────────────────────────────────────────────────────────────┤
-│  3. Embeddings (semantic, ~50ms)                                    │
-│     - Cosine similarity to state exemplars                          │
-│     - Model: all-MiniLM-L6-v2 (22MB, fast)                          │
-│     - Confidence: similarity score                                  │
-│     - Example: "I'll look into that for you" → lookup_info state    │
-├─────────────────────────────────────────────────────────────────────┤
-│  4. Fallback                                                        │
-│     - Stay in current state                                         │
-│     - Confidence: 0.0                                               │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-**Performance Target**: <50ms total classification time
-
-#### `tracker.py` - WorkflowTracker
-Main orchestration layer. Coordinates classifier, state machine, and constraint evaluator.
-
-```python
-class WorkflowTracker:
-    async def process_response(session_id, response, context) -> TrackingResult
-```
-
-**TrackingResult** contains:
-- `classified_state`: Detected workflow state
-- `classification_confidence`: 0.0-1.0
-- `classification_method`: "tool_call", "pattern", "embedding", "fallback"
-- `transition_result`: SUCCESS, INVALID_TRANSITION, etc.
-- `constraint_violations`: List of violations
-- `intervention_needed`: Intervention name if any
-
----
-
-### 4. Intervention Layer (`panoptes/intervention/`)
-
-Modifies LLM requests to guide agents back on track.
-
-#### `strategies.py` - Intervention Strategies
-Four strategies for injecting corrections:
+#### `intervention` - Strategies
+Located in `panoptes/core/intervention/`. Defines the base strategies for modifying LLM requests.
 
 | Strategy | How It Works | Use Case |
 |----------|--------------|----------|
@@ -235,15 +151,21 @@ Four strategies for injecting corrections:
 | `CONTEXT_REMINDER` | Inserts assistant message `[Context reminder]` | Complex multi-step workflows |
 | `HARD_BLOCK` | Raises `WorkflowViolationError` | Critical violations, block request |
 
-#### `prompt_injector.py` - PromptInjector
-Applies interventions to request data:
+---
+
+### 4. Intervention Execution
+
+Once a violation is detected by the FSM policy engine, it triggers an intervention.
+
+#### PromptInjector
+Located in `panoptes/policy/engines/fsm/injector.py`. Applies interventions to request data using the strategies defined in the Core Layer.
 
 ```python
 class PromptInjector:
     def inject(data, intervention_name, context, session_id) -> modified_data
 ```
 
-**Escalation**: Tracks application counts per session. If an intervention is applied more than `max_applications` times, escalates to a stricter strategy.
+**Escalation**: Tracks application counts per session. If an intervention is applied more than `max_applications` times, escalates to a stricter strategy (e.g. from `SYSTEM_PROMPT_APPEND` to `HARD_BLOCK`).
 
 ---
 
@@ -346,27 +268,30 @@ panoptes/
 ├── config/
 │   └── settings.py      # PanoptesSettings (pydantic-settings)
 │
+├── core/
+│   └── intervention/
+│       └── strategies.py    # Shared intervention strategies
+│
+├── policy/
+│   ├── engines/
+│   │   ├── fsm/         # FSM Engine
+│   │   │   ├── workflow/# Schema, Parser, StateMachine
+│   │   │   ├── classifier.py
+│   │   │   ├── tracker.py
+│   │   │   ├── injector.py
+│   │   │   └── engine.py
+│   │   │
+│   │   └── nemo/        # NeMo Guardrails Engine
+│   │
+│   └── registry.py      # Policy engine registry
+│
 ├── proxy/
 │   ├── server.py        # PanoptesProxy, start_proxy()
 │   ├── hooks.py         # PanoptesCallback (LiteLLM hooks)
 │   └── middleware.py    # Session/context extraction
 │
-├── workflow/
-│   ├── schema.py        # Pydantic models (State, Transition, Constraint, etc.)
-│   ├── parser.py        # WorkflowParser, WorkflowRegistry
-│   ├── state_machine.py # WorkflowStateMachine, SessionState
-│   └── constraints.py   # ConstraintEvaluator, LTL-lite evaluation
-│
-├── monitor/
-│   ├── classifier.py    # StateClassifier (tool/pattern/embedding)
-│   └── tracker.py       # WorkflowTracker (main orchestrator)
-│
-├── intervention/
-│   ├── strategies.py    # InterventionStrategy implementations
-│   └── prompt_injector.py # PromptInjector
-│
 └── tracing/
-    └── otel_tracer.py       # PanoptesTracer (OpenTelemetry)
+    └── otel_tracer.py   # PanoptesTracer (OpenTelemetry)
 ```
 
 ---
@@ -394,13 +319,15 @@ panoptes/
 3. Implement evaluation in `ConstraintEvaluator._evaluate_constraint()`
 4. Add message formatting in `_format_violation_message()`
 
+### Adding New Content
+
 ### Adding New Intervention Strategies
-1. Add to `StrategyType` enum in `intervention/strategies.py`
+1. Add to `StrategyType` enum in `panoptes/core/intervention/strategies.py`
 2. Create new strategy class extending `InterventionStrategy`
 3. Register in `STRATEGY_REGISTRY`
 
 ### Custom Classification Methods
-Extend `StateClassifier` and override/add methods to the cascade.
+Extend `StateClassifier` (in `panoptes/policy/engines/fsm/classifier.py`) and override/add methods to the cascade.
 
 ### Custom Session ID Extraction
-Modify `SessionExtractor.extract_session_id()` in `proxy/middleware.py`.
+Modify `SessionExtractor.extract_session_id()` in `panoptes/proxy/middleware.py`.

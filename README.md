@@ -74,8 +74,18 @@ constraints:
 
 2. **Start the Panoptes proxy**:
 
+For the FSM engine (workflow-based), specify the engine type explicitly:
+
 ```bash
+export PANOPTES_POLICY__ENGINE__TYPE=fsm
 export PANOPTES_WORKFLOW_PATH=./workflow.yaml
+panoptes serve
+```
+
+For NeMo Guardrails (default):
+
+```bash
+export PANOPTES_POLICY__ENGINE__CONFIG__CONFIG_PATH=./nemo_config/
 panoptes serve
 ```
 
@@ -104,7 +114,7 @@ Customers only change `base_url` in their LLM client to point at Panoptes. No SD
 State classification and constraint evaluation run in parallel with LLM calls, adding **zero latency** to the critical path.
 
 ### LTL-Lite Constraints
-Simplified temporal logic for practical workflow constraints:
+Simplified temporal logic for practical workflow constraints (FSM engine):
 
 | Type | Meaning | Example |
 |------|---------|---------|
@@ -129,7 +139,8 @@ Environment variables (prefix: `PANOPTES_`):
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `PANOPTES_WORKFLOW_PATH` | Path to workflow YAML | - |
+| `PANOPTES_POLICY__ENGINE__TYPE` | Engine: `nemo`, `fsm`, `composite` | nemo |
+| `PANOPTES_WORKFLOW_PATH` | Path to workflow YAML (for FSM) | - |
 | `PANOPTES_PROXY__PORT` | Server port | 4000 |
 | `PANOPTES_OTEL__EXPORTER_TYPE` | Exporter: `otlp`, `langfuse`, `console`, `none` | otlp |
 | `PANOPTES_OTEL__ENDPOINT` | OTLP endpoint (for `otlp` exporter) | http://localhost:4317 |
@@ -139,7 +150,7 @@ Environment variables (prefix: `PANOPTES_`):
 
 ### OpenTelemetry Setup (Optional)
 
-**Option 1: Export to Langfuse**
+**Option 1: Export to Langfuse (via OTLP)**
 
 ```bash
 export PANOPTES_OTEL__EXPORTER_TYPE=langfuse
@@ -148,7 +159,7 @@ export PANOPTES_OTEL__LANGFUSE_SECRET_KEY=sk-lf-...
 # For US region: export PANOPTES_OTEL__LANGFUSE_HOST=https://us.cloud.langfuse.com
 ```
 
-**Option 2: Export to Jaeger/Zipkin**
+**Option 2: Export to Standard OTLP Backend (Jaeger, Zipkin, etc.)**
 
 ```bash
 export PANOPTES_OTEL__EXPORTER_TYPE=otlp

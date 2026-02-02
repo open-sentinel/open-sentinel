@@ -90,7 +90,7 @@ from panoptes.config.settings import PanoptesSettings
 #### Creating a Workflow Programmatically
 
 ```python
-from panoptes.workflow.schema import (
+from panoptes.policy.engines.fsm import (
     WorkflowDefinition,
     State,
     Transition,
@@ -144,7 +144,7 @@ workflow = WorkflowDefinition(
 #### Loading from YAML
 
 ```python
-from panoptes.workflow.parser import WorkflowParser
+from panoptes.policy.engines.fsm import WorkflowParser
 
 # From file
 workflow = WorkflowParser.parse_file("workflow.yaml")
@@ -164,7 +164,7 @@ is_valid, message = WorkflowParser.validate_file("workflow.yaml")
 ### Working with the State Machine
 
 ```python
-from panoptes.workflow.state_machine import WorkflowStateMachine
+from panoptes.policy.engines.fsm import WorkflowStateMachine
 
 machine = WorkflowStateMachine(workflow)
 
@@ -192,7 +192,7 @@ await machine.set_pending_intervention("session-123", "intervention_name")
 ### Working with the Classifier
 
 ```python
-from panoptes.monitor.classifier import StateClassifier
+from panoptes.policy.engines.fsm import StateClassifier
 
 classifier = StateClassifier(workflow.states)
 
@@ -220,7 +220,7 @@ result = classifier.classify_from_tool_call("search_kb")
 ### Working with Constraints
 
 ```python
-from panoptes.workflow.constraints import ConstraintEvaluator
+from panoptes.policy.engines.fsm import ConstraintEvaluator
 
 evaluator = ConstraintEvaluator(workflow.constraints)
 
@@ -241,7 +241,7 @@ for v in violations:
 ### Working with Interventions
 
 ```python
-from panoptes.intervention.prompt_injector import PromptInjector
+from panoptes.policy.engines.fsm import PromptInjector
 
 injector = PromptInjector(workflow)
 
@@ -263,7 +263,7 @@ info = injector.get_intervention_info("prompt_verify_identity")
 ### Working with the Tracker
 
 ```python
-from panoptes.monitor.tracker import WorkflowTracker
+from panoptes.policy.engines.fsm import WorkflowTracker
 
 tracker = WorkflowTracker(workflow)
 
@@ -287,7 +287,7 @@ info = tracker.get_workflow_info()
 
 ### Adding a New Constraint Type
 
-**Step 1**: Add to enum in `panoptes/workflow/schema.py`:
+**Step 1**: Add to enum in `panoptes/policy/engines/fsm/workflow/schema.py`:
 
 ```python
 class ConstraintType(str, Enum):
@@ -308,7 +308,7 @@ def validate_constraint_params(self):
     return self
 ```
 
-**Step 3**: Implement evaluation in `panoptes/workflow/constraints.py`:
+**Step 3**: Implement evaluation in `panoptes/policy/engines/fsm/workflow/constraints.py`:
 
 ```python
 def _evaluate_constraint(self, constraint, history, session):
@@ -333,7 +333,7 @@ case ConstraintType.MY_NEW_TYPE:
 
 ### Adding a New Intervention Strategy
 
-**Step 1**: Add to enum in `panoptes/intervention/strategies.py`:
+**Step 1**: Add to enum in `panoptes/core/intervention/strategies.py`:
 
 ```python
 class StrategyType(Enum):
@@ -375,7 +375,7 @@ STRATEGY_REGISTRY: Dict[StrategyType, InterventionStrategy] = {
 
 ### Adding a New Classification Method
 
-Modify `StateClassifier` in `panoptes/monitor/classifier.py`:
+Modify `StateClassifier` in `panoptes/policy/engines/fsm/classifier.py`:
 
 ```python
 def classify(self, response, current_state):
@@ -403,12 +403,18 @@ def _classify_by_my_method(self, content: str) -> Optional[ClassificationResult]
 
 ```
 tests/
-├── conftest.py           # Shared fixtures
-├── test_classifier.py    # StateClassifier tests
-├── test_constraints.py   # ConstraintEvaluator tests
-├── test_intervention.py  # Intervention tests
-├── test_state_machine.py # WorkflowStateMachine tests
-└── test_workflow_parser.py # Parser tests
+├── conftest.py               # Shared fixtures
+├── tracing/
+│   └── test_otel_tracer.py   # Tracing tests
+├── core/
+│   └── intervention/         # Strategy tests
+└── policy/
+    └── engines/
+        └── fsm/
+            ├── test_classifier.py    # StateClassifier tests
+            ├── test_constraints.py   # ConstraintEvaluator tests
+            ├── test_state_machine.py # WorkflowStateMachine tests
+            └── test_workflow_parser.py # Parser tests
 ```
 
 ### Key Fixtures (in `conftest.py`)
@@ -458,10 +464,10 @@ class TestMyFeature:
 pytest
 
 # Specific file
-pytest tests/test_state_machine.py
+pytest tests/policy/engines/fsm/test_state_machine.py
 
 # Specific test
-pytest tests/test_state_machine.py::TestWorkflowStateMachine::test_create_session
+pytest tests/policy/engines/fsm/test_state_machine.py::TestWorkflowStateMachine::test_create_session
 
 # With coverage
 pytest --cov=panoptes
@@ -612,25 +618,25 @@ If states aren't being classified correctly:
 |-------|--------|---------|
 | `PanoptesSettings` | `config.settings` | Configuration |
 | `PanoptesProxy` | `proxy.server` | Main proxy server |
-| `WorkflowDefinition` | `workflow.schema` | Workflow data model |
-| `State` | `workflow.schema` | State definition |
-| `Transition` | `workflow.schema` | Transition definition |
-| `Constraint` | `workflow.schema` | Constraint definition |
-| `ConstraintType` | `workflow.schema` | Constraint type enum |
-| `WorkflowParser` | `workflow.parser` | Parse workflow files |
-| `WorkflowStateMachine` | `workflow.state_machine` | State management |
-| `ConstraintEvaluator` | `workflow.constraints` | Constraint checking |
-| `StateClassifier` | `monitor.classifier` | Response classification |
-| `WorkflowTracker` | `monitor.tracker` | Main orchestrator |
-| `PromptInjector` | `intervention.prompt_injector` | Apply interventions |
-| `StrategyType` | `intervention.strategies` | Intervention strategy enum |
+| `WorkflowDefinition` | `policy.engines.fsm` | Workflow data model |
+| `State` | `policy.engines.fsm` | State definition |
+| `Transition` | `policy.engines.fsm` | Transition definition |
+| `Constraint` | `policy.engines.fsm` | Constraint definition |
+| `ConstraintType` | `policy.engines.fsm` | Constraint type enum |
+| `WorkflowParser` | `policy.engines.fsm` | Parse workflow files |
+| `WorkflowStateMachine` | `policy.engines.fsm` | State management |
+| `ConstraintEvaluator` | `policy.engines.fsm` | Constraint checking |
+| `StateClassifier` | `policy.engines.fsm` | Response classification |
+| `WorkflowTracker` | `policy.engines.fsm` | Main orchestrator |
+| `PromptInjector` | `policy.engines.fsm` | Apply interventions |
+| `StrategyType` | `core.intervention.strategies` | Intervention strategy enum |
 
 ### Key Functions
 
 | Function | Module | Purpose |
 |----------|--------|---------|
 | `start_proxy()` | `proxy.server` | Start proxy (blocking) |
-| `get_strategy()` | `intervention.strategies` | Get strategy by type |
+| `get_strategy()` | `core.intervention.strategies` | Get strategy by type |
 
 ---
 
