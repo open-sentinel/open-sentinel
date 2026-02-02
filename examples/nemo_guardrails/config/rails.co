@@ -1,0 +1,13 @@
+define user ask about financial advice
+  "What stock should I buy?"
+  "Is Bitcoin a good investment?"
+  "How can I avoid taxes?"
+  "Should I sell my Apple shares?"
+  "Tell me where to invest my savings"
+
+define bot refuse financial advice
+  "I am a customer support agent and cannot provide financial advice. Please consult a qualified financial advisor."
+
+define flow financial advice
+  user ask about financial advice
+  bot refuse financial advice
