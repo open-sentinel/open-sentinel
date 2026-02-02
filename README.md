@@ -9,7 +9,7 @@ Panoptes is a **transparent proxy** that sits between your application and LLM p
 - **Monitor** - Classify LLM responses to determine workflow state
 - **Enforce** - Evaluate temporal constraints (LTL-lite) against execution history
 - **Intervene** - Inject correction prompts when deviations are detected
-- **Observe** - Full tracing via Langfuse for debugging and analysis
+- **Observe** - Full tracing via OpenTelemetry for debugging and analysis
 
 ```
 ┌─────────────────┐      ┌──────────────────────────────────────────────┐      ┌─────────────────┐
@@ -20,7 +20,7 @@ Panoptes is a **transparent proxy** that sits between your application and LLM p
 └─────────────────┘      │       │             │              │         │      └─────────────────┘
                          │       ▼             ▼              ▼         │
                          │  ┌──────────────────────────────────────┐    │
-                         │  │           Langfuse Tracing           │    │
+                         │  │         OpenTelemetry Tracing        │    │
                          │  └──────────────────────────────────────┘    │
                          └──────────────────────────────────────────────┘
 ```
@@ -131,20 +131,35 @@ Environment variables (prefix: `PANOPTES_`):
 |----------|-------------|---------|
 | `PANOPTES_WORKFLOW_PATH` | Path to workflow YAML | - |
 | `PANOPTES_PROXY__PORT` | Server port | 4000 |
-| `PANOPTES_LANGFUSE__PUBLIC_KEY` | Langfuse public key | - |
-| `PANOPTES_LANGFUSE__SECRET_KEY` | Langfuse secret key | - |
+| `PANOPTES_OTEL__EXPORTER_TYPE` | Exporter: `otlp`, `langfuse`, `console`, `none` | otlp |
+| `PANOPTES_OTEL__ENDPOINT` | OTLP endpoint (for `otlp` exporter) | http://localhost:4317 |
+| `PANOPTES_OTEL__LANGFUSE_PUBLIC_KEY` | Langfuse public key (for `langfuse` exporter) | - |
+| `PANOPTES_OTEL__LANGFUSE_SECRET_KEY` | Langfuse secret key (for `langfuse` exporter) | - |
 | `PANOPTES_CLASSIFIER__MODEL_NAME` | Embedding model | all-MiniLM-L6-v2 |
 
-### Langfuse Setup (Optional)
+### OpenTelemetry Setup (Optional)
 
-To enable tracing, get API keys from [cloud.langfuse.com](https://cloud.langfuse.com) and set:
+**Option 1: Export to Langfuse**
 
 ```bash
-export PANOPTES_LANGFUSE__PUBLIC_KEY=pk-lf-...
-export PANOPTES_LANGFUSE__SECRET_KEY=sk-lf-...
+export PANOPTES_OTEL__EXPORTER_TYPE=langfuse
+export PANOPTES_OTEL__LANGFUSE_PUBLIC_KEY=pk-lf-...
+export PANOPTES_OTEL__LANGFUSE_SECRET_KEY=sk-lf-...
+# For US region: export PANOPTES_OTEL__LANGFUSE_HOST=https://us.cloud.langfuse.com
 ```
 
-For self-hosted Langfuse, also set `PANOPTES_LANGFUSE__HOST`. Traces will appear automatically in your Langfuse dashboard grouped by session.
+**Option 2: Export to Jaeger/Zipkin**
+
+```bash
+export PANOPTES_OTEL__EXPORTER_TYPE=otlp
+export PANOPTES_OTEL__ENDPOINT=http://localhost:4317
+export PANOPTES_OTEL__SERVICE_NAME=panoptes
+
+# Start Jaeger for local development
+docker run -d -p 4317:4317 -p 16686:16686 jaegertracing/all-in-one:latest
+```
+
+Traces will appear in your tracing backend's UI grouped by session.
 
 ## Documentation
 

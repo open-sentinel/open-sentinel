@@ -9,7 +9,7 @@ Panoptes is a **transparent proxy** that sits between your application and LLM p
 1. **Monitor** - Classify LLM responses to determine workflow state
 2. **Enforce** - Evaluate temporal constraints (LTL-lite) against execution history
 3. **Intervene** - Inject correction prompts when deviations are detected
-4. **Observe** - Full tracing via Langfuse for debugging and analysis
+4. **Observe** - Full tracing via OpenTelemetry for debugging and analysis
 
 ```
 ┌─────────────────┐      ┌──────────────────────────────────────────────┐      ┌─────────────────┐
@@ -20,8 +20,9 @@ Panoptes is a **transparent proxy** that sits between your application and LLM p
 └─────────────────┘      │       │             │              │         │      └─────────────────┘
                          │       ▼             ▼              ▼         │
                          │  ┌──────────────────────────────────────┐    │
-                         │  │           Langfuse Tracing           │    │
+                         │  │         OpenTelemetry Tracing        │    │
                          │  └──────────────────────────────────────┘    │
+                         └──────────────────────────────────────────────┘
                          └──────────────────────────────────────────────┘
 ```
 
@@ -248,20 +249,19 @@ class PromptInjector:
 
 ### 5. Tracing Layer (`panoptes/tracing/`)
 
-#### `langfuse_integration.py` - PanoptesTracer
-Provides session-aware tracing:
+#### `otel_tracer.py` - PanoptesTracer
+Provides session-aware tracing via OpenTelemetry:
 
 ```python
 class PanoptesTracer:
-    def start_generation(session_id, name, input_data, metadata)
-    def end_generation(session_id, output, metadata, usage)
-    def log_event(session_id, name, metadata)  # deviations, interventions
+    def log_event(session_id, name, metadata)  # interventions, deviations
+    def log_state_transition(session_id, previous_state, new_state, confidence)
+    def log_llm_call(session_id, model, messages, response_content, usage)
 ```
 
 **Trace Hierarchy**:
-- **Trace**: One per session (groups all observations)
-- **Generation**: One per LLM call
-- **Event**: Point-in-time occurrences (deviations, interventions)
+- **Session Span**: Root span per session
+- **Event Spans**: Child spans for each event (LLM calls, state transitions, etc.)
 
 ---
 
@@ -273,12 +273,12 @@ Pydantic Settings with env var support:
 ```python
 class PanoptesSettings(BaseSettings):
     # Prefix: PANOPTES_
-    # Nested delimiter: __ (e.g., PANOPTES_LANGFUSE__PUBLIC_KEY)
+    # Nested delimiter: __ (e.g., PANOPTES_OTEL__ENDPOINT)
     
     debug: bool
     workflow_path: Optional[str]
     
-    langfuse: LangfuseConfig
+    otel: OTelConfig
     proxy: ProxyConfig
     classifier: ClassifierConfig
     intervention: InterventionConfig
@@ -287,7 +287,7 @@ class PanoptesSettings(BaseSettings):
 **Key Configuration Options**:
 - `PANOPTES_WORKFLOW_PATH`: Path to workflow YAML
 - `PANOPTES_PROXY__PORT`: Server port (default 4000)
-- `PANOPTES_LANGFUSE__PUBLIC_KEY`: Langfuse public key
+- `PANOPTES_OTEL__ENDPOINT`: OpenTelemetry OTLP endpoint
 - `PANOPTES_CLASSIFIER__MODEL_NAME`: Embedding model (default "all-MiniLM-L6-v2")
 
 ---
@@ -302,7 +302,7 @@ class PanoptesSettings(BaseSettings):
 2. async_pre_call_hook
    ├─ Extract session ID
    ├─ Check for pending intervention (none)
-   └─ Start Langfuse trace
+   └─ Start OTEL trace span
    │
 3. LLM call executes + async_moderation_hook (parallel)
    │                    ├─ Get last assistant message
@@ -313,7 +313,7 @@ class PanoptesSettings(BaseSettings):
 4. async_post_call_success_hook
    ├─ Classify current response
    ├─ Update state machine
-   └─ Complete Langfuse trace
+   └─ Complete OTEL trace span
    │
 5. Response returned to client
 ```
@@ -366,7 +366,7 @@ panoptes/
 │   └── prompt_injector.py # PromptInjector
 │
 └── tracing/
-    └── langfuse_integration.py # PanoptesTracer
+    └── otel_tracer.py       # PanoptesTracer (OpenTelemetry)
 ```
 
 ---
@@ -376,7 +376,9 @@ panoptes/
 | Package | Purpose | Version |
 |---------|---------|---------|
 | `litellm[proxy]` | LLM proxy and routing | >=1.50.0 |
-| `langfuse` | Observability/tracing | >=2.0.0 |
+| `opentelemetry-api` | Tracing API | >=1.20.0 |
+| `opentelemetry-sdk` | Tracing SDK | >=1.20.0 |
+| `opentelemetry-exporter-otlp` | OTLP exporter | >=1.20.0 |
 | `pydantic` | Data validation | >=2.0.0 |
 | `pydantic-settings` | Configuration management | >=2.0.0 |
 | `sentence-transformers` | Embedding classification | >=2.2.0 |

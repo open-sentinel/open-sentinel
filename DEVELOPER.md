@@ -34,15 +34,15 @@ response = client.chat.completions.create(
 )
 ```
 
-### Enable Langfuse Tracing (Optional)
+### Enable OpenTelemetry Tracing (Optional)
 
 ```bash
-export PANOPTES_LANGFUSE__PUBLIC_KEY=pk-lf-...
-export PANOPTES_LANGFUSE__SECRET_KEY=sk-lf-...
-# For self-hosted: export PANOPTES_LANGFUSE__HOST=https://langfuse.your-company.com
+export PANOPTES_OTEL__ENDPOINT=http://localhost:4317
+export PANOPTES_OTEL__SERVICE_NAME=panoptes
+# Start Jaeger for local development: docker run -d -p 4317:4317 -p 16686:16686 jaegertracing/all-in-one:latest
 ```
 
-Get keys from [cloud.langfuse.com](https://cloud.langfuse.com). Traces appear automatically grouped by session.
+Traces appear in your OTLP-compatible backend (Jaeger, Zipkin, etc.) grouped by session.
 
 ---
 
