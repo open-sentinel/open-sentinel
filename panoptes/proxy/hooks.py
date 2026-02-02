@@ -154,8 +154,7 @@ class PanoptesCallback(CustomLogger):
     def tracker(self):
         """Lazy-load tracker to avoid import issues (backward compatibility)."""
         if self._tracker is None and self.settings.workflow_path:
-            from panoptes.workflow.parser import WorkflowParser
-            from panoptes.monitor.tracker import WorkflowTracker
+            from panoptes.policy.engines.fsm import WorkflowParser, WorkflowTracker
 
             workflow = WorkflowParser.parse_file(self.settings.workflow_path)
             self._tracker = WorkflowTracker(workflow)
@@ -165,8 +164,7 @@ class PanoptesCallback(CustomLogger):
     def injector(self):
         """Lazy-load injector to avoid import issues."""
         if self._injector is None and self.settings.workflow_path:
-            from panoptes.workflow.parser import WorkflowParser
-            from panoptes.intervention.prompt_injector import PromptInjector
+            from panoptes.policy.engines.fsm import WorkflowParser, PromptInjector
 
             workflow = WorkflowParser.parse_file(self.settings.workflow_path)
             self._injector = PromptInjector(workflow)
