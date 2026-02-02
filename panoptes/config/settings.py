@@ -20,13 +20,25 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class OTelConfig(BaseModel):
-    """OpenTelemetry tracing configuration."""
+    """OpenTelemetry tracing configuration.
+    
+    Supports multiple exporters:
+    - otlp: Standard OTLP endpoint (Jaeger, Zipkin, etc.)
+    - langfuse: Langfuse's OTLP endpoint (requires public_key/secret_key)
+    - console: Print traces to console (for debugging)
+    - none: Disable tracing
+    """
 
     enabled: bool = True
     endpoint: str = "http://localhost:4317"
     service_name: str = "panoptes"
-    exporter_type: Literal["otlp", "console", "none"] = "otlp"
+    exporter_type: Literal["otlp", "langfuse", "console", "none"] = "otlp"
     insecure: bool = True  # Use insecure connection (no TLS) for local dev
+    
+    # Langfuse-specific settings (used when exporter_type="langfuse")
+    langfuse_public_key: Optional[str] = None
+    langfuse_secret_key: Optional[str] = None
+    langfuse_host: str = "https://cloud.langfuse.com"  # EU region, use https://us.cloud.langfuse.com for US
 
 
 class ProxyConfig(BaseModel):

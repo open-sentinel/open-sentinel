@@ -2,9 +2,12 @@
 OpenTelemetry-based tracer for Panoptes events.
 
 Uses the OpenTelemetry SDK for vendor-agnostic distributed tracing.
-Traces can be exported to any OTLP-compatible backend (Jaeger, Zipkin, etc).
+Traces can be exported to any OTLP-compatible backend including:
+- Jaeger, Zipkin, or other OTLP backends
+- Langfuse (via their OTLP endpoint)
 """
 
+import base64
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
@@ -14,6 +17,7 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
 from opentelemetry.sdk.resources import Resource, SERVICE_NAME
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter as OTLPSpanExporterHTTP
 from opentelemetry.trace import Status, StatusCode
 
 from panoptes.config.settings import OTelConfig
@@ -26,7 +30,8 @@ class PanoptesTracer:
     OpenTelemetry-based tracer for Panoptes workflow events.
 
     This tracer uses the OpenTelemetry SDK for distributed tracing,
-    allowing traces to be exported to any OTLP-compatible backend.
+    allowing traces to be exported to any OTLP-compatible backend
+    including Langfuse.
     """
 
     def __init__(self, config: OTelConfig):
@@ -50,12 +55,34 @@ class PanoptesTracer:
         if config.exporter_type == "console":
             exporter = ConsoleSpanExporter()
             logger.info("PanoptesTracer using console exporter")
-        else:  # otlp
+        elif config.exporter_type == "langfuse":
+            # Langfuse OTLP endpoint with HTTP and Basic Auth
+            if not config.langfuse_public_key or not config.langfuse_secret_key:
+                logger.warning("PanoptesTracer disabled: missing Langfuse credentials")
+                self._enabled = False
+                self._tracer = None
+                return
+            
+            # Build Langfuse OTLP endpoint
+            langfuse_host = config.langfuse_host.rstrip("/")
+            langfuse_endpoint = f"{langfuse_host}/api/public/otel/v1/traces"
+            
+            # Create Basic Auth header
+            auth_str = f"{config.langfuse_public_key}:{config.langfuse_secret_key}"
+            auth_bytes = base64.b64encode(auth_str.encode()).decode()
+            headers = {"Authorization": f"Basic {auth_bytes}"}
+            
+            exporter = OTLPSpanExporterHTTP(
+                endpoint=langfuse_endpoint,
+                headers=headers,
+            )
+            logger.info(f"PanoptesTracer using Langfuse OTLP exporter (host={langfuse_host})")
+        else:  # otlp (gRPC)
             exporter = OTLPSpanExporter(
                 endpoint=config.endpoint,
                 insecure=config.insecure,
             )
-            logger.info(f"PanoptesTracer using OTLP exporter (endpoint={config.endpoint})")
+            logger.info(f"PanoptesTracer using OTLP gRPC exporter (endpoint={config.endpoint})")
 
         # Add batch processor for efficient export
         provider.add_span_processor(BatchSpanProcessor(exporter))
