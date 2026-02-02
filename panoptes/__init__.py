@@ -48,20 +48,18 @@ from panoptes.config.settings import PanoptesSettings
 # Proxy server
 from panoptes.proxy.server import PanoptesProxy, start_proxy
 
-# Workflow components
-from panoptes.workflow.schema import (
+# Workflow components (from FSM engine)
+from panoptes.policy.engines.fsm import (
     WorkflowDefinition,
     State,
     Transition,
     Constraint,
     ConstraintType,
+    WorkflowParser,
+    WorkflowStateMachine,
+    WorkflowTracker,
+    StateClassifier,
 )
-from panoptes.workflow.parser import WorkflowParser
-from panoptes.workflow.state_machine import WorkflowStateMachine
-
-# Monitoring
-from panoptes.monitor.tracker import WorkflowTracker
-from panoptes.monitor.classifier import StateClassifier
 
 # Policy engines
 from panoptes.policy import (

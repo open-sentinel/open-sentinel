@@ -16,11 +16,11 @@ from panoptes.policy.protocols import (
     StateClassificationResult,
 )
 from panoptes.policy.registry import register_engine
-from panoptes.workflow.schema import WorkflowDefinition
-from panoptes.workflow.parser import WorkflowParser
-from panoptes.workflow.state_machine import WorkflowStateMachine, TransitionResult
-from panoptes.workflow.constraints import ConstraintEvaluator
-from panoptes.monitor.classifier import StateClassifier
+from panoptes.policy.engines.fsm.workflow.schema import WorkflowDefinition
+from panoptes.policy.engines.fsm.workflow.parser import WorkflowParser
+from panoptes.policy.engines.fsm.workflow.state_machine import WorkflowStateMachine, TransitionResult
+from panoptes.policy.engines.fsm.workflow.constraints import ConstraintEvaluator
+from panoptes.policy.engines.fsm.classifier import StateClassifier
 
 logger = logging.getLogger(__name__)
 
