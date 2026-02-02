@@ -30,6 +30,32 @@ from panoptes.config.settings import PanoptesSettings
 logger = logging.getLogger(__name__)
 
 
+
+class ColoredFormatter(logging.Formatter):
+    """Custom formatter to add colors to logs."""
+
+    grey = "\x1b[38;20m"
+    blue = "\x1b[34;20m"
+    yellow = "\x1b[33;20m"
+    red = "\x1b[31;20m"
+    bold_red = "\x1b[31;1m"
+    reset = "\x1b[0m"
+    format_str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+    FORMATS = {
+        logging.DEBUG: grey + format_str + reset,
+        logging.INFO: blue + format_str + reset,
+        logging.WARNING: yellow + format_str + reset,
+        logging.ERROR: red + format_str + reset,
+        logging.CRITICAL: bold_red + format_str + reset
+    }
+
+    def format(self, record):
+        log_fmt = self.FORMATS.get(record.levelno)
+        formatter = logging.Formatter(log_fmt, datefmt="%Y-%m-%d %H:%M:%S")
+        return formatter.format(record)
+
+
 class PanoptesProxy:
     """
     Main Panoptes proxy class.
@@ -57,12 +83,24 @@ class PanoptesProxy:
     def _setup_logging(self) -> None:
         """Configure logging based on settings."""
         log_level = getattr(logging, self.settings.log_level)
-        logging.basicConfig(
-            level=log_level,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
+        
+        # Create console handler with custom formatter
+        handler = logging.StreamHandler()
+        handler.setFormatter(ColoredFormatter())
+        
+        # Get root logger configuration
+        root_logger = logging.getLogger()
+        root_logger.setLevel(log_level)
+        
+        # Remove existing handlers to avoid duplicates
+        if root_logger.handlers:
+            root_logger.handlers.clear()
+            
+        root_logger.addHandler(handler)
+
         if self.settings.debug:
             litellm.set_verbose = True
+
 
     def _register_hooks(self) -> None:
         """Register hooks and set up cleanup handlers."""
