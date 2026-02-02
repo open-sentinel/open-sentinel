@@ -1,0 +1,136 @@
+
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+import sys
+
+# Mock nemoguardrails before importing engine
+mock_nemo = MagicMock()
+sys.modules["nemoguardrails"] = mock_nemo
+
+from panoptes.policy.engines.nemo.engine import NemoGuardrailsEngine
+from panoptes.policy.protocols import PolicyDecision
+
+@pytest.fixture
+def engine():
+    return NemoGuardrailsEngine()
+
+@pytest.fixture
+def mock_rails():
+    mock_nemo.LLMRails.return_value = MagicMock()
+    rails = mock_nemo.LLMRails.return_value
+    rails.generate_async = AsyncMock()
+    rails.register_action = MagicMock()
+    return rails
+
+@pytest.fixture
+def mock_config():
+    mock_nemo.RailsConfig.from_path.return_value = MagicMock()
+    mock_nemo.RailsConfig.from_content.return_value = MagicMock()
+    return mock_nemo.RailsConfig
+
+@pytest.mark.asyncio
+async def test_initialization(engine, mock_config, mock_rails):
+    config = {"config_path": "dummy/path"}
+    
+    await engine.initialize(config)
+    
+    assert engine._initialized
+    mock_config.from_path.assert_called_with("dummy/path")
+    mock_nemo.LLMRails.assert_called_once()
+    assert engine.name == "nemo:guardrails"
+    assert engine.engine_type == "nemo"
+
+@pytest.mark.asyncio
+async def test_evaluate_request_allow(engine, mock_rails):
+    await engine.initialize({"config_path": "dummy"})
+    
+    # Mock successful generation (no blocking content)
+    mock_result = MagicMock()
+    # Depending on implementation, extract_response_content handles str or obj
+    # If we return a string "OK" it should be fine
+    mock_rails.generate_async.return_value = "OK"
+    
+    result = await engine.evaluate_request(
+        session_id="test-session",
+        request_data={"messages": [{"role": "user", "content": "hello"}]}
+    )
+    
+    assert result.decision == PolicyDecision.ALLOW
+    assert len(result.violations) == 0
+
+@pytest.mark.asyncio
+async def test_evaluate_request_blocked(engine, mock_rails):
+    await engine.initialize({"config_path": "dummy"})
+    
+    # Mock blocked response
+    mock_rails.generate_async.return_value = "I cannot fulfill this request."
+    
+    result = await engine.evaluate_request(
+        session_id="test-session",
+        request_data={"messages": [{"role": "user", "content": "bad request"}]}
+    )
+    
+    assert result.decision == PolicyDecision.DENY
+    assert len(result.violations) == 1
+    assert result.violations[0].name == "nemo_input_blocked"
+
+@pytest.mark.asyncio
+async def test_evaluate_response_allow(engine, mock_rails):
+    await engine.initialize({"config_path": "dummy"})
+    
+    mock_rails.generate_async.return_value = "Safe response"
+    
+    result = await engine.evaluate_response(
+        session_id="test-session",
+        response_data="Safe response",
+        request_data={"messages": []}
+    )
+    
+    assert result.decision == PolicyDecision.ALLOW
+
+@pytest.mark.asyncio
+async def test_evaluate_response_blocked(engine, mock_rails):
+    await engine.initialize({"config_path": "dummy"})
+    
+    mock_rails.generate_async.return_value = "I cannot provide this info [blocked]"
+    
+    result = await engine.evaluate_response(
+        session_id="test-session",
+        response_data="Unsafe response",
+        request_data={"messages": []}
+    )
+    
+    assert result.decision == PolicyDecision.DENY
+    assert result.violations[0].name == "nemo_output_blocked"
+
+@pytest.mark.asyncio
+async def test_evaluate_request_error_fail_open(engine, mock_rails):
+    await engine.initialize({"config_path": "dummy"})
+    
+    mock_rails.generate_async.side_effect = Exception("NeMo error")
+    
+    result = await engine.evaluate_request(
+        session_id="test-session",
+        request_data={"messages": [{"role": "user", "content": "hi"}]}
+    )
+    
+    # Default is fail open (WARN)
+    assert result.decision == PolicyDecision.WARN
+    assert "NeMo evaluation failed" in result.violations[0].message
+
+@pytest.mark.asyncio
+async def test_evaluate_request_error_fail_closed(engine, mock_rails):
+    await engine.initialize({
+        "config_path": "dummy",
+        "fail_closed": True
+    })
+    
+    mock_rails.generate_async.side_effect = Exception("NeMo error")
+    
+    result = await engine.evaluate_request(
+        session_id="test-session",
+        request_data={"messages": [{"role": "user", "content": "hi"}]}
+    )
+    
+    assert result.decision == PolicyDecision.DENY
+    assert result.violations[0].name == "nemo_evaluation_error"
