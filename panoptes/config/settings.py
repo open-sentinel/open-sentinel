@@ -14,13 +14,13 @@ Environment variable examples:
     PANOPTES_PROXY__PORT=4000
 
 Policy engine examples:
-    # Use FSM engine (default, uses workflow_path)
-    PANOPTES_POLICY__ENGINE__TYPE=fsm
-    PANOPTES_WORKFLOW_PATH=/path/to/workflow.yaml
-
-    # Use NeMo Guardrails engine
+    # Use NeMo Guardrails engine (default)
     PANOPTES_POLICY__ENGINE__TYPE=nemo
     PANOPTES_POLICY__ENGINE__CONFIG__CONFIG_PATH=/path/to/nemo_config/
+
+    # Use FSM engine (uses workflow_path)
+    PANOPTES_POLICY__ENGINE__TYPE=fsm
+    PANOPTES_WORKFLOW_PATH=/path/to/workflow.yaml
 
     # Use composite engine (combine multiple)
     PANOPTES_POLICY__ENGINE__TYPE=composite
@@ -108,7 +108,7 @@ class PolicyEngineConfig(BaseModel):
     - composite: {"engines": [...], "strategy": "all"|"first_deny"}
     """
 
-    type: Literal["fsm", "nemo", "composite"] = "fsm"
+    type: Literal["fsm", "nemo", "composite"] = "nemo"
     enabled: bool = True
     config: Dict[str, Any] = Field(default_factory=dict)
 
@@ -122,17 +122,17 @@ class PolicyConfig(BaseModel):
     - Composite to combine multiple engines
 
     Examples:
-        # FSM only (default)
-        policy:
-          engine:
-            type: fsm
-
-        # NeMo only
+        # NeMo only (default)
         policy:
           engine:
             type: nemo
+
+        # FSM only
+        policy:
+          engine:
+            type: fsm
             config:
-              config_path: ./nemo_config/
+              workflow_path: ./workflow.yaml
 
         # Combined FSM + NeMo
         policy:

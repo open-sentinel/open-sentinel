@@ -117,7 +117,7 @@ class PanoptesCallback(CustomLogger):
             from panoptes.policy.registry import PolicyEngineRegistry
 
             policy_config = self.settings.get_policy_config()
-            engine_type = policy_config.get("type", "fsm")
+            engine_type = policy_config.get("type", "nemo")
             engine_config = policy_config.get("config", {})
 
             # Only initialize if we have configuration

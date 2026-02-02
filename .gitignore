@@ -84,3 +84,5 @@ Thumbs.db
 # Project specific
 *.log
 .panoptes/
+.claude/
+
