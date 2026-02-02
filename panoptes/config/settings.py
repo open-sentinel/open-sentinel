@@ -12,9 +12,21 @@ Environment variable examples:
     PANOPTES_OTEL__ENDPOINT=http://localhost:4317
     PANOPTES_OTEL__SERVICE_NAME=panoptes
     PANOPTES_PROXY__PORT=4000
+
+Policy engine examples:
+    # Use FSM engine (default, uses workflow_path)
+    PANOPTES_POLICY__ENGINE__TYPE=fsm
+    PANOPTES_WORKFLOW_PATH=/path/to/workflow.yaml
+
+    # Use NeMo Guardrails engine
+    PANOPTES_POLICY__ENGINE__TYPE=nemo
+    PANOPTES_POLICY__ENGINE__CONFIG__CONFIG_PATH=/path/to/nemo_config/
+
+    # Use composite engine (combine multiple)
+    PANOPTES_POLICY__ENGINE__TYPE=composite
 """
 
-from typing import Optional, Literal, List
+from typing import Optional, Literal, List, Dict, Any
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -82,6 +94,71 @@ class InterventionConfig(BaseModel):
     include_headers: bool = True
 
 
+class PolicyEngineConfig(BaseModel):
+    """Configuration for a single policy engine.
+
+    Supported engine types:
+    - fsm: Finite State Machine (workflow-based)
+    - nemo: NeMo Guardrails
+    - composite: Combine multiple engines
+
+    The 'config' field contains engine-specific configuration:
+    - fsm: {"workflow_path": "..."} or {"workflow": {...}}
+    - nemo: {"config_path": "..."} or {"config": {...}}
+    - composite: {"engines": [...], "strategy": "all"|"first_deny"}
+    """
+
+    type: Literal["fsm", "nemo", "composite"] = "fsm"
+    enabled: bool = True
+    config: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PolicyConfig(BaseModel):
+    """Policy system configuration.
+
+    Supports multiple policy engines with different mechanisms:
+    - FSM for workflow enforcement
+    - NeMo Guardrails for content moderation
+    - Composite to combine multiple engines
+
+    Examples:
+        # FSM only (default)
+        policy:
+          engine:
+            type: fsm
+
+        # NeMo only
+        policy:
+          engine:
+            type: nemo
+            config:
+              config_path: ./nemo_config/
+
+        # Combined FSM + NeMo
+        policy:
+          engine:
+            type: composite
+          engines:
+            - type: fsm
+              config:
+                workflow_path: ./workflow.yaml
+            - type: nemo
+              config:
+                config_path: ./nemo_config/
+    """
+
+    # Primary engine configuration
+    engine: PolicyEngineConfig = Field(default_factory=PolicyEngineConfig)
+
+    # For composite engine: list of child engines
+    engines: List[PolicyEngineConfig] = Field(default_factory=list)
+
+    # Fallback behavior when engine evaluation fails
+    # True = allow request on error (fail open)
+    # False = deny request on error (fail closed)
+    fail_open: bool = True
+
+
 class PanoptesSettings(BaseSettings):
     """
     Main Panoptes configuration.
@@ -111,6 +188,41 @@ class PanoptesSettings(BaseSettings):
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     classifier: ClassifierConfig = Field(default_factory=ClassifierConfig)
     intervention: InterventionConfig = Field(default_factory=InterventionConfig)
+
+    # Policy engine configuration
+    policy: PolicyConfig = Field(default_factory=PolicyConfig)
+
+    def get_policy_config(self) -> Dict[str, Any]:
+        """
+        Get policy engine configuration, handling backward compatibility.
+
+        If workflow_path is set but policy.engine.config doesn't have it,
+        automatically uses FSM engine with that workflow path.
+
+        Returns:
+            Configuration dict ready for PolicyEngineRegistry.create_and_initialize()
+        """
+        engine_config = self.policy.engine.model_dump()
+
+        # Handle backward compatibility with workflow_path
+        if self.workflow_path:
+            if engine_config["type"] == "fsm" and not engine_config["config"].get("workflow_path"):
+                engine_config["config"]["workflow_path"] = self.workflow_path
+
+        # Handle composite engine
+        if engine_config["type"] == "composite":
+            # Use engines list from policy config
+            if self.policy.engines:
+                engine_config["config"]["engines"] = [
+                    e.model_dump() for e in self.policy.engines
+                ]
+            # If workflow_path is set, add FSM engine to composite
+            if self.workflow_path and not engine_config["config"].get("engines"):
+                engine_config["config"]["engines"] = [
+                    {"type": "fsm", "config": {"workflow_path": self.workflow_path}}
+                ]
+
+        return engine_config
 
     def get_model_list(self) -> List[dict]:
         """Get model list for LiteLLM router."""
