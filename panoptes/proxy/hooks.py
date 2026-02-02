@@ -15,8 +15,7 @@ This module implements the core hook system that intercepts LLM calls:
    - Classifies response to determine workflow state
    - Updates state machine
 
-Note: Langfuse tracing is handled by LiteLLM's built-in langfuse_otel callback,
-not by this module. See server.py for langfuse_otel configuration.
+Tracing is handled via OpenTelemetry (see tracing/otel_tracer.py).
 
 Based on LiteLLM's CustomLogger API:
 https://docs.litellm.ai/docs/observability/custom_callback
@@ -80,7 +79,7 @@ class PanoptesCallback(CustomLogger):
         # Prompt injector (lazy initialized)
         self._injector = None
 
-        # Langfuse tracer for Panoptes events (lazy initialized)
+        # OpenTelemetry tracer for Panoptes events (lazy initialized)
         self._tracer = None
 
         logger.info("PanoptesCallback initialized")
@@ -109,14 +108,12 @@ class PanoptesCallback(CustomLogger):
 
     @property
     def tracer(self):
-        """Lazy-load tracer for Panoptes event logging to Langfuse."""
+        """Lazy-load tracer for Panoptes event logging via OpenTelemetry."""
         if self._tracer is None:
-            logger.debug(f"Tracer check: langfuse.enabled={self.settings.langfuse.enabled}, "
-                        f"public_key={bool(self.settings.langfuse.public_key)}, "
-                        f"secret_key={bool(self.settings.langfuse.secret_key)}")
-            if self.settings.langfuse.enabled:
-                from panoptes.tracing.langfuse_integration import PanoptesTracer
-                self._tracer = PanoptesTracer(self.settings.langfuse)
+            logger.debug(f"Tracer check: otel.enabled={self.settings.otel.enabled}")
+            if self.settings.otel.enabled:
+                from panoptes.tracing.otel_tracer import PanoptesTracer
+                self._tracer = PanoptesTracer(self.settings.otel)
                 logger.info(f"PanoptesTracer initialized: {self._tracer}")
         return self._tracer
 
@@ -147,7 +144,7 @@ class PanoptesCallback(CustomLogger):
         This hook:
         1. Checks for pending interventions from previous call
         2. If intervention needed, modifies request to inject correction
-        3. Starts Langfuse trace span
+        3. Starts OTEL trace span
 
         Args:
             user_api_key_dict: User API key information
@@ -176,7 +173,7 @@ class PanoptesCallback(CustomLogger):
                     context=intervention.get("context", {}),
                 )
 
-            # Log intervention to Langfuse
+            # Log intervention via OTEL
             if self.tracer:
                 self.tracer.log_intervention(
                     session_id=session_id,
@@ -237,7 +234,7 @@ class PanoptesCallback(CustomLogger):
             context={"messages": messages},
         )
 
-        # Log any constraint violations to Langfuse
+        # Log any constraint violations via OTEL
         if result.constraint_violations and self.tracer:
             for violation in result.constraint_violations:
                 self.tracer.log_deviation(
@@ -274,7 +271,7 @@ class PanoptesCallback(CustomLogger):
         This hook:
         1. Classifies the response to determine workflow state
         2. Updates the workflow state machine
-        3. Completes the Langfuse trace span
+        3. Completes the OTEL trace span
 
         Args:
             data: Original request data
@@ -303,7 +300,7 @@ class PanoptesCallback(CustomLogger):
                 f"(confidence={tracking_result.classification_confidence:.2f})"
             )
 
-        # Log state transition to Langfuse (if we tracked state)
+        # Log state transition via OTEL (if we tracked state)
         if self.tracer and tracking_result:
             self.tracer.log_state_transition(
                 session_id=session_id,
@@ -411,7 +408,7 @@ class PanoptesCallback(CustomLogger):
         """
         Called AFTER successful LLM response (library/router mode).
 
-        LiteLLM's langfuse_otel callback handles Langfuse tracing.
+        OpenTelemetry tracing handles observability.
         We only do Panoptes workflow tracking here.
         """
         session_id = self._extract_session_id(kwargs)
@@ -433,7 +430,7 @@ class PanoptesCallback(CustomLogger):
                 f"(confidence={tracking_result.classification_confidence:.2f})"
             )
 
-        # Log state transition to Langfuse (if we tracked state)
+        # Log state transition via OTEL (if we tracked state)
         if self.tracer and tracking_result:
             self.tracer.log_state_transition(
                 session_id=session_id,

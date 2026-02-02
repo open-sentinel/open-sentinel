@@ -2,14 +2,14 @@
 
 from panoptes.config.settings import (
     PanoptesSettings,
-    LangfuseConfig,
+    OTelConfig,
     ProxyConfig,
     ClassifierConfig,
 )
 
 __all__ = [
     "PanoptesSettings",
-    "LangfuseConfig",
+    "OTelConfig",
     "ProxyConfig",
     "ClassifierConfig",
 ]

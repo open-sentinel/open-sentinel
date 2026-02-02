@@ -1,5 +1,5 @@
 """Panoptes tracing and observability."""
 
-from panoptes.tracing.langfuse_integration import PanoptesTracer
+from panoptes.tracing.otel_tracer import PanoptesTracer
 
 __all__ = ["PanoptesTracer"]

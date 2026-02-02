@@ -9,8 +9,8 @@ Configuration can be provided via:
 Environment variable examples:
     PANOPTES_DEBUG=true
     PANOPTES_WORKFLOW_PATH=/path/to/workflow.yaml
-    PANOPTES_LANGFUSE__PUBLIC_KEY=pk-...
-    PANOPTES_LANGFUSE__SECRET_KEY=sk-...
+    PANOPTES_OTEL__ENDPOINT=http://localhost:4317
+    PANOPTES_OTEL__SERVICE_NAME=panoptes
     PANOPTES_PROXY__PORT=4000
 """
 
@@ -19,15 +19,14 @@ from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class LangfuseConfig(BaseModel):
-    """Langfuse tracing configuration."""
+class OTelConfig(BaseModel):
+    """OpenTelemetry tracing configuration."""
 
     enabled: bool = True
-    public_key: Optional[str] = None
-    secret_key: Optional[str] = None
-    host: str = "https://cloud.langfuse.com"
-    flush_interval: float = 1.0
-    debug: bool = False
+    endpoint: str = "http://localhost:4317"
+    service_name: str = "panoptes"
+    exporter_type: Literal["otlp", "console", "none"] = "otlp"
+    insecure: bool = True  # Use insecure connection (no TLS) for local dev
 
 
 class ProxyConfig(BaseModel):
@@ -76,7 +75,7 @@ class PanoptesSettings(BaseSettings):
     Main Panoptes configuration.
 
     All settings can be overridden via environment variables with PANOPTES_ prefix.
-    Nested settings use double underscore: PANOPTES_LANGFUSE__PUBLIC_KEY
+    Nested settings use double underscore: PANOPTES_OTEL__ENDPOINT
     """
 
     model_config = SettingsConfigDict(
@@ -96,7 +95,7 @@ class PanoptesSettings(BaseSettings):
     workflows_dir: Optional[str] = None
 
     # Component configurations
-    langfuse: LangfuseConfig = Field(default_factory=LangfuseConfig)
+    otel: OTelConfig = Field(default_factory=OTelConfig)
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
     classifier: ClassifierConfig = Field(default_factory=ClassifierConfig)
     intervention: InterventionConfig = Field(default_factory=InterventionConfig)
