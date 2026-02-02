@@ -53,6 +53,15 @@ examples = [
     "langchain-openai>=0.2.0",
     "httpx>=0.25.0",
 ]
+nemo = [
+    "nemoguardrails>=0.10.0",
+]
+all = [
+    "nemoguardrails>=0.10.0",
+    "langchain>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "httpx>=0.25.0",
+]
 
 [project.scripts]
 panoptes = "panoptes.cli:main"
