@@ -1,9 +1,9 @@
 
 import os
-import json
 import dotenv
 from openai import OpenAI
 import time
+import uuid
 
 dotenv.load_dotenv()
 
@@ -16,7 +16,7 @@ PANOPTES_URL = os.getenv("PANOPTES_URL", "http://localhost:4000/v1")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Session ID for tracking conversation state
-SESSION_ID = "nemo-session-001"
+SESSION_ID = f"nemo-session-{uuid.uuid4().hex[:8]}"
 
 if not GOOGLE_API_KEY:
     print("Warning: GOOGLE_API_KEY not found in environment")
