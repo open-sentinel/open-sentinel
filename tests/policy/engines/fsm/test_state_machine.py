@@ -3,7 +3,7 @@
 import pytest
 from datetime import datetime, UTC
 
-from panoptes.workflow.state_machine import (
+from panoptes.policy.engines.fsm.workflow.state_machine import (
     WorkflowStateMachine,
     TransitionResult,
     SessionState,
@@ -131,7 +131,7 @@ class TestSessionState:
 
     def test_get_state_sequence(self):
         """Test getting state sequence from history."""
-        from panoptes.workflow.state_machine import StateHistoryEntry
+        from panoptes.policy.engines.fsm.workflow.state_machine import StateHistoryEntry
 
         session = SessionState(
             session_id="test",

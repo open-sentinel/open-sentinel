@@ -2,7 +2,7 @@
 
 import pytest
 
-from panoptes.intervention.strategies import (
+from panoptes.core.intervention.strategies import (
     StrategyType,
     InterventionConfig,
     SystemPromptAppendStrategy,
@@ -11,7 +11,7 @@ from panoptes.intervention.strategies import (
     WorkflowViolationError,
     STRATEGY_REGISTRY,
 )
-from panoptes.intervention.prompt_injector import PromptInjector
+from panoptes.policy.engines.fsm.injector import PromptInjector
 
 
 class TestInterventionStrategies:

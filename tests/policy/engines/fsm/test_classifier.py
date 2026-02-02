@@ -2,8 +2,8 @@
 
 import pytest
 
-from panoptes.monitor.classifier import StateClassifier, ClassificationResult
-from panoptes.workflow.schema import State, ClassificationHint
+from panoptes.policy.engines.fsm.classifier import StateClassifier, ClassificationResult
+from panoptes.policy.engines.fsm.workflow.schema import State, ClassificationHint
 
 
 class TestStateClassifier:

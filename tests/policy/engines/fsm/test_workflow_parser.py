@@ -3,8 +3,8 @@
 import pytest
 from pathlib import Path
 
-from panoptes.workflow.parser import WorkflowParser
-from panoptes.workflow.schema import WorkflowDefinition, ConstraintType
+from panoptes.policy.engines.fsm.workflow.parser import WorkflowParser
+from panoptes.policy.engines.fsm.workflow.schema import WorkflowDefinition, ConstraintType
 
 
 class TestWorkflowParser:

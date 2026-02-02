@@ -3,13 +3,13 @@
 import pytest
 from datetime import datetime, UTC
 
-from panoptes.workflow.constraints import (
+from panoptes.policy.engines.fsm.workflow.constraints import (
     ConstraintEvaluator,
     EvaluationResult,
     ConstraintViolation,
 )
-from panoptes.workflow.schema import Constraint, ConstraintType
-from panoptes.workflow.state_machine import SessionState, StateHistoryEntry
+from panoptes.policy.engines.fsm.workflow.schema import Constraint, ConstraintType
+from panoptes.policy.engines.fsm.workflow.state_machine import SessionState, StateHistoryEntry
 
 
 def make_session(states: list[str]) -> SessionState:
