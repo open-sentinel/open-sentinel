@@ -151,23 +151,44 @@ class PanoptesCallback(CustomLogger):
 
         return self._policy_engine
 
+    def _get_workflow_path_for_fsm(self) -> Optional[str]:
+        """Resolve workflow_path from settings or policy engine config."""
+        if self.settings.workflow_path:
+            return self.settings.workflow_path
+
+        policy_config = self.settings.get_policy_config()
+        engine_type = policy_config.get("type")
+        engine_config = policy_config.get("config", {})
+
+        if engine_type == "fsm":
+            return engine_config.get("workflow_path")
+
+        if engine_type == "composite":
+            for engine in engine_config.get("engines", []):
+                if engine.get("type") == "fsm":
+                    return (engine.get("config") or {}).get("workflow_path")
+
+        return None
+
     @property
     def tracker(self):
         """Lazy-load tracker to avoid import issues (backward compatibility)."""
-        if self._tracker is None and self.settings.workflow_path:
+        workflow_path = self._get_workflow_path_for_fsm()
+        if self._tracker is None and workflow_path:
             from panoptes.policy.engines.fsm import WorkflowParser, WorkflowTracker
 
-            workflow = WorkflowParser.parse_file(self.settings.workflow_path)
+            workflow = WorkflowParser.parse_file(workflow_path)
             self._tracker = WorkflowTracker(workflow)
         return self._tracker
 
     @property
     def injector(self):
         """Lazy-load injector to avoid import issues."""
-        if self._injector is None and self.settings.workflow_path:
+        workflow_path = self._get_workflow_path_for_fsm()
+        if self._injector is None and workflow_path:
             from panoptes.policy.engines.fsm import WorkflowParser, PromptInjector
 
-            workflow = WorkflowParser.parse_file(self.settings.workflow_path)
+            workflow = WorkflowParser.parse_file(workflow_path)
             self._injector = PromptInjector(workflow)
         return self._injector
 
@@ -409,6 +430,20 @@ class PanoptesCallback(CustomLogger):
                             constraint_name=violation.name,
                             severity=violation.severity,
                         )
+
+                # Enforce policy decisions in moderation hook
+                if result.decision == PolicyDecision.DENY:
+                    logger.warning(
+                        f"Request blocked by policy engine for session {session_id}: "
+                        f"{[v.name for v in result.violations]}"
+                    )
+                    raise WorkflowViolationError(
+                        "Request blocked by policy engine",
+                        context={
+                            "session_id": session_id,
+                            "violations": [v.name for v in result.violations],
+                        },
+                    )
 
                 # If intervention needed, record for next call
                 if result.intervention_needed:
