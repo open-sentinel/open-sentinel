@@ -138,7 +138,7 @@ class PanoptesProxy:
             logger.warning("No workflow_path configured - running in pass-through mode")
             return None
 
-        from panoptes.workflow.parser import WorkflowParser
+        from panoptes.policy.engines.fsm.workflow.parser import WorkflowParser
 
         workflow_path = Path(self.settings.workflow_path)
         if not workflow_path.exists():

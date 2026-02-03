@@ -274,8 +274,8 @@ class ConstraintEvaluator:
         if len(history) < 2:
             return EvaluationResult.PENDING
 
-        # Check if second state is target
-        if history[1] == target:
+        # Check if most recent transition is to target
+        if history[-1] == target:
             return EvaluationResult.SATISFIED
 
         return EvaluationResult.VIOLATED

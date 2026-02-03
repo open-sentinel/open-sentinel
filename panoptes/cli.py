@@ -107,7 +107,7 @@ def validate(workflow_path: Path):
     Example:
         panoptes validate workflow.yaml
     """
-    from panoptes.workflow.parser import WorkflowParser
+    from panoptes.policy.engines.fsm.workflow.parser import WorkflowParser
 
     try:
         workflow = WorkflowParser.parse_file(workflow_path)
@@ -146,7 +146,7 @@ def info(workflow_path: Path, verbose: bool):
     Example:
         panoptes info workflow.yaml --verbose
     """
-    from panoptes.workflow.parser import WorkflowParser
+    from panoptes.policy.engines.fsm.workflow.parser import WorkflowParser
 
     try:
         workflow = WorkflowParser.parse_file(workflow_path)
