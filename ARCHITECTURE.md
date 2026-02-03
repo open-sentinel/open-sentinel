@@ -130,10 +130,18 @@ WorkflowDefinition
 └── interventions: Dict[str, str]  # name → prompt template
 ```
 
-#### `monitor` Components
-Now integrated into the FSM engine:
-- **StateClassifier** (`monitor/classifier.py`): Classifies LLM responses.
-- **WorkflowTracker** (`monitor/tracker.py`): Orchestrates classification and state updates.
+#### NeMo Guardrails Engine (`panoptes/policy/engines/nemo/`)
+
+Integrates NVIDIA's NeMo Guardrails for comprehensive content safety and dialog management.
+
+**Key Features**:
+- **Input Rails**: Pre-processing checks for jailbreaks, PII, and toxicity.
+- **Output Rails**: Post-processing verification against safety policies and hallucination checks.
+- **Dialog Rails**: Programmable conversation flow using Colang.
+
+**Panoptes Bridge**:
+- Registers custom actions (`panoptes_log_violation`, `panoptes_request_intervention`) to allow Colang scripts to interact with Panoptes' tracing and intervention systems.
+- Adapts NeMo's `generate_async` output to `PolicyEvaluationResult`, translating blocked responses into policy violations.
 
 ---
 
@@ -172,18 +180,27 @@ class PromptInjector:
 ### 5. Tracing Layer (`panoptes/tracing/`)
 
 #### `otel_tracer.py` - PanoptesTracer
-Provides session-aware tracing via OpenTelemetry:
+Provides session-aware tracing via OpenTelemetry with special support for **Langfuse**.
+
+**Key Components**:
+- **PanoptesTracer**: Main class for creating spans and events.
+- **SpanEventManager**: Logging handler that captures application logs as events on the active span (crucial for debugging NeMo internals).
+- **GenAI Semantics**: Uses OpenTelemetry GenAI semantic conventions (`gen_ai.request.model`, `gen_ai.usage.prompt_tokens`) for rich observability.
 
 ```python
 class PanoptesTracer:
-    def log_event(session_id, name, metadata)  # interventions, deviations
-    def log_state_transition(session_id, previous_state, new_state, confidence)
-    def log_llm_call(session_id, model, messages, response_content, usage)
+    def log_policy_evaluation(session_id, decision, violations, ...) # Tracks policy results
+    def log_llm_call(session_id, model, messages, response, ...)     # Tracks LLM usage/cost
+    
+    @contextmanager
+    def trace_block(name, session_id): ...  # Scopes logs to specific spans
 ```
 
 **Trace Hierarchy**:
 - **Session Span**: Root span per session
-- **Event Spans**: Child spans for each event (LLM calls, state transitions, etc.)
+- **Policy Evaluation Spans**: Captures inputs, decisions, and any violations
+- **LLM Call Spans**: Detailed view of the raw LLM interaction
+- **Log Events**: Granular logs from the application (e.g., NeMo's "activated rail") attached to relevant spans
 
 ---
 
@@ -282,6 +299,8 @@ panoptes/
 │   │   │   └── engine.py
 │   │   │
 │   │   └── nemo/        # NeMo Guardrails Engine
+│   │       ├── __init__.py
+│   │       └── engine.py
 │   │
 │   └── registry.py      # Policy engine registry
 │
@@ -301,6 +320,7 @@ panoptes/
 | Package | Purpose | Version |
 |---------|---------|---------|
 | `litellm[proxy]` | LLM proxy and routing | >=1.50.0 |
+| `nemoguardrails` | NeMo policy engine | >=0.9.0 |
 | `opentelemetry-api` | Tracing API | >=1.20.0 |
 | `opentelemetry-sdk` | Tracing SDK | >=1.20.0 |
 | `opentelemetry-exporter-otlp` | OTLP exporter | >=1.20.0 |

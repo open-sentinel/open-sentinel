@@ -124,6 +124,12 @@ Simplified temporal logic for practical workflow constraints (FSM engine):
 | `precedence` | B cannot occur before A | "Verify identity before account actions" |
 | `response` | If A occurs, B must follow | "If escalate, must resolve" |
 
+### NeMo Guardrails Integration
+Native support for NVIDIA NeMo Guardrails to enforce:
+- **Input Rails**: Check for jailbreaks, PII, and toxicity before processing inputs.
+- **Output Rails**: Validate LLM responses against safety policies and fact-checking.
+- **Dialog Rails**: Control conversation flow using Colang scripts.
+
 ### Multiple Intervention Strategies
 
 | Strategy | Use Case |
@@ -140,17 +146,21 @@ Environment variables (prefix: `PANOPTES_`):
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PANOPTES_POLICY__ENGINE__TYPE` | Engine: `nemo`, `fsm`, `composite` | nemo |
+| `PANOPTES_POLICY__ENGINE__CONFIG__CONFIG_PATH` | Path to NeMo config directory | - |
 | `PANOPTES_WORKFLOW_PATH` | Path to workflow YAML (for FSM) | - |
 | `PANOPTES_PROXY__PORT` | Server port | 4000 |
 | `PANOPTES_OTEL__EXPORTER_TYPE` | Exporter: `otlp`, `langfuse`, `console`, `none` | otlp |
 | `PANOPTES_OTEL__ENDPOINT` | OTLP endpoint (for `otlp` exporter) | http://localhost:4317 |
-| `PANOPTES_OTEL__LANGFUSE_PUBLIC_KEY` | Langfuse public key (for `langfuse` exporter) | - |
-| `PANOPTES_OTEL__LANGFUSE_SECRET_KEY` | Langfuse secret key (for `langfuse` exporter) | - |
+| `PANOPTES_OTEL__LANGFUSE_PUBLIC_KEY` | Langfuse public key | - |
+| `PANOPTES_OTEL__LANGFUSE_SECRET_KEY` | Langfuse secret key | - |
+| `PANOPTES_OTEL__LANGFUSE_HOST` | Langfuse host (e.g. US region) | https://cloud.langfuse.com |
 | `PANOPTES_CLASSIFIER__MODEL_NAME` | Embedding model | all-MiniLM-L6-v2 |
 
 ### OpenTelemetry Setup (Optional)
 
 **Option 1: Export to Langfuse (via OTLP)**
+
+Panoptes uses OpenTelemetry GenAI semantic conventions to provide rich traces in Langfuse, including model usage, costs, and policy evaluation events.
 
 ```bash
 export PANOPTES_OTEL__EXPORTER_TYPE=langfuse

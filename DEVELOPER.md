@@ -14,8 +14,12 @@ pip install -e ".[dev]"
 # Run tests
 pytest
 
-# Start proxy with a workflow
+# Start proxy with FSM workflow
 panoptes serve --workflow examples/customer_support.yaml --port 4000
+
+# Start proxy with NeMo Guardrails (requires examples/nemo_guardrails/config/)
+export PANOPTES_POLICY__ENGINE__CONFIG__CONFIG_PATH=examples/nemo_guardrails/config/
+panoptes serve --port 4000
 ```
 
 ### Point Your LLM Client at Panoptes
@@ -159,6 +163,47 @@ states:
 
 # Validate without loading
 is_valid, message = WorkflowParser.validate_file("workflow.yaml")
+```
+
+### Working with NeMo Guardrails
+
+#### Configuration Structure
+NeMo Guardrails requires a configuration directory containing:
+- `config.yml`: Main configuration (models, rails instructions)
+- `prompts.yml`: (Optional) Custom prompts
+- `actions.py`: (Optional) Custom python actions (if not using Panoptes registration)
+
+Example `config.yml`:
+```yaml
+models:
+  - type: main
+    engine: openai
+    model: gpt-4o
+
+rails:
+  input:
+    flows:
+      - check input security
+  output:
+    flows:
+      - check output safety
+```
+
+#### Registering Custom Actions
+Panoptes automatically registers bridge actions, but you can add your own by registering them with `custom_actions` in the engine config or via your application bootstrapping.
+
+```python
+async def my_custom_action(context={}):
+    return {"status": "ok"}
+```
+
+#### Debugging NeMo
+Use `trace_block` to capture internal NeMo steps in your traces:
+
+```python
+with tracer.trace_block("nemo_step", session_id) as span:
+    # NeMo logic here
+    pass
 ```
 
 ### Working with the State Machine
@@ -563,6 +608,19 @@ logging.getLogger("panoptes.workflow.constraints").setLevel(logging.DEBUG)
 
 **"Constraint references unknown state"**
 - Check that `trigger` and `target` in constraints match state names exactly
+
+### NeMo Guardrails Issues
+
+**"API key not valid (400)"**
+- Ensure `PANOPTES_POLICY__ENGINE__TYPE` is set to `nemo` (default)
+- Check that your model configuration (e.g., `gemini-1.5-flash`) maps to a valid API key in your `.env` file
+- Verify `config.yml` refers to models that are properly configured in `nemo_agent.py` or `PanoptesSettings`
+
+**"No workflow_path configured - running in pass-through mode"**
+- This is a WARN log from the FSM engine. If you are using the `nemo` engine, you can safely ignore this as the FSM engine is not being used, or ensure your logs are filtered.
+
+**"TypeError: 'function' object is not subscriptable"**
+- Conflict between Pydantic V1 (used by LangChain) and V2 (used by Panoptes). Ensure you have applied the monkeypatch or are using compatible versions.
 
 ### Session ID Issues
 
