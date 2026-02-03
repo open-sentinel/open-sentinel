@@ -225,14 +225,23 @@ class PanoptesCallback(CustomLogger):
         logger.debug(f"pre_call_hook: session={session_id}, call_type={call_type}")
 
         # Evaluate request through policy engine
+        # Evaluate request through policy engine
         policy_engine = await self._get_policy_engine()
         if policy_engine:
             try:
-                result = await policy_engine.evaluate_request(
-                    session_id=session_id,
-                    request_data=data,
-                    context={"call_type": call_type},
-                )
+                # Wrap metadata call in a trace block to capture logs (like NeMo execution logs)
+                if self.tracer:
+                    cm = self.tracer.trace_block("policy_evaluation", session_id, {"hook": "pre_call"})
+                else:
+                    from contextlib import nullcontext
+                    cm = nullcontext()
+
+                with cm:
+                    result = await policy_engine.evaluate_request(
+                        session_id=session_id,
+                        request_data=data,
+                        context={"call_type": call_type},
+                    )
 
                 # Handle policy decision
                 if result.decision == PolicyDecision.DENY:
@@ -350,12 +359,19 @@ class PanoptesCallback(CustomLogger):
         policy_engine = await self._get_policy_engine()
         if policy_engine:
             try:
-                result = await policy_engine.evaluate_response(
-                    session_id=session_id,
-                    response_data=last_assistant_msg,
-                    request_data=data,
-                    context={"messages": messages, "call_type": call_type},
-                )
+                if self.tracer:
+                    cm = self.tracer.trace_block("policy_moderation", session_id, {"hook": "moderation"})
+                else:
+                    from contextlib import nullcontext
+                    cm = nullcontext()
+
+                with cm:
+                    result = await policy_engine.evaluate_response(
+                        session_id=session_id,
+                        response_data=last_assistant_msg,
+                        request_data=data,
+                        context={"messages": messages, "call_type": call_type},
+                    )
 
                 # Log any violations via OTEL
                 if result.violations and self.tracer:
@@ -455,12 +471,19 @@ class PanoptesCallback(CustomLogger):
         policy_result = None
         if policy_engine:
             try:
-                policy_result = await policy_engine.evaluate_response(
-                    session_id=session_id,
-                    response_data=response,
-                    request_data=data,
-                    context={"hook": "post_call_success"},
-                )
+                if self.tracer:
+                    cm = self.tracer.trace_block("policy_evaluation_response", session_id, {"hook": "post_call_success"})
+                else:
+                    from contextlib import nullcontext
+                    cm = nullcontext()
+
+                with cm:
+                    policy_result = await policy_engine.evaluate_response(
+                        session_id=session_id,
+                        response_data=response,
+                        request_data=data,
+                        context={"hook": "post_call_success"},
+                    )
 
                 # Log state transition for stateful engines
                 if self.tracer and policy_result.metadata:
@@ -520,8 +543,8 @@ class PanoptesCallback(CustomLogger):
                     confidence=tracking_result.classification_confidence,
                 )
 
-        # Log LLM call if no workflow tracking
-        if self.tracer and not policy_result and not tracking_result:
+        # Log LLM call via OTEL
+        if self.tracer:
             response_content = None
             if hasattr(response, "choices") and response.choices:
                 first_choice = response.choices[0]
@@ -545,7 +568,10 @@ class PanoptesCallback(CustomLogger):
                 response_content=response_content,
                 response_model=getattr(response, "model", None),
                 usage=usage_info,
-                metadata={"has_workflow": False, "hook": "post_call_success"},
+                metadata={
+                    "has_workflow": policy_engine is not None,
+                    "hook": "post_call_success"
+                },
             )
 
         return response
@@ -630,41 +656,16 @@ class PanoptesCallback(CustomLogger):
             f"has_tracer={self.tracer is not None}"
         )
 
-        # Evaluate through policy engine
+        # NOTE: We skip policy evaluation here to avoid TimeoutErrors in the logging worker.
+        # The logging worker has a short timeout (default 0.1s in some versions, or rigid task limits)
+        # and NeMo evaluation involves making LLM calls which take longer.
+        #
+        # Policy evaluation is now handled in `async_post_call_success_hook` which runs
+        # in the main request flow and can await properly.
+        #
+        # We perform a lightweight check here just for logging if needed, or rely on 
+        # the trace context established in the main hook.
         policy_result = None
-        if policy_engine:
-            try:
-                policy_result = await policy_engine.evaluate_response(
-                    session_id=session_id,
-                    response_data=response_obj,
-                    request_data=kwargs,
-                    context={"hook": "async_log_success"},
-                )
-
-                # Log state transition for stateful engines
-                if self.tracer and policy_result.metadata:
-                    prev_state = policy_result.metadata.get("previous_state")
-                    curr_state = policy_result.metadata.get("current_state")
-                    confidence = policy_result.metadata.get("classification_confidence", 0.0)
-
-                    if prev_state and curr_state:
-                        self.tracer.log_state_transition(
-                            session_id=session_id,
-                            previous_state=prev_state,
-                            new_state=curr_state,
-                            confidence=confidence,
-                        )
-
-                # Schedule intervention if needed
-                if policy_result.intervention_needed:
-                    self._pending_interventions[session_id] = {
-                        "name": policy_result.intervention_needed,
-                        "context": policy_result.metadata or {},
-                        "strategy": self.settings.intervention.default_strategy,
-                    }
-
-            except Exception as e:
-                logger.error(f"Policy engine async_log_success evaluation failed: {e}")
 
         # Fallback to legacy tracker
         tracking_result = None
@@ -689,8 +690,8 @@ class PanoptesCallback(CustomLogger):
                     confidence=tracking_result.classification_confidence,
                 )
 
-        # Log LLM call if no workflow tracking
-        if self.tracer and not policy_result and not tracking_result:
+        # Log LLM call via OTEL
+        if self.tracer:
             response_content = None
             if hasattr(response_obj, "choices") and response_obj.choices:
                 first_choice = response_obj.choices[0]
@@ -714,7 +715,10 @@ class PanoptesCallback(CustomLogger):
                 response_content=response_content,
                 response_model=getattr(response_obj, "model", None),
                 usage=usage_info,
-                metadata={"has_workflow": False, "hook": "async_log_success"},
+                metadata={
+                    "has_workflow": policy_engine is not None,
+                    "hook": "async_log_success"
+                },
             )
 
     async def async_log_failure_event(
