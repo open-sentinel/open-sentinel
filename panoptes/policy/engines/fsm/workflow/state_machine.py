@@ -9,6 +9,7 @@ Tracks agent progress through workflow states with:
 
 import asyncio
 import logging
+import ast
 from typing import Optional, Dict, Any, Set, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime, UTC
@@ -255,13 +256,78 @@ class WorkflowStateMachine:
         # Evaluate expression
         if guard.expression:
             try:
+                safe_context = self._sanitize_context(context)
+                if not self._is_safe_expression(guard.expression):
+                    logger.warning("Guard expression contains disallowed syntax")
+                    return False
                 # Safe evaluation with limited builtins
-                safe_builtins = {"True": True, "False": False, "None": None}
+                safe_builtins = {}
+                safe_locals = {"True": True, "False": False, "None": None}
+                safe_locals.update(safe_context)
                 return bool(
-                    eval(guard.expression, {"__builtins__": safe_builtins}, context)
+                    eval(guard.expression, {"__builtins__": safe_builtins}, safe_locals)
                 )
             except Exception as e:
                 logger.warning(f"Guard expression evaluation failed: {e}")
+                return False
+
+        return True
+
+    def _sanitize_context(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Allow only simple, JSON-serializable primitives in guard context."""
+        def is_safe_value(value: Any) -> bool:
+            if value is None or isinstance(value, (str, int, float, bool)):
+                return True
+            if isinstance(value, (list, tuple)):
+                return all(is_safe_value(v) for v in value)
+            if isinstance(value, dict):
+                return all(
+                    isinstance(k, str) and is_safe_value(v) for k, v in value.items()
+                )
+            return False
+
+        return {k: v for k, v in context.items() if is_safe_value(v)}
+
+    def _is_safe_expression(self, expression: str) -> bool:
+        """Reject expressions with calls, attributes, or other unsafe nodes."""
+        try:
+            tree = ast.parse(expression, mode="eval")
+        except SyntaxError:
+            return False
+
+        allowed_nodes = (
+            ast.Expression,
+            ast.BoolOp,
+            ast.BinOp,
+            ast.UnaryOp,
+            ast.Compare,
+            ast.Name,
+            ast.Load,
+            ast.Constant,
+            ast.And,
+            ast.Or,
+            ast.Not,
+            ast.Eq,
+            ast.NotEq,
+            ast.Lt,
+            ast.LtE,
+            ast.Gt,
+            ast.GtE,
+            ast.In,
+            ast.NotIn,
+            ast.Is,
+            ast.IsNot,
+            ast.Add,
+            ast.Sub,
+            ast.Mult,
+            ast.Div,
+            ast.Mod,
+        )
+
+        for node in ast.walk(tree):
+            if not isinstance(node, allowed_nodes):
+                return False
+            if isinstance(node, ast.Name) and node.id.startswith("__"):
                 return False
 
         return True

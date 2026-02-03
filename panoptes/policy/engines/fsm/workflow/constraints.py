@@ -392,8 +392,8 @@ class ConstraintEvaluator:
 
             case ConstraintType.PRECEDENCE:
                 return (
-                    f"Constraint '{constraint.name}': '{constraint.target}' cannot occur "
-                    f"before '{constraint.trigger}'. History: {recent_history}"
+                    f"Constraint '{constraint.name}': '{constraint.trigger}' cannot occur "
+                    f"before '{constraint.target}'. History: {recent_history}"
                 )
 
         return f"Constraint '{constraint.name}' violated. History: {recent_history}"

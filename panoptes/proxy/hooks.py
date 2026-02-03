@@ -293,6 +293,7 @@ class PanoptesCallback(CustomLogger):
                             data,
                             result.intervention_needed,
                             context=result.metadata or {},
+                            session_id=session_id,
                         )
 
                         # Log intervention via OTEL
@@ -329,6 +330,7 @@ class PanoptesCallback(CustomLogger):
                     data,
                     intervention.get("name", "default"),
                     context=intervention.get("context", {}),
+                    session_id=session_id,
                 )
 
             # Log intervention via OTEL
