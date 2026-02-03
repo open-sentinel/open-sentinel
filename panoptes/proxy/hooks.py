@@ -225,23 +225,48 @@ class PanoptesCallback(CustomLogger):
         logger.debug(f"pre_call_hook: session={session_id}, call_type={call_type}")
 
         # Evaluate request through policy engine
-        # Evaluate request through policy engine
         policy_engine = await self._get_policy_engine()
         if policy_engine:
             try:
-                # Wrap metadata call in a trace block to capture logs (like NeMo execution logs)
+                # Extract messages for tracing
+                messages = data.get("messages", [])
+                
+                # Wrap in a trace block to capture logs (like NeMo execution logs)
                 if self.tracer:
-                    cm = self.tracer.trace_block("policy_evaluation", session_id, {"hook": "pre_call"})
+                    cm = self.tracer.trace_block(
+                        "policy_evaluation_input",
+                        session_id,
+                        attributes={"hook": "pre_call"},
+                        input_data=messages,
+                        metadata={
+                            "engine": policy_engine.name,
+                            "call_type": call_type,
+                            "model": data.get("model", "unknown"),
+                        },
+                    )
                 else:
                     from contextlib import nullcontext
                     cm = nullcontext()
 
-                with cm:
+                with cm as span:
                     result = await policy_engine.evaluate_request(
                         session_id=session_id,
                         request_data=data,
                         context={"call_type": call_type},
                     )
+                    
+                    # Set output on span after evaluation
+                    if span is not None:
+                        output_data = {
+                            "decision": result.decision.value if hasattr(result.decision, 'value') else str(result.decision),
+                            "violations": [v.name for v in result.violations] if result.violations else [],
+                            "intervention_needed": result.intervention_needed,
+                        }
+                        import json
+                        output_json = json.dumps(output_data, default=str)
+                        span.set_attribute("output.value", output_json)
+                        span.set_attribute("langfuse.span.output", output_json)
+                        span.set_attribute("panoptes.policy.decision", str(result.decision))
 
                 # Handle policy decision
                 if result.decision == PolicyDecision.DENY:
@@ -360,7 +385,7 @@ class PanoptesCallback(CustomLogger):
         if policy_engine:
             try:
                 if self.tracer:
-                    cm = self.tracer.trace_block("policy_moderation", session_id, {"hook": "moderation"})
+                    cm = self.tracer.trace_block("policy_evaluation_moderation", session_id, {"hook": "moderation"})
                 else:
                     from contextlib import nullcontext
                     cm = nullcontext()
@@ -471,19 +496,53 @@ class PanoptesCallback(CustomLogger):
         policy_result = None
         if policy_engine:
             try:
+                # Extract response content for tracing
+                response_content_for_trace = None
+                if hasattr(response, "choices") and response.choices:
+                    first_choice = response.choices[0]
+                    if hasattr(first_choice, "message") and first_choice.message:
+                        response_content_for_trace = first_choice.message.content
+                    elif hasattr(first_choice, "text"):
+                        response_content_for_trace = first_choice.text
+                
                 if self.tracer:
-                    cm = self.tracer.trace_block("policy_evaluation_response", session_id, {"hook": "post_call_success"})
+                    cm = self.tracer.trace_block(
+                        "policy_evaluation_output",
+                        session_id,
+                        attributes={"hook": "post_call_success"},
+                        input_data={
+                            "response": response_content_for_trace,
+                            "messages": data.get("messages", []),
+                        },
+                        metadata={
+                            "engine": policy_engine.name,
+                            "model": data.get("model", "unknown"),
+                        },
+                    )
                 else:
                     from contextlib import nullcontext
                     cm = nullcontext()
 
-                with cm:
+                with cm as span:
                     policy_result = await policy_engine.evaluate_response(
                         session_id=session_id,
                         response_data=response,
                         request_data=data,
                         context={"hook": "post_call_success"},
                     )
+                    
+                    # Set output on span after evaluation
+                    if span is not None:
+                        import json
+                        output_data = {
+                            "decision": policy_result.decision.value if hasattr(policy_result.decision, 'value') else str(policy_result.decision),
+                            "violations": [v.name for v in policy_result.violations] if policy_result.violations else [],
+                            "intervention_needed": policy_result.intervention_needed,
+                        }
+                        output_json = json.dumps(output_data, default=str)
+                        span.set_attribute("output.value", output_json)
+                        span.set_attribute("langfuse.span.output", output_json)
+                        span.set_attribute("panoptes.policy.decision", str(policy_result.decision))
 
                 # Log state transition for stateful engines
                 if self.tracer and policy_result.metadata:

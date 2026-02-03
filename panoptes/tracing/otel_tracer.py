@@ -8,8 +8,9 @@ Traces can be exported to any OTLP-compatible backend including:
 """
 
 import base64
+import json
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from contextlib import contextmanager
 
@@ -141,19 +142,37 @@ class PanoptesTracer:
 
         return self._session_spans.get(session_id)
 
+    def _safe_json(self, obj: Any) -> str:
+        """Safely serialize object to JSON string for span attributes."""
+        try:
+            return json.dumps(obj, default=str, ensure_ascii=False)
+        except Exception:
+            return str(obj)
+
     @contextmanager
     def trace_block(
         self,
         name: str,
         session_id: str,
         attributes: Optional[Dict[str, Any]] = None,
+        input_data: Optional[Any] = None,
+        output_data: Optional[Any] = None,
+        metadata: Optional[Dict[str, Any]] = None,
     ):
         """
         Context manager to trace a block of code.
         Useful for capturing logs emitted during execution as span events.
+        
+        Args:
+            name: Span name
+            session_id: Session identifier
+            attributes: Additional span attributes
+            input_data: Input data to record (will be JSON serialized)
+            output_data: Output data to record (will be JSON serialized)
+            metadata: Additional metadata for the span
         """
         if not self._enabled or not self._tracer:
-            yield
+            yield None
             return
 
         parent_span = self._get_or_create_session_span(session_id)
@@ -169,7 +188,25 @@ class PanoptesTracer:
             context=parent_ctx,
             attributes=span_attrs,
         ) as span:
+            # Set input data using Langfuse-compatible attributes
+            if input_data is not None:
+                input_json = self._safe_json(input_data)
+                span.set_attribute("input.value", input_json)
+                span.set_attribute("langfuse.span.input", input_json)
+            
+            # Set metadata if provided
+            if metadata:
+                span.set_attribute("langfuse.span.metadata", self._safe_json(metadata))
+                for key, value in metadata.items():
+                    span.set_attribute(f"panoptes.metadata.{key}", str(value))
+            
             yield span
+            
+            # Set output data after the block executes (allows for dynamic output)
+            if output_data is not None:
+                output_json = self._safe_json(output_data)
+                span.set_attribute("output.value", output_json)
+                span.set_attribute("langfuse.span.output", output_json)
 
     def log_event(
         self,
@@ -279,6 +316,86 @@ class PanoptesTracer:
             },
         )
 
+    def log_policy_evaluation(
+        self,
+        session_id: str,
+        engine_name: str,
+        decision: str,
+        hook_type: str,
+        input_data: Optional[Any] = None,
+        output_data: Optional[Any] = None,
+        violations: Optional[List[Dict[str, Any]]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Log a policy evaluation as an OTEL span with rich attributes.
+        
+        Args:
+            session_id: Session identifier
+            engine_name: Name of the policy engine (e.g., "nemo:guardrails")
+            decision: Policy decision (ALLOW, DENY, MODIFY, WARN)
+            hook_type: Which hook triggered this (pre_call, post_call, moderation)
+            input_data: Request/messages being evaluated
+            output_data: Policy evaluation result
+            violations: List of violation dicts with name, severity, message
+            metadata: Additional metadata
+        """
+        if not self._enabled or not self._tracer:
+            return
+
+        parent_span = self._get_or_create_session_span(session_id)
+        parent_ctx = trace.set_span_in_context(parent_span) if parent_span else None
+
+        span_name = f"policy_evaluation_{hook_type}" if hook_type else "policy_evaluation"
+        
+        span_attrs = {
+            "panoptes.session_id": session_id,
+            "panoptes.policy.engine": engine_name,
+            "panoptes.policy.decision": decision,
+            "panoptes.policy.hook": hook_type,
+        }
+
+        with self._tracer.start_as_current_span(
+            span_name,
+            context=parent_ctx,
+            attributes=span_attrs,
+        ) as span:
+            # Set input data (what was evaluated)
+            if input_data is not None:
+                input_json = self._safe_json(input_data)
+                span.set_attribute("input.value", input_json)
+                span.set_attribute("langfuse.span.input", input_json)
+            
+            # Set output data (evaluation result)
+            if output_data is not None:
+                output_json = self._safe_json(output_data)
+                span.set_attribute("output.value", output_json)
+                span.set_attribute("langfuse.span.output", output_json)
+            
+            # Add violations as structured data
+            if violations:
+                span.set_attribute("panoptes.policy.violation_count", len(violations))
+                violation_names = [v.get("name", "unknown") for v in violations]
+                span.set_attribute("panoptes.policy.violations", self._safe_json(violation_names))
+                
+                # Add each violation as an event
+                for violation in violations:
+                    span.add_event(
+                        f"violation:{violation.get('name', 'unknown')}",
+                        attributes={
+                            "severity": violation.get("severity", "unknown"),
+                            "message": violation.get("message", ""),
+                        }
+                    )
+            
+            # Add metadata
+            if metadata:
+                span.set_attribute("langfuse.span.metadata", self._safe_json(metadata))
+                for key, value in metadata.items():
+                    span.set_attribute(f"panoptes.metadata.{key}", str(value))
+
+            logger.debug(f"Logged policy evaluation for session {session_id} (decision={decision})")
+
     def log_llm_call(
         self,
         session_id: str,
@@ -289,36 +406,71 @@ class PanoptesTracer:
         usage: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         latency_ms: Optional[float] = None,
+        parent_span: Optional[Any] = None,
     ) -> None:
         """
-        Log an LLM call as an OTEL span.
+        Log an LLM call as an OTEL span with GenAI semantic conventions.
+        
+        Uses OpenTelemetry GenAI semantic conventions for Langfuse compatibility:
+        - gen_ai.* attributes for model/usage info
+        - input.value / output.value for content
+        - langfuse.span.* for explicit Langfuse mapping
         """
         if not self._enabled or not self._tracer:
             return
 
-        parent_span = self._get_or_create_session_span(session_id)
+        # Use provided parent or get session span
+        if parent_span is None:
+            parent_span = self._get_or_create_session_span(session_id)
         parent_ctx = trace.set_span_in_context(parent_span) if parent_span else None
+
+        # Build span attributes with GenAI semantic conventions
+        span_attrs = {
+            "panoptes.session_id": session_id,
+            # GenAI semantic conventions
+            "gen_ai.system": "openai",  # or derive from model
+            "gen_ai.request.model": model,
+            "gen_ai.response.model": response_model or model,
+            # Legacy attributes for backward compatibility
+            "llm.model": response_model or model,
+            "llm.requested_model": model,
+            "llm.message_count": len(messages) if messages else 0,
+        }
 
         with self._tracer.start_as_current_span(
             "llm-call",
             context=parent_ctx,
-            attributes={
-                "panoptes.session_id": session_id,
-                "llm.model": response_model or model,
-                "llm.requested_model": model,
-                "llm.message_count": len(messages) if messages else 0,
-            },
+            attributes=span_attrs,
         ) as span:
-            # Add response content (truncated for large responses)
+            # Set input (messages) using multiple attribute formats for compatibility
+            if messages:
+                messages_json = self._safe_json(messages)
+                span.set_attribute("input.value", messages_json)
+                span.set_attribute("langfuse.span.input", messages_json)
+                span.set_attribute("gen_ai.content.prompt", messages_json)
+            
+            # Set output (response) using multiple attribute formats
             if response_content:
+                span.set_attribute("output.value", response_content)
+                span.set_attribute("langfuse.span.output", response_content)
+                span.set_attribute("gen_ai.content.completion", response_content)
+                # Also keep truncated preview for quick viewing
                 truncated = response_content[:1000] + "..." if len(response_content) > 1000 else response_content
                 span.set_attribute("llm.response_preview", truncated)
 
-            # Add usage info
+            # Add usage info with GenAI semantic conventions
             if usage:
-                span.set_attribute("llm.prompt_tokens", usage.get("prompt_tokens", 0))
-                span.set_attribute("llm.completion_tokens", usage.get("completion_tokens", 0))
-                span.set_attribute("llm.total_tokens", usage.get("total_tokens", 0))
+                prompt_tokens = usage.get("prompt_tokens", 0)
+                completion_tokens = usage.get("completion_tokens", 0)
+                total_tokens = usage.get("total_tokens", 0)
+                
+                # GenAI semantic conventions
+                span.set_attribute("gen_ai.usage.prompt_tokens", prompt_tokens)
+                span.set_attribute("gen_ai.usage.completion_tokens", completion_tokens)
+                # Legacy attributes
+                span.set_attribute("llm.prompt_tokens", prompt_tokens)
+                span.set_attribute("llm.completion_tokens", completion_tokens)
+                span.set_attribute("llm.total_tokens", total_tokens)
 
             # Add latency
             if latency_ms:
@@ -326,6 +478,7 @@ class PanoptesTracer:
 
             # Add metadata
             if metadata:
+                span.set_attribute("langfuse.span.metadata", self._safe_json(metadata))
                 for key, value in metadata.items():
                     span.set_attribute(f"panoptes.metadata.{key}", str(value))
 
