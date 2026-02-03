@@ -37,6 +37,7 @@ from litellm.caching.caching import DualCache
 
 from panoptes.config.settings import PanoptesSettings
 from panoptes.policy.protocols import PolicyEngine, PolicyDecision
+from panoptes.core.intervention.strategies import WorkflowViolationError as CoreWorkflowViolationError
 
 logger = logging.getLogger(__name__)
 
@@ -308,7 +309,7 @@ class PanoptesCallback(CustomLogger):
                     elif result.modified_request:
                         data = result.modified_request
 
-            except WorkflowViolationError:
+            except (WorkflowViolationError, CoreWorkflowViolationError):
                 raise
             except Exception as e:
                 logger.error(f"Policy engine evaluation failed: {e}")
