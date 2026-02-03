@@ -11,6 +11,8 @@ import base64
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
+from contextlib import contextmanager
+
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -23,6 +25,28 @@ from opentelemetry.trace import Status, StatusCode
 from panoptes.config.settings import OTelConfig
 
 logger = logging.getLogger(__name__)
+
+
+class SpanEventManager(logging.Handler):
+    """
+    Logging handler that attaches log records as events to the current OTEL span.
+    """
+    def emit(self, record):
+        try:
+            current_span = trace.get_current_span()
+            if current_span and current_span.is_recording():
+                attributes = {
+                    "log.level": record.levelname,
+                    "log.logger": record.name,
+                    "code.filepath": record.pathname,
+                    "code.lineno": record.lineno,
+                }
+                current_span.add_event(record.getMessage(), attributes=attributes)
+                
+                # Debug print for verification
+                # print(f"DEBUG: Captured log as event: {record.getMessage()}")  
+        except Exception:
+            self.handleError(record)
 
 
 class PanoptesTracer:
@@ -92,6 +116,13 @@ class PanoptesTracer:
         self._tracer = trace.get_tracer("panoptes", "0.1.0")
         self._provider = provider
 
+        # Attach span event manager to capture NeMo Guardrails logs
+        span_handler = SpanEventManager()
+        # Ensure we don't duplicate handlers
+        nemo_logger = logging.getLogger("nemoguardrails")
+        if not any(isinstance(h, SpanEventManager) for h in nemo_logger.handlers):
+            nemo_logger.addHandler(span_handler)
+
         logger.info(f"PanoptesTracer initialized (exporter={config.exporter_type})")
 
     def _get_or_create_session_span(self, session_id: str) -> trace.Span:
@@ -109,6 +140,36 @@ class PanoptesTracer:
                 logger.debug(f"Created session span for {session_id}")
 
         return self._session_spans.get(session_id)
+
+    @contextmanager
+    def trace_block(
+        self,
+        name: str,
+        session_id: str,
+        attributes: Optional[Dict[str, Any]] = None,
+    ):
+        """
+        Context manager to trace a block of code.
+        Useful for capturing logs emitted during execution as span events.
+        """
+        if not self._enabled or not self._tracer:
+            yield
+            return
+
+        parent_span = self._get_or_create_session_span(session_id)
+        parent_ctx = trace.set_span_in_context(parent_span) if parent_span else None
+
+        span_attrs = {
+            "panoptes.session_id": session_id,
+            **(attributes or {}),
+        }
+
+        with self._tracer.start_as_current_span(
+            name,
+            context=parent_ctx,
+            attributes=span_attrs,
+        ) as span:
+            yield span
 
     def log_event(
         self,
