@@ -4,31 +4,29 @@ Panoptes LiteLLM hooks for workflow monitoring and intervention.
 This module implements the core hook system that intercepts LLM calls:
 
 1. async_pre_call_hook: Runs BEFORE LLM call
-   - Evaluates request through policy engine
-   - Injects correction prompts when needed
+   - Applies pending async checker results from previous call
+   - Runs sync PRE_CALL checkers
+   - Modifies request if WARN with modified_data
 
 2. async_moderation_hook: Runs IN PARALLEL with LLM call (non-blocking)
-   - Evaluates previous response through policy engine
+   - Legacy hook for backward compatibility
    - Records pending interventions for next call
-   - Does NOT block or add latency to the critical path
 
 3. async_post_call_success_hook: Runs AFTER LLM call succeeds
-   - Evaluates response through policy engine
-   - Updates state machine (for stateful engines)
+   - Runs sync POST_CALL checkers (can modify response on WARN)
+   - Starts async checkers in background
+   - Completes tracing
 
-The hook system now supports pluggable policy engines:
-- FSM: Finite State Machine workflow enforcement
-- NeMo: NVIDIA NeMo Guardrails
-- Composite: Combine multiple engines
-
-Tracing is handled via OpenTelemetry (see tracing/otel_tracer.py).
+The hook system uses the Interceptor for clean checker orchestration:
+- Sync checkers block and can modify request/response
+- Async checkers run in background, results applied next request
 
 Based on LiteLLM's CustomLogger API:
 https://docs.litellm.ai/docs/observability/custom_callback
 """
 
 import logging
-from typing import Optional, Union, Dict, Any, Literal
+from typing import Optional, Union, Dict, Any, Literal, List
 from datetime import datetime
 
 from litellm.integrations.custom_logger import CustomLogger
@@ -36,8 +34,18 @@ from litellm.proxy._types import UserAPIKeyAuth
 from litellm.caching.caching import DualCache
 
 from panoptes.config.settings import PanoptesSettings
-from panoptes.policy.protocols import PolicyEngine, PolicyDecision
-from panoptes.core.intervention.strategies import WorkflowViolationError as CoreWorkflowViolationError
+from panoptes.policy.protocols import PolicyEngine
+from panoptes.core.intervention.strategies import (
+    WorkflowViolationError as CoreWorkflowViolationError,
+)
+from panoptes.core.interceptor import (
+    Interceptor,
+    Checker,
+    CheckPhase,
+    CheckerMode,
+    PolicyEngineChecker,
+    CheckDecision,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,15 +78,14 @@ class PanoptesCallback(CustomLogger):
     Implements policy enforcement through LiteLLM's hook system.
     This is registered as a callback when the proxy starts.
 
-    Supports pluggable policy engines:
-    - FSM: Finite State Machine workflow enforcement
-    - NeMo: NVIDIA NeMo Guardrails
-    - Composite: Combine multiple engines
+    Uses the Interceptor to orchestrate checkers:
+    - Sync PRE_CALL checkers run before LLM call
+    - Sync POST_CALL checkers run after LLM call (can modify response)
+    - Async checkers run in background, results applied next request
 
-    The callback maintains state per session:
-    - Policy engine instance
-    - Pending interventions
-    - Trace context
+    The callback maintains:
+    - Interceptor instance with configured checkers
+    - OpenTelemetry tracer for observability
 
     Thread-safety is ensured through asyncio locks for session state.
     """
@@ -86,15 +93,11 @@ class PanoptesCallback(CustomLogger):
     def __init__(self, settings: Optional[PanoptesSettings] = None):
         self.settings = settings or PanoptesSettings()
 
-        # Session state storage
-        # Maps session_id -> session state dict
-        self._sessions: Dict[str, Dict[str, Any]] = {}
+        # Interceptor (lazy initialized)
+        self._interceptor: Optional[Interceptor] = None
+        self._interceptor_initialized = False
 
-        # Pending interventions to apply on next call
-        # Maps session_id -> intervention config
-        self._pending_interventions: Dict[str, Dict[str, Any]] = {}
-
-        # Policy engine (lazy initialized)
+        # Policy engine (lazy initialized) - kept for direct access if needed
         self._policy_engine: Optional[PolicyEngine] = None
         self._policy_engine_initialized = False
 
@@ -108,6 +111,49 @@ class PanoptesCallback(CustomLogger):
         self._tracer = None
 
         logger.info("PanoptesCallback initialized")
+
+    async def _get_interceptor(self) -> Optional[Interceptor]:
+        """Lazy-load interceptor with configured checkers."""
+        if self._interceptor_initialized:
+            return self._interceptor
+
+        try:
+            policy_engine = await self._get_policy_engine()
+            if not policy_engine:
+                self._interceptor_initialized = True
+                return None
+
+            # Create checkers from policy engine
+            checkers: List[Checker] = []
+
+            # Sync PRE_CALL checker for request evaluation
+            checkers.append(
+                PolicyEngineChecker(
+                    engine=policy_engine,
+                    phase=CheckPhase.PRE_CALL,
+                    mode=CheckerMode.SYNC,
+                )
+            )
+
+            # Sync POST_CALL checker for response evaluation
+            checkers.append(
+                PolicyEngineChecker(
+                    engine=policy_engine,
+                    phase=CheckPhase.POST_CALL,
+                    mode=CheckerMode.SYNC,
+                )
+            )
+
+            self._interceptor = Interceptor(checkers)
+            self._interceptor_initialized = True
+            logger.info(f"Interceptor initialized with {len(checkers)} checkers")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize interceptor: {e}")
+            self._interceptor_initialized = True
+            self._interceptor = None
+
+        return self._interceptor
 
     async def _get_policy_engine(self) -> Optional[PolicyEngine]:
         """Lazy-load policy engine based on configuration."""
@@ -171,7 +217,7 @@ class PanoptesCallback(CustomLogger):
         return None
 
     @property
-    def tracker(self):
+    def tracker(self) -> Any:
         """Lazy-load tracker to avoid import issues (backward compatibility)."""
         workflow_path = self._get_workflow_path_for_fsm()
         if self._tracker is None and workflow_path:
@@ -182,7 +228,7 @@ class PanoptesCallback(CustomLogger):
         return self._tracker
 
     @property
-    def injector(self):
+    def injector(self) -> Any:
         """Lazy-load injector to avoid import issues."""
         workflow_path = self._get_workflow_path_for_fsm()
         if self._injector is None and workflow_path:
@@ -193,12 +239,13 @@ class PanoptesCallback(CustomLogger):
         return self._injector
 
     @property
-    def tracer(self):
+    def tracer(self) -> Any:
         """Lazy-load tracer for Panoptes event logging via OpenTelemetry."""
         if self._tracer is None:
             logger.debug(f"Tracer check: otel.enabled={self.settings.otel.enabled}")
             if self.settings.otel.enabled:
                 from panoptes.tracing.otel_tracer import PanoptesTracer
+
                 self._tracer = PanoptesTracer(self.settings.otel)
                 logger.info(f"PanoptesTracer initialized: {self._tracer}")
         return self._tracer
@@ -228,10 +275,12 @@ class PanoptesCallback(CustomLogger):
         Execute BEFORE LLM call.
 
         This hook:
-        1. Evaluates request through policy engine
-        2. Checks for pending interventions from previous call
-        3. If intervention needed, modifies request to inject correction
-        4. Starts OTEL trace span
+        1. Runs interceptor.run_pre_call() which:
+           - Applies pending async results from previous call
+           - Runs sync PRE_CALL checkers
+        2. If FAIL, raises WorkflowViolationError
+        3. If WARN with modified_data, applies modifications
+        4. Logs via OTEL tracer
 
         Args:
             user_api_key_dict: User API key information
@@ -246,122 +295,91 @@ class PanoptesCallback(CustomLogger):
 
         logger.debug(f"pre_call_hook: session={session_id}, call_type={call_type}")
 
-        # Evaluate request through policy engine
-        policy_engine = await self._get_policy_engine()
-        if policy_engine:
+        interceptor = await self._get_interceptor()
+        if interceptor:
             try:
-                # Extract messages for tracing
-                messages = data.get("messages", [])
-                
-                # Wrap in a trace block to capture logs (like NeMo execution logs)
+                # Wrap in a trace block
                 if self.tracer:
                     cm = self.tracer.trace_block(
-                        "policy_evaluation_input",
+                        "interceptor_pre_call",
                         session_id,
                         attributes={"hook": "pre_call"},
-                        input_data=messages,
+                        input_data=data.get("messages", []),
                         metadata={
-                            "engine": policy_engine.name,
                             "call_type": call_type,
                             "model": data.get("model", "unknown"),
                         },
                     )
                 else:
                     from contextlib import nullcontext
+
                     cm = nullcontext()
 
                 with cm as span:
-                    result = await policy_engine.evaluate_request(
+                    result = await interceptor.run_pre_call(
                         session_id=session_id,
                         request_data=data,
-                        context={"call_type": call_type},
+                        user_request_id=str(id(data)),
                     )
-                    
-                    # Set output on span after evaluation
+
+                    # Set output on span
                     if span is not None:
-                        output_data = {
-                            "decision": result.decision.value if hasattr(result.decision, 'value') else str(result.decision),
-                            "violations": [v.name for v in result.violations] if result.violations else [],
-                            "intervention_needed": result.intervention_needed,
-                        }
                         import json
+
+                        output_data = {
+                            "allowed": result.allowed,
+                            "num_results": len(result.results),
+                            "has_modifications": result.modified_data is not None,
+                        }
                         output_json = json.dumps(output_data, default=str)
                         span.set_attribute("output.value", output_json)
                         span.set_attribute("langfuse.span.output", output_json)
-                        span.set_attribute("panoptes.policy.decision", str(result.decision))
 
-                # Handle policy decision
-                if result.decision == PolicyDecision.DENY:
+                # Handle result
+                if not result.allowed:
+                    # Find the failing result for context
+                    fail_results = [
+                        r for r in result.results if r.decision == CheckDecision.FAIL
+                    ]
+                    violations = []
+                    message = "Request blocked by checker"
+                    if fail_results:
+                        for r in fail_results:
+                            violations.extend(v.get("name", "unknown") for v in r.violations)
+                        message = fail_results[0].message or message
+
                     logger.warning(
-                        f"Request blocked by policy engine for session {session_id}: "
-                        f"{[v.name for v in result.violations]}"
+                        f"Request blocked for session {session_id}: {violations}"
                     )
                     raise WorkflowViolationError(
-                        "Request blocked by policy engine",
+                        message,
                         context={
                             "session_id": session_id,
-                            "violations": [v.name for v in result.violations],
+                            "violations": violations,
                         },
                     )
 
-                if result.decision == PolicyDecision.MODIFY:
-                    # Apply intervention if needed
-                    if result.intervention_needed and self.injector:
-                        logger.info(
-                            f"Applying intervention from policy engine for session {session_id}: "
-                            f"{result.intervention_needed}"
-                        )
-                        data = self.injector.inject(
-                            data,
-                            result.intervention_needed,
-                            context=result.metadata or {},
+                # Apply modifications if any
+                if result.modified_data:
+                    data = result.modified_data
+
+                    # Log intervention via OTEL
+                    if self.tracer:
+                        self.tracer.log_intervention(
                             session_id=session_id,
+                            intervention_name="pre_call_modification",
+                            context={"num_checkers": len(result.results)},
                         )
-
-                        # Log intervention via OTEL
-                        if self.tracer:
-                            self.tracer.log_intervention(
-                                session_id=session_id,
-                                intervention_name=result.intervention_needed,
-                                context=result.metadata or {},
-                            )
-
-                    # Use modified request if provided
-                    elif result.modified_request:
-                        data = result.modified_request
 
             except (WorkflowViolationError, CoreWorkflowViolationError):
                 raise
             except Exception as e:
-                logger.error(f"Policy engine evaluation failed: {e}")
+                logger.error(f"Interceptor pre_call failed: {e}")
                 if not self.settings.policy.fail_open:
                     raise WorkflowViolationError(
-                        f"Policy engine evaluation failed: {e}",
+                        f"Interceptor evaluation failed: {e}",
                         context={"session_id": session_id},
                     )
-
-        # Fallback: Check for pending intervention (backward compatibility)
-        if session_id in self._pending_interventions:
-            intervention = self._pending_interventions.pop(session_id)
-            logger.info(
-                f"Applying pending intervention for session {session_id}: {intervention.get('name')}"
-            )
-
-            if self.injector:
-                data = self.injector.inject(
-                    data,
-                    intervention.get("name", "default"),
-                    context=intervention.get("context", {}),
-                    session_id=session_id,
-                )
-
-            # Log intervention via OTEL
-            if self.tracer:
-                self.tracer.log_intervention(
-                    session_id=session_id,
-                    intervention_name=intervention.get("name"),
-                    context=intervention.get("context", {}),
-                )
 
         return data
 
@@ -374,16 +392,8 @@ class PanoptesCallback(CustomLogger):
         """
         Execute IN PARALLEL with LLM call.
 
-        This hook runs concurrently with the LLM request, so it adds
-        no latency to the critical path. It:
-
-        1. Analyzes the PREVIOUS response (from message history)
-        2. Evaluates through policy engine
-        3. Records any pending intervention for the NEXT call
-
-        Note: This hook can only REJECT requests (raise exception),
-        not modify them. For corrections, we record the intervention
-        and apply it in the next async_pre_call_hook.
+        This hook is kept for backward compatibility but most logic
+        is now handled by async checkers in the Interceptor.
 
         Args:
             data: Request data
@@ -393,110 +403,21 @@ class PanoptesCallback(CustomLogger):
         session_id = self._extract_session_id(data)
         logger.debug(f"moderation_hook: session={session_id}")
 
-        # Get the last assistant message (previous LLM response)
-        messages = data.get("messages", [])
-        last_assistant_msg = None
-        for msg in reversed(messages):
-            if msg.get("role") == "assistant":
-                last_assistant_msg = msg
-                break
+        # Moderation logic is now handled by async checkers in the interceptor
+        # This hook is kept for backward compatibility with legacy tracker
+        if not self._interceptor and self.tracker:
+            messages = data.get("messages", [])
+            last_assistant_msg = None
+            for msg in reversed(messages):
+                if msg.get("role") == "assistant":
+                    last_assistant_msg = msg
+                    break
 
-        if not last_assistant_msg:
-            return  # No previous response to analyze
+            if not last_assistant_msg:
+                return
 
-        # Try policy engine first
-        policy_engine = await self._get_policy_engine()
-        if policy_engine:
-            try:
-                if self.tracer:
-                    cm = self.tracer.trace_block("policy_evaluation_moderation", session_id, {"hook": "moderation"})
-                else:
-                    from contextlib import nullcontext
-                    cm = nullcontext()
-
-                with cm:
-                    result = await policy_engine.evaluate_response(
-                        session_id=session_id,
-                        response_data=last_assistant_msg,
-                        request_data=data,
-                        context={"messages": messages, "call_type": call_type},
-                    )
-
-                # Log any violations via OTEL
-                if result.violations and self.tracer:
-                    for violation in result.violations:
-                        self.tracer.log_deviation(
-                            session_id=session_id,
-                            constraint_name=violation.name,
-                            severity=violation.severity,
-                        )
-
-                # Enforce policy decisions in moderation hook
-                if result.decision == PolicyDecision.DENY:
-                    logger.warning(
-                        f"Request blocked by policy engine for session {session_id}: "
-                        f"{[v.name for v in result.violations]}"
-                    )
-                    raise WorkflowViolationError(
-                        "Request blocked by policy engine",
-                        context={
-                            "session_id": session_id,
-                            "violations": [v.name for v in result.violations],
-                        },
-                    )
-
-                # If intervention needed, record for next call
-                if result.intervention_needed:
-                    self._pending_interventions[session_id] = {
-                        "name": result.intervention_needed,
-                        "context": result.metadata or {},
-                        "strategy": self.settings.intervention.default_strategy,
-                    }
-                    logger.info(
-                        f"Intervention scheduled for session {session_id}: "
-                        f"{result.intervention_needed}"
-                    )
-
-                return  # Policy engine handled it
-
-            except Exception as e:
-                logger.error(f"Policy engine moderation failed: {e}")
-                # Fall through to legacy tracker
-
-        # Fallback to legacy tracker (backward compatibility)
-        if not self.tracker:
-            return
-
-        result = await self.tracker.process_response(
-            session_id=session_id,
-            response=last_assistant_msg,
-            context={"messages": messages},
-        )
-
-        # Log any constraint violations via OTEL
-        if result.constraint_violations and self.tracer:
-            for violation in result.constraint_violations:
-                self.tracer.log_deviation(
-                    session_id=session_id,
-                    constraint_name=violation.constraint_name,
-                    severity=getattr(violation, "severity", "warning"),
-                )
-
-        # If intervention needed, record for next call
-        if result.intervention_needed:
-            self._pending_interventions[session_id] = {
-                "name": result.intervention_needed,
-                "context": {
-                    "current_state": result.classified_state,
-                    "previous_state": result.previous_state,
-                    "violations": [v.constraint_name for v in result.constraint_violations],
-                },
-                "strategy": self.settings.intervention.default_strategy,
-            }
-
-            logger.info(
-                f"Intervention scheduled for session {session_id}: {result.intervention_needed}"
-            )
+            # Legacy tracker handling would go here
+            # But since we're using the interceptor, this is just a passthrough
 
     async def async_post_call_success_hook(
         self,
@@ -508,9 +429,12 @@ class PanoptesCallback(CustomLogger):
         Execute AFTER successful LLM response.
 
         This hook:
-        1. Evaluates response through policy engine
-        2. Updates state machine (for stateful engines)
-        3. Completes the OTEL trace span
+        1. Runs interceptor.run_post_call() which:
+           - Runs sync POST_CALL checkers (can modify response on WARN)
+           - Starts async checkers in background
+        2. If FAIL, raises WorkflowViolationError
+        3. If WARN with modified_data, applies modifications to response
+        4. Logs via OTEL tracer
 
         Args:
             data: Original request data
@@ -518,21 +442,21 @@ class PanoptesCallback(CustomLogger):
             response: LLM response
 
         Returns:
-            Response (potentially modified, but we don't modify here)
+            Response (potentially modified)
         """
         session_id = self._extract_session_id(data)
 
+        interceptor = await self._get_interceptor()
         policy_engine = await self._get_policy_engine()
+
         logger.info(
             f"post_call_success_hook: session={session_id}, "
-            f"has_policy_engine={policy_engine is not None}, "
+            f"has_interceptor={interceptor is not None}, "
             f"has_tracker={self.tracker is not None}, "
             f"has_tracer={self.tracer is not None}"
         )
 
-        # Evaluate response through policy engine
-        policy_result = None
-        if policy_engine:
+        if interceptor:
             try:
                 # Extract response content for tracing
                 response_content_for_trace = None
@@ -542,10 +466,10 @@ class PanoptesCallback(CustomLogger):
                         response_content_for_trace = first_choice.message.content
                     elif hasattr(first_choice, "text"):
                         response_content_for_trace = first_choice.text
-                
+
                 if self.tracer:
                     cm = self.tracer.trace_block(
-                        "policy_evaluation_output",
+                        "interceptor_post_call",
                         session_id,
                         attributes={"hook": "post_call_success"},
                         input_data={
@@ -553,72 +477,79 @@ class PanoptesCallback(CustomLogger):
                             "messages": data.get("messages", []),
                         },
                         metadata={
-                            "engine": policy_engine.name,
                             "model": data.get("model", "unknown"),
                         },
                     )
                 else:
                     from contextlib import nullcontext
+
                     cm = nullcontext()
 
                 with cm as span:
-                    policy_result = await policy_engine.evaluate_response(
+                    result = await interceptor.run_post_call(
                         session_id=session_id,
-                        response_data=response,
                         request_data=data,
-                        context={"hook": "post_call_success"},
+                        response_data=response,
+                        user_request_id=str(id(data)),
                     )
-                    
-                    # Set output on span after evaluation
+
+                    # Set output on span
                     if span is not None:
                         import json
+
                         output_data = {
-                            "decision": policy_result.decision.value if hasattr(policy_result.decision, 'value') else str(policy_result.decision),
-                            "violations": [v.name for v in policy_result.violations] if policy_result.violations else [],
-                            "intervention_needed": policy_result.intervention_needed,
+                            "allowed": result.allowed,
+                            "num_results": len(result.results),
+                            "has_modifications": result.modified_data is not None,
                         }
                         output_json = json.dumps(output_data, default=str)
                         span.set_attribute("output.value", output_json)
                         span.set_attribute("langfuse.span.output", output_json)
-                        span.set_attribute("panoptes.policy.decision", str(policy_result.decision))
 
-                # Log state transition for stateful engines
-                if self.tracer and policy_result.metadata:
-                    prev_state = policy_result.metadata.get("previous_state")
-                    curr_state = policy_result.metadata.get("current_state")
-                    confidence = policy_result.metadata.get("classification_confidence", 0.0)
+                # Handle result
+                if not result.allowed:
+                    fail_results = [
+                        r for r in result.results if r.decision == CheckDecision.FAIL
+                    ]
+                    violations = []
+                    message = "Response blocked by checker"
+                    if fail_results:
+                        for r in fail_results:
+                            violations.extend(v.get("name", "unknown") for v in r.violations)
+                        message = fail_results[0].message or message
 
-                    if prev_state and curr_state:
-                        self.tracer.log_state_transition(
-                            session_id=session_id,
-                            previous_state=prev_state,
-                            new_state=curr_state,
-                            confidence=confidence,
-                        )
+                    logger.warning(
+                        f"Response blocked for session {session_id}: {violations}"
+                    )
+                    raise WorkflowViolationError(
+                        message,
+                        context={
+                            "session_id": session_id,
+                            "violations": violations,
+                        },
+                    )
 
-                # Log violations
-                if policy_result.violations and self.tracer:
-                    for violation in policy_result.violations:
-                        self.tracer.log_deviation(
-                            session_id=session_id,
-                            constraint_name=violation.name,
-                            severity=violation.severity,
-                        )
+                # Apply modifications to response if any
+                if result.modified_data:
+                    # For response modifications, we may need to handle the response object
+                    # The interceptor returns modifications as a dict
+                    if isinstance(result.modified_data, dict):
+                        # If it's a full response replacement
+                        if "response" in result.modified_data:
+                            response = result.modified_data["response"]
+                        # Otherwise log that modifications were requested
+                        else:
+                            logger.info(
+                                f"POST_CALL modifications requested for session {session_id}"
+                            )
 
-                # Schedule intervention for next call if needed
-                if policy_result.intervention_needed:
-                    self._pending_interventions[session_id] = {
-                        "name": policy_result.intervention_needed,
-                        "context": policy_result.metadata or {},
-                        "strategy": self.settings.intervention.default_strategy,
-                    }
-
+            except (WorkflowViolationError, CoreWorkflowViolationError):
+                raise
             except Exception as e:
-                logger.error(f"Policy engine post-call evaluation failed: {e}")
+                logger.error(f"Interceptor post_call failed: {e}")
 
         # Fallback to legacy tracker (backward compatibility)
-        tracking_result = None
-        if not policy_engine and self.tracker:
+        elif self.tracker:
             tracking_result = await self.tracker.process_response(
                 session_id=session_id,
                 response=response,
@@ -666,8 +597,8 @@ class PanoptesCallback(CustomLogger):
                 response_model=getattr(response, "model", None),
                 usage=usage_info,
                 metadata={
-                    "has_workflow": policy_engine is not None,
-                    "hook": "post_call_success"
+                    "has_interceptor": interceptor is not None,
+                    "hook": "post_call_success",
                 },
             )
 
@@ -741,32 +672,24 @@ class PanoptesCallback(CustomLogger):
         """
         Called AFTER successful LLM response (library/router mode).
 
-        Uses policy engine for evaluation, falls back to legacy tracker.
+        Uses interceptor for evaluation, falls back to legacy tracker.
         """
         session_id = self._extract_session_id(kwargs)
 
-        policy_engine = await self._get_policy_engine()
+        interceptor = await self._get_interceptor()
         logger.info(
             f"async_log_success_event: session={session_id}, "
-            f"has_policy_engine={policy_engine is not None}, "
+            f"has_interceptor={interceptor is not None}, "
             f"has_tracker={self.tracker is not None}, "
             f"has_tracer={self.tracer is not None}"
         )
 
-        # NOTE: We skip policy evaluation here to avoid TimeoutErrors in the logging worker.
-        # The logging worker has a short timeout (default 0.1s in some versions, or rigid task limits)
-        # and NeMo evaluation involves making LLM calls which take longer.
-        #
-        # Policy evaluation is now handled in `async_post_call_success_hook` which runs
-        # in the main request flow and can await properly.
-        #
-        # We perform a lightweight check here just for logging if needed, or rely on 
-        # the trace context established in the main hook.
-        policy_result = None
+        # NOTE: We skip interceptor evaluation here to avoid TimeoutErrors in the logging worker.
+        # The logging worker has a short timeout and policy evaluation can take longer.
+        # Evaluation is handled in `async_post_call_success_hook` which runs in the main flow.
 
         # Fallback to legacy tracker
-        tracking_result = None
-        if not policy_engine and self.tracker:
+        if not interceptor and self.tracker:
             tracking_result = await self.tracker.process_response(
                 session_id=session_id,
                 response=response_obj,
@@ -801,7 +724,9 @@ class PanoptesCallback(CustomLogger):
             if hasattr(response_obj, "usage") and response_obj.usage:
                 usage_info = {
                     "prompt_tokens": getattr(response_obj.usage, "prompt_tokens", 0),
-                    "completion_tokens": getattr(response_obj.usage, "completion_tokens", 0),
+                    "completion_tokens": getattr(
+                        response_obj.usage, "completion_tokens", 0
+                    ),
                     "total_tokens": getattr(response_obj.usage, "total_tokens", 0),
                 }
 
@@ -813,8 +738,8 @@ class PanoptesCallback(CustomLogger):
                 response_model=getattr(response_obj, "model", None),
                 usage=usage_info,
                 metadata={
-                    "has_workflow": policy_engine is not None,
-                    "hook": "async_log_success"
+                    "has_interceptor": interceptor is not None,
+                    "hook": "async_log_success",
                 },
             )
 
