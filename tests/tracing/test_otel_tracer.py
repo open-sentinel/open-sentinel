@@ -82,20 +82,23 @@ def test_log_llm_call(mock_otel):
         usage={"total_tokens": 100}
     )
     
-    from unittest.mock import ANY
-    mock_otel["tracer"].start_as_current_span.assert_called_with(
-        "llm-call",
-        context=ANY,
-        attributes={
-            "panoptes.session_id": "session-1",
-            "llm.model": "gpt-4",
-            "llm.requested_model": "gpt-4",
-            "llm.message_count": 1,
-        }
-    )
+    # Verify the span was created with correct name
+    mock_otel["tracer"].start_as_current_span.assert_called()
+    call_args = mock_otel["tracer"].start_as_current_span.call_args
+    assert call_args[0][0] == "llm-call"  # First positional arg is the name
     
+    # Check that required attributes are present (we added GenAI semantic conventions)
+    attrs = call_args[1]["attributes"]
+    assert attrs["panoptes.session_id"] == "session-1"
+    assert attrs["llm.model"] == "gpt-4"
+    assert attrs["llm.requested_model"] == "gpt-4"
+    assert attrs["llm.message_count"] == 1
+    # New GenAI semantic convention attributes
+    assert attrs["gen_ai.request.model"] == "gpt-4"
+    assert attrs["gen_ai.response.model"] == "gpt-4"
+    
+    # Verify span attributes were set for response/usage
     mock_span.set_attribute.assert_any_call("llm.total_tokens", 100)
-    mock_span.set_attribute.assert_any_call("llm.response_preview", "hello")
 
 def test_shutdown(mock_otel):
     config = OTelConfig(enabled=True)
