@@ -52,6 +52,9 @@ from panoptes.policy.engines.fsm.injector import (
     InterventionBuilder,
 )
 
+# Compiler
+from panoptes.policy.engines.fsm.compiler import FSMCompiler
+
 __all__ = [
     # Engine
     "FSMPolicyEngine",
@@ -83,5 +86,7 @@ __all__ = [
     # Intervention
     "PromptInjector",
     "InterventionBuilder",
+    # Compiler
+    "FSMCompiler",
 ]
 
