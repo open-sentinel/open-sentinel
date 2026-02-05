@@ -18,11 +18,9 @@ Policy engine examples:
     PANOPTES_POLICY__ENGINE__CONFIG_PATH=/path/to/nemo_config/
 
     # Use FSM engine
+    # Use FSM engine
     PANOPTES_POLICY__ENGINE__TYPE=fsm
-    # You can use the unified config_path for FSM as well:
     PANOPTES_POLICY__ENGINE__CONFIG_PATH=/path/to/workflow.yaml
-    # OR the specific workflow_path (nested):
-    # PANOPTES_POLICY__ENGINE__CONFIG__WORKFLOW_PATH=/path/to/workflow.yaml
 
     # Use composite engine (combine multiple)
     PANOPTES_POLICY__ENGINE__TYPE=composite
@@ -105,7 +103,7 @@ class PolicyEngineConfig(BaseModel):
     - composite: Combine multiple engines
 
     The 'config' field contains engine-specific configuration:
-    - fsm: {"workflow_path": "..."} or {"workflow": {...}}
+    - fsm: {"config_path": "..."} or {"workflow": {...}}
     - nemo: {"config_path": "..."} or {"config": {...}}
     - composite: {"engines": [...], "strategy": "all"|"first_deny"}
     """

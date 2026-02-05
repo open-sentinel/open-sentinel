@@ -62,7 +62,7 @@ def serve(port: int, host: str, debug: bool):
 
     Configure the policy engine via environment variables:
         export PANOPTES_POLICY__ENGINE__TYPE=fsm
-        export PANOPTES_POLICY__ENGINE__CONFIG__WORKFLOW_PATH=workflow.yaml
+        export PANOPTES_POLICY__ENGINE__CONFIG_PATH=workflow.yaml
         panoptes serve --port 4000
     """
     setup_logging(debug)
@@ -89,10 +89,10 @@ def serve(port: int, host: str, debug: bool):
 
 @main.command()
 @click.argument(
-    "workflow_path",
+    "config_path",
     type=click.Path(exists=True, path_type=Path),
 )
-def validate(workflow_path: Path):
+def validate(config_path: Path):
     """Validate a workflow definition file.
 
     Checks that the workflow YAML is valid and all references are correct.
@@ -103,7 +103,7 @@ def validate(workflow_path: Path):
     from panoptes.policy.engines.fsm.workflow.parser import WorkflowParser
 
     try:
-        workflow = WorkflowParser.parse_file(workflow_path)
+        workflow = WorkflowParser.parse_file(config_path)
 
         click.echo(click.style("✓ Valid workflow", fg="green"))
         click.echo(f"  Name: {workflow.name}")
@@ -114,7 +114,7 @@ def validate(workflow_path: Path):
         click.echo(f"  Interventions: {len(workflow.interventions)}")
 
     except FileNotFoundError:
-        click.echo(click.style(f"✗ File not found: {workflow_path}", fg="red"), err=True)
+        click.echo(click.style(f"✗ File not found: {config_path}", fg="red"), err=True)
         raise SystemExit(1)
     except Exception as e:
         click.echo(click.style(f"✗ Validation error: {e}", fg="red"), err=True)
@@ -123,7 +123,7 @@ def validate(workflow_path: Path):
 
 @main.command()
 @click.argument(
-    "workflow_path",
+    "config_path",
     type=click.Path(exists=True, path_type=Path),
 )
 @click.option(
@@ -131,7 +131,7 @@ def validate(workflow_path: Path):
     is_flag=True,
     help="Show detailed information",
 )
-def info(workflow_path: Path, verbose: bool):
+def info(config_path: Path, verbose: bool):
     """Show detailed workflow information.
 
     Displays states, transitions, constraints, and interventions.
@@ -142,7 +142,7 @@ def info(workflow_path: Path, verbose: bool):
     from panoptes.policy.engines.fsm.workflow.parser import WorkflowParser
 
     try:
-        workflow = WorkflowParser.parse_file(workflow_path)
+        workflow = WorkflowParser.parse_file(config_path)
 
         click.echo(f"\n{click.style(workflow.name, bold=True)} v{workflow.version}")
         if workflow.description:

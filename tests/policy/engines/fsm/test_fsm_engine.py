@@ -128,3 +128,10 @@ async def test_initialization_with_config_path(engine, mocks):
     mocks["parser"].parse_file.assert_called_with("path/to/workflow.yaml")
     mocks["sm"].assert_called_once()
     assert engine.engine_type == "fsm"
+
+@pytest.mark.asyncio
+async def test_initialization_failure(engine, mocks):
+    """Test initialization failure when no valid config provided."""
+    config = {}
+    with pytest.raises(ValueError, match="FSM engine requires 'config_path' or 'workflow'"):
+        await engine.initialize(config)
