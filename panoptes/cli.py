@@ -38,11 +38,6 @@ def main():
 
 @main.command()
 @click.option(
-    "--workflow", "-w",
-    type=click.Path(exists=True, path_type=Path),
-    help="Path to workflow YAML file",
-)
-@click.option(
     "--port", "-p",
     type=int,
     default=4000,
@@ -59,14 +54,16 @@ def main():
     default=False,
     help="Enable debug logging",
 )
-def serve(workflow: Path, port: int, host: str, debug: bool):
+def serve(port: int, host: str, debug: bool):
     """Start the Panoptes proxy server.
 
     The proxy intercepts LLM calls and monitors workflow adherence.
     Point your LLM client's base_url to http://HOST:PORT/v1
 
-    Example:
-        panoptes serve --workflow workflow.yaml --port 4000
+    Configure the policy engine via environment variables:
+        export PANOPTES_POLICY__ENGINE__TYPE=fsm
+        export PANOPTES_POLICY__ENGINE__CONFIG__WORKFLOW_PATH=workflow.yaml
+        panoptes serve --port 4000
     """
     setup_logging(debug)
 
@@ -75,11 +72,7 @@ def serve(workflow: Path, port: int, host: str, debug: bool):
 
     click.echo(f"Starting Panoptes proxy on {host}:{port}")
 
-    if workflow:
-        click.echo(f"Using workflow: {workflow}")
-
     settings = PanoptesSettings(
-        workflow_path=str(workflow) if workflow else None,
         debug=debug,
     )
     settings.proxy.host = host

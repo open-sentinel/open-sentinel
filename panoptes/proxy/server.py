@@ -67,7 +67,7 @@ class PanoptesProxy:
         from panoptes import PanoptesSettings
         from panoptes.proxy import PanoptesProxy
 
-        settings = PanoptesSettings(workflow_path="workflow.yaml")
+        settings = PanoptesSettings()
         proxy = PanoptesProxy(settings)
         await proxy.start()
         ```
@@ -77,7 +77,6 @@ class PanoptesProxy:
         self.settings = settings or PanoptesSettings()
         self.router: Optional[Router] = None
         self._hooks_registered = False
-        self._workflow = None
         self._callback = None  # Store reference to callback for shutdown
 
     def _setup_logging(self) -> None:
@@ -116,37 +115,6 @@ class PanoptesProxy:
     def _shutdown_tracer(self) -> None:
         """Shutdown callback and flush any pending data."""
         logger.info("Panoptes proxy shutting down...")
-
-    def _load_workflow(self) -> Optional[Any]:
-        """Load workflow definition if configured."""
-        if not self.settings.workflow_path:
-            # Check if any other policy engine is configured
-            policy_config = self.settings.get_policy_config()
-            engine_type = policy_config.get("type")
-            engine_conf = policy_config.get("config", {})
-            
-            # If NeMo is configured with a path, we are not in pass-through mode
-            if engine_type == "nemo" and engine_conf.get("config_path"):
-                logger.info("Running with NeMo Guardrails engine")
-                return None
-            
-            # If Composite is configured with engines, we are not in pass-through mode
-            if engine_type == "composite" and engine_conf.get("engines"):
-                logger.info("Running with Composite policy engine")
-                return None
-
-            logger.warning("No workflow_path configured - running in pass-through mode")
-            return None
-
-        from panoptes.policy.engines.fsm.workflow.parser import WorkflowParser
-
-        workflow_path = Path(self.settings.workflow_path)
-        if not workflow_path.exists():
-            raise FileNotFoundError(f"Workflow file not found: {workflow_path}")
-
-        workflow = WorkflowParser.parse_file(workflow_path)
-        logger.info(f"Loaded workflow: {workflow.name} v{workflow.version}")
-        return workflow
 
     def _create_router(self) -> Router:
         """Create LiteLLM Router with model configuration and callbacks."""
@@ -200,11 +168,26 @@ class PanoptesProxy:
         return yaml.dump(config, default_flow_style=False)
 
     async def initialize(self) -> None:
-        """Initialize the proxy (load workflow, register hooks)."""
+        """Initialize the proxy (register hooks)."""
         self._setup_logging()
-        self._workflow = self._load_workflow()
+        self._log_policy_config()
         self._register_hooks()
         self.router = self._create_router()
+
+    def _log_policy_config(self) -> None:
+        """Log active policy engine configuration."""
+        policy_config = self.settings.get_policy_config()
+        engine_type = policy_config.get("type")
+        engine_conf = policy_config.get("config", {})
+
+        if engine_type == "nemo" and engine_conf.get("config_path"):
+            logger.info("Running with NeMo Guardrails engine")
+        elif engine_type == "fsm" and engine_conf.get("workflow_path"):
+            logger.info(f"Running with FSM engine: {engine_conf.get('workflow_path')}")
+        elif engine_type == "composite" and engine_conf.get("engines"):
+            logger.info("Running with Composite policy engine")
+        else:
+            logger.warning("No policy engine configured - running in pass-through mode")
 
     async def start(self) -> None:
         """
@@ -263,7 +246,6 @@ def start_proxy(settings: Optional[PanoptesSettings] = None) -> None:
 
 
 def start_proxy_cli(
-    workflow_path: Optional[str] = None,
     port: int = 4000,
     host: str = "0.0.0.0",
     debug: bool = False,
@@ -274,7 +256,6 @@ def start_proxy_cli(
     This is called by the CLI to translate CLI args to settings.
     """
     settings = PanoptesSettings(
-        workflow_path=workflow_path,
         debug=debug,
         proxy={"host": host, "port": port},
     )

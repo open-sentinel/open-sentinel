@@ -10,11 +10,19 @@ Supports multiple policy engines:
 - Composite: Combine multiple engines together
 
 Quick Start:
+    Configure via environment variables:
+    ```bash
+    export PANOPTES_POLICY__ENGINE__TYPE=fsm
+    export PANOPTES_POLICY__ENGINE__CONFIG__WORKFLOW_PATH=workflow.yaml
+    panoptes serve --port 4000
+    ```
+
+    Or programmatically:
     ```python
     from panoptes import PanoptesProxy, PanoptesSettings
 
-    # Configure and start proxy with FSM workflow
-    settings = PanoptesSettings(workflow_path="workflow.yaml")
+    # Configure and start proxy
+    settings = PanoptesSettings()
     proxy = PanoptesProxy(settings)
     await proxy.start()
     ```

@@ -8,7 +8,6 @@ Configuration can be provided via:
 
 Environment variable examples:
     PANOPTES_DEBUG=true
-    PANOPTES_WORKFLOW_PATH=/path/to/workflow.yaml
     PANOPTES_OTEL__ENDPOINT=http://localhost:4317
     PANOPTES_OTEL__SERVICE_NAME=panoptes
     PANOPTES_PROXY__PORT=4000
@@ -18,9 +17,9 @@ Policy engine examples:
     PANOPTES_POLICY__ENGINE__TYPE=nemo
     PANOPTES_POLICY__ENGINE__CONFIG__CONFIG_PATH=/path/to/nemo_config/
 
-    # Use FSM engine (uses workflow_path)
+    # Use FSM engine
     PANOPTES_POLICY__ENGINE__TYPE=fsm
-    PANOPTES_WORKFLOW_PATH=/path/to/workflow.yaml
+    PANOPTES_POLICY__ENGINE__CONFIG__WORKFLOW_PATH=/path/to/workflow.yaml
 
     # Use composite engine (combine multiple)
     PANOPTES_POLICY__ENGINE__TYPE=composite
@@ -179,10 +178,6 @@ class PanoptesSettings(BaseSettings):
     debug: bool = False
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
 
-    # Workflow configuration
-    workflow_path: Optional[str] = None
-    workflows_dir: Optional[str] = None
-
     # Component configurations
     otel: OTelConfig = Field(default_factory=OTelConfig)
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
@@ -194,20 +189,12 @@ class PanoptesSettings(BaseSettings):
 
     def get_policy_config(self) -> Dict[str, Any]:
         """
-        Get policy engine configuration, handling backward compatibility.
-
-        If workflow_path is set but policy.engine.config doesn't have it,
-        automatically uses FSM engine with that workflow path.
+        Get policy engine configuration.
 
         Returns:
             Configuration dict ready for PolicyEngineRegistry.create_and_initialize()
         """
         engine_config = self.policy.engine.model_dump()
-
-        # Handle backward compatibility with workflow_path
-        if self.workflow_path:
-            if engine_config["type"] == "fsm" and not engine_config["config"].get("workflow_path"):
-                engine_config["config"]["workflow_path"] = self.workflow_path
 
         # Handle composite engine
         if engine_config["type"] == "composite":
@@ -215,11 +202,6 @@ class PanoptesSettings(BaseSettings):
             if self.policy.engines:
                 engine_config["config"]["engines"] = [
                     e.model_dump() for e in self.policy.engines
-                ]
-            # If workflow_path is set, add FSM engine to composite
-            if self.workflow_path and not engine_config["config"].get("engines"):
-                engine_config["config"]["engines"] = [
-                    {"type": "fsm", "config": {"workflow_path": self.workflow_path}}
                 ]
 
         return engine_config
