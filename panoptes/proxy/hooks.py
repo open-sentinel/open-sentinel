@@ -35,9 +35,7 @@ from litellm.caching.caching import DualCache
 
 from panoptes.config.settings import PanoptesSettings
 from panoptes.policy.protocols import PolicyEngine
-from panoptes.core.intervention.strategies import (
-    WorkflowViolationError as CoreWorkflowViolationError,
-)
+from panoptes.core.intervention.strategies import WorkflowViolationError
 from panoptes.core.interceptor import (
     Interceptor,
     Checker,
@@ -63,12 +61,6 @@ CallType = Literal[
 ]
 
 
-class WorkflowViolationError(Exception):
-    """Raised when a policy engine blocks a request."""
-
-    def __init__(self, message: str, context: Optional[Dict[str, Any]] = None):
-        super().__init__(message)
-        self.context = context or {}
 
 
 class PanoptesCallback(CustomLogger):
@@ -100,12 +92,6 @@ class PanoptesCallback(CustomLogger):
         # Policy engine (lazy initialized) - kept for direct access if needed
         self._policy_engine: Optional[PolicyEngine] = None
         self._policy_engine_initialized = False
-
-        # Workflow tracker (lazy initialized) - kept for backward compatibility
-        self._tracker = None
-
-        # Prompt injector (lazy initialized)
-        self._injector = None
 
         # OpenTelemetry tracer for Panoptes events (lazy initialized)
         self._tracer = None
@@ -197,46 +183,7 @@ class PanoptesCallback(CustomLogger):
 
         return self._policy_engine
 
-    def _get_workflow_path_for_fsm(self) -> Optional[str]:
-        """Resolve workflow_path from settings or policy engine config."""
-        if self.settings.workflow_path:
-            return self.settings.workflow_path
 
-        policy_config = self.settings.get_policy_config()
-        engine_type = policy_config.get("type")
-        engine_config = policy_config.get("config", {})
-
-        if engine_type == "fsm":
-            return engine_config.get("workflow_path")
-
-        if engine_type == "composite":
-            for engine in engine_config.get("engines", []):
-                if engine.get("type") == "fsm":
-                    return (engine.get("config") or {}).get("workflow_path")
-
-        return None
-
-    @property
-    def tracker(self) -> Any:
-        """Lazy-load tracker to avoid import issues (backward compatibility)."""
-        workflow_path = self._get_workflow_path_for_fsm()
-        if self._tracker is None and workflow_path:
-            from panoptes.policy.engines.fsm import WorkflowParser, WorkflowTracker
-
-            workflow = WorkflowParser.parse_file(workflow_path)
-            self._tracker = WorkflowTracker(workflow)
-        return self._tracker
-
-    @property
-    def injector(self) -> Any:
-        """Lazy-load injector to avoid import issues."""
-        workflow_path = self._get_workflow_path_for_fsm()
-        if self._injector is None and workflow_path:
-            from panoptes.policy.engines.fsm import WorkflowParser, PromptInjector
-
-            workflow = WorkflowParser.parse_file(workflow_path)
-            self._injector = PromptInjector(workflow)
-        return self._injector
 
     @property
     def tracer(self) -> Any:
@@ -371,7 +318,7 @@ class PanoptesCallback(CustomLogger):
                             context={"num_checkers": len(result.results)},
                         )
 
-            except (WorkflowViolationError, CoreWorkflowViolationError):
+            except WorkflowViolationError:
                 raise
             except Exception as e:
                 logger.error(f"Interceptor pre_call failed: {e}")
@@ -389,35 +336,8 @@ class PanoptesCallback(CustomLogger):
         user_api_key_dict: UserAPIKeyAuth,
         call_type: CallType,
     ) -> None:
-        """
-        Execute IN PARALLEL with LLM call.
-
-        This hook is kept for backward compatibility but most logic
-        is now handled by async checkers in the Interceptor.
-
-        Args:
-            data: Request data
-            user_api_key_dict: User API key information
-            call_type: Type of LLM call
-        """
-        session_id = self._extract_session_id(data)
-        logger.debug(f"moderation_hook: session={session_id}")
-
-        # Moderation logic is now handled by async checkers in the interceptor
-        # This hook is kept for backward compatibility with legacy tracker
-        if not self._interceptor and self.tracker:
-            messages = data.get("messages", [])
-            last_assistant_msg = None
-            for msg in reversed(messages):
-                if msg.get("role") == "assistant":
-                    last_assistant_msg = msg
-                    break
-
-            if not last_assistant_msg:
-                return
-
-            # Legacy tracker handling would go here
-            # But since we're using the interceptor, this is just a passthrough
+        """Execute IN PARALLEL with LLM call. Currently unused."""
+        pass
 
     async def async_post_call_success_hook(
         self,
@@ -452,7 +372,6 @@ class PanoptesCallback(CustomLogger):
         logger.info(
             f"post_call_success_hook: session={session_id}, "
             f"has_interceptor={interceptor is not None}, "
-            f"has_tracker={self.tracker is not None}, "
             f"has_tracer={self.tracer is not None}"
         )
 
@@ -543,33 +462,10 @@ class PanoptesCallback(CustomLogger):
                                 f"POST_CALL modifications requested for session {session_id}"
                             )
 
-            except (WorkflowViolationError, CoreWorkflowViolationError):
+            except WorkflowViolationError:
                 raise
             except Exception as e:
                 logger.error(f"Interceptor post_call failed: {e}")
-
-        # Fallback to legacy tracker (backward compatibility)
-        elif self.tracker:
-            tracking_result = await self.tracker.process_response(
-                session_id=session_id,
-                response=response,
-                context={"request_data": data},
-            )
-
-            logger.debug(
-                f"State transition: {tracking_result.previous_state} -> "
-                f"{tracking_result.classified_state} "
-                f"(confidence={tracking_result.classification_confidence:.2f})"
-            )
-
-            # Log state transition via OTEL
-            if self.tracer:
-                self.tracer.log_state_transition(
-                    session_id=session_id,
-                    previous_state=tracking_result.previous_state or "unknown",
-                    new_state=tracking_result.classified_state or "unknown",
-                    confidence=tracking_result.classification_confidence,
-                )
 
         # Log LLM call via OTEL
         if self.tracer:
@@ -680,35 +576,12 @@ class PanoptesCallback(CustomLogger):
         logger.info(
             f"async_log_success_event: session={session_id}, "
             f"has_interceptor={interceptor is not None}, "
-            f"has_tracker={self.tracker is not None}, "
             f"has_tracer={self.tracer is not None}"
         )
 
         # NOTE: We skip interceptor evaluation here to avoid TimeoutErrors in the logging worker.
         # The logging worker has a short timeout and policy evaluation can take longer.
         # Evaluation is handled in `async_post_call_success_hook` which runs in the main flow.
-
-        # Fallback to legacy tracker
-        if not interceptor and self.tracker:
-            tracking_result = await self.tracker.process_response(
-                session_id=session_id,
-                response=response_obj,
-                context={"request_data": kwargs},
-            )
-
-            logger.debug(
-                f"State transition: {tracking_result.previous_state} -> "
-                f"{tracking_result.classified_state} "
-                f"(confidence={tracking_result.classification_confidence:.2f})"
-            )
-
-            if self.tracer:
-                self.tracer.log_state_transition(
-                    session_id=session_id,
-                    previous_state=tracking_result.previous_state or "unknown",
-                    new_state=tracking_result.classified_state or "unknown",
-                    confidence=tracking_result.classification_confidence,
-                )
 
         # Log LLM call via OTEL
         if self.tracer:
