@@ -251,6 +251,16 @@ def version():
     help="Validate generated workflow (default: True)",
 )
 @click.option(
+    "--base-url", "-b",
+    type=str,
+    help="Base URL for LLM API (e.g., http://localhost:4000/v1 for Panoptes proxy)",
+)
+@click.option(
+    "--api-key", "-k",
+    type=str,
+    help="API key for LLM provider (uses OPENAI_API_KEY or GOOGLE_API_KEY env var if not set)",
+)
+@click.option(
     "--debug/--no-debug",
     default=False,
     help="Enable debug logging",
@@ -262,6 +272,8 @@ def compile(
     model: str,
     domain: str,
     validate: bool,
+    base_url: str,
+    api_key: str,
     debug: bool,
 ):
     """Compile natural language policy to engine configuration.
@@ -301,6 +313,7 @@ def compile(
         context["domain"] = domain
 
     async def run_compile():
+        import os
         from panoptes.policy.compiler import PolicyCompilerRegistry
 
         try:
@@ -311,8 +324,21 @@ def compile(
             if hasattr(compiler, 'model'):
                 compiler.model = model
 
+            # Set base_url if specified
+            if base_url and hasattr(compiler, '_base_url'):
+                compiler._base_url = base_url
+
+            # Set api_key - auto-detect from env if using Gemini
+            resolved_api_key = api_key
+            if not resolved_api_key and model.startswith("gemini"):
+                resolved_api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+            if resolved_api_key and hasattr(compiler, '_api_key'):
+                compiler._api_key = resolved_api_key
+
             click.echo(f"Compiling policy with {engine} compiler...")
             click.echo(f"Model: {model}")
+            if base_url:
+                click.echo(f"Base URL: {base_url}")
 
             # Compile
             result = await compiler.compile(policy, context if context else None)
