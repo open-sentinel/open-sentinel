@@ -145,7 +145,45 @@ Integrates NVIDIA's NeMo Guardrails for comprehensive content safety and dialog 
 
 ---
 
-### 3. Core Layer (`panoptes/core/`)
+### 3. Policy Compiler (`panoptes/policy/compiler/`)
+
+Converts natural language policy descriptions into engine-specific configurations.
+
+**Architecture**:
+- **PolicyCompiler Protocol**: Abstract base class defining the compiler interface
+- **LLMPolicyCompiler**: Base class with shared LLM interaction utilities
+- **FSMCompiler**: Converts natural language → WorkflowDefinition YAML
+
+```python
+# Example usage
+from panoptes.policy.compiler import PolicyCompilerRegistry
+
+compiler = PolicyCompilerRegistry.create("fsm")
+result = await compiler.compile(
+    "Agent must verify identity before processing refunds. "
+    "Never share internal system information."
+)
+
+if result.success:
+    compiler.export(result, Path("workflow.yaml"))
+```
+
+**CompilationResult**:
+- `success`: Whether compilation succeeded
+- `config`: Engine-specific config (WorkflowDefinition for FSM)
+- `warnings`: Non-fatal issues
+- `errors`: Fatal issues that prevented compilation
+- `metadata`: Token usage, state/constraint counts
+
+**Extension Point**: To add a compiler for a new engine (e.g., NeMo Colang):
+1. Create a class extending `LLMPolicyCompiler`
+2. Implement `_build_compilation_prompt()` for engine-specific prompting
+3. Implement `_parse_compilation_response()` for response parsing
+4. Register with `@register_compiler("engine_name")`
+
+---
+
+### 4. Core Layer (`panoptes/core/`)
 
 Shared components used across different policy engines.
 
@@ -161,7 +199,7 @@ Located in `panoptes/core/intervention/`. Defines the base strategies for modify
 
 ---
 
-### 4. Intervention Execution
+### 5. Intervention Execution
 
 Once a violation is detected by the FSM policy engine, it triggers an intervention.
 
@@ -177,7 +215,7 @@ class PromptInjector:
 
 ---
 
-### 5. Tracing Layer (`panoptes/tracing/`)
+### 6. Tracing Layer (`panoptes/tracing/`)
 
 #### `otel_tracer.py` - PanoptesTracer
 Provides session-aware tracing via OpenTelemetry with special support for **Langfuse**.
@@ -204,7 +242,7 @@ class PanoptesTracer:
 
 ---
 
-### 6. Configuration (`panoptes/config/`)
+### 7. Configuration (`panoptes/config/`)
 
 #### `settings.py` - PanoptesSettings
 Pydantic Settings with env var support:
@@ -279,7 +317,7 @@ class PanoptesSettings(BaseSettings):
 ```
 panoptes/
 ├── __init__.py          # Public API exports
-├── cli.py               # CLI commands (serve, validate, info)
+├── cli.py               # CLI commands (serve, compile, validate, info)
 │
 ├── config/
 │   └── settings.py      # PanoptesSettings (pydantic-settings)
@@ -289,12 +327,18 @@ panoptes/
 │       └── strategies.py    # Shared intervention strategies
 │
 ├── policy/
+│   ├── compiler/        # NLP Policy Compiler
+│   │   ├── protocol.py  # PolicyCompiler interface
+│   │   ├── base.py      # LLMPolicyCompiler base class
+│   │   └── registry.py  # Compiler registry
+│   │
 │   ├── engines/
 │   │   ├── fsm/         # FSM Engine
 │   │   │   ├── workflow/# Schema, Parser, StateMachine
 │   │   │   ├── classifier.py
 │   │   │   ├── tracker.py
 │   │   │   ├── injector.py
+│   │   │   ├── compiler.py  # FSMCompiler (NL → YAML)
 │   │   │   └── engine.py
 │   │   │
 │   │   └── nemo/        # NeMo Guardrails Engine

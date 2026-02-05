@@ -40,7 +40,17 @@ pip install -e ".[dev]"
 
 ## Quick Start
 
-1. **Define your workflow** in YAML:
+### Option 1: Compile from Natural Language (Recommended)
+
+Use the `compile` command to generate workflow config from plain English:
+
+```bash
+panoptes compile "Agent must verify identity before processing refunds. Never share internal system information."
+```
+
+This generates a `workflow.yaml` file with states, transitions, constraints, and interventions.
+
+### Option 2: Define Workflow Manually in YAML
 
 ```yaml
 name: customer_support
@@ -73,7 +83,7 @@ constraints:
     severity: warning
 ```
 
-2. **Start the Panoptes proxy**:
+### Start the Panoptes proxy
 
 For the FSM engine (workflow-based), specify the engine type explicitly:
 
@@ -90,7 +100,7 @@ export PANOPTES_POLICY__ENGINE__CONFIG_PATH=./nemo_config/
 panoptes serve
 ```
 
-3. **Point your LLM client at Panoptes**:
+### Point your LLM client at Panoptes
 
 ```python
 from openai import OpenAI
@@ -180,6 +190,43 @@ docker run -d -p 4317:4317 -p 16686:16686 jaegertracing/all-in-one:latest
 ```
 
 Traces will appear in your tracing backend's UI grouped by session.
+
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `panoptes serve` | Start the proxy server |
+| `panoptes compile` | Compile natural language to workflow YAML |
+| `panoptes validate` | Validate a workflow definition file |
+| `panoptes info` | Show detailed workflow information |
+| `panoptes version` | Show version information |
+
+### Compile Command
+
+Convert natural language policies to FSM workflow configuration:
+
+```bash
+# Basic compilation
+panoptes compile "verify identity before processing refunds"
+
+# With output file and domain hint
+panoptes compile "never share internal info" -o my_workflow.yaml -d "customer support"
+
+# Use a different model
+panoptes compile "verify identity before refunds" -m gpt-4o
+
+# With custom API endpoint
+panoptes compile "..." -b http://localhost:4000/v1 -k $API_KEY
+```
+
+**Options:**
+- `-e, --engine`: Target engine type (`fsm`, `auto`) - default: fsm
+- `-o, --output`: Output file path - default: workflow.yaml
+- `-m, --model`: LLM model for compilation - default: gpt-4o-mini
+- `-d, --domain`: Application domain hint
+- `-b, --base-url`: Custom LLM API base URL
+- `-k, --api-key`: API key (uses env vars if not set)
+- `--validate/--no-validate`: Validate generated workflow - default: True
 
 ## Documentation
 

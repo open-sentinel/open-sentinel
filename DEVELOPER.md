@@ -14,13 +14,16 @@ pip install -e ".[dev]"
 # Run tests
 pytest
 
+# Compile workflow from natural language
+panoptes compile "verify identity before refunds. Never share internal info."
+
 # Start proxy with FSM workflow
 export PANOPTES_POLICY__ENGINE__TYPE=fsm
-export PANOPTES_POLICY__ENGINE__CONFIG__WORKFLOW_PATH=examples/customer_support.yaml
+export PANOPTES_POLICY__ENGINE__CONFIG_PATH=workflow.yaml
 panoptes serve --port 4000
 
 # Start proxy with NeMo Guardrails (requires examples/nemo_guardrails/config/)
-export PANOPTES_POLICY__ENGINE__CONFIG__CONFIG_PATH=examples/nemo_guardrails/config/
+export PANOPTES_POLICY__ENGINE__CONFIG_PATH=examples/nemo_guardrails/config/
 panoptes serve --port 4000
 ```
 
@@ -165,6 +168,56 @@ states:
 
 # Validate without loading
 is_valid, message = WorkflowParser.validate_file("workflow.yaml")
+```
+
+### Working with the Policy Compiler
+
+The Policy Compiler converts natural language policies to FSM workflow configuration:
+
+```python
+from panoptes.policy.compiler import PolicyCompilerRegistry
+from pathlib import Path
+import asyncio
+
+async def compile_policy():
+    # Create FSM compiler
+    compiler = PolicyCompilerRegistry.create("fsm")
+    
+    # Compile natural language policy
+    result = await compiler.compile(
+        "Agent must verify identity before processing refunds. "
+        "Never share internal system information.",
+        context={"domain": "customer support"}  # Optional hints
+    )
+    
+    if result.success:
+        # Export to YAML file
+        compiler.export(result, Path("workflow.yaml"))
+        
+        # Access the compiled workflow
+        workflow = result.config
+        print(f"Generated {len(workflow.states)} states")
+        print(f"Generated {len(workflow.constraints)} constraints")
+    else:
+        print("Errors:", result.errors)
+        
+    # Check warnings
+    if result.warnings:
+        print("Warnings:", result.warnings)
+
+asyncio.run(compile_policy())
+```
+
+**CLI Usage:**
+```bash
+# Basic compilation
+panoptes compile "verify identity before refunds"
+
+# With options
+panoptes compile "never share internal info" \\
+    -o my_workflow.yaml \\
+    -d "customer support" \\
+    -m gpt-4o
 ```
 
 ### Working with NeMo Guardrails
@@ -442,6 +495,64 @@ def _classify_by_my_method(self, content: str) -> Optional[ClassificationResult]
     pass
 ```
 
+### Adding a New Policy Compiler
+
+To add a compiler for a new policy engine:
+
+**Step 1**: Create a compiler class in the engine's directory:
+
+```python
+# panoptes/policy/engines/my_engine/compiler.py
+from panoptes.policy.compiler.base import LLMPolicyCompiler
+from panoptes.policy.compiler.protocol import CompilationResult
+from panoptes.policy.compiler.registry import register_compiler
+
+@register_compiler("my_engine")
+class MyEngineCompiler(LLMPolicyCompiler):
+    @property
+    def engine_type(self) -> str:
+        return "my_engine"
+    
+    def _build_compilation_prompt(
+        self,
+        natural_language: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        # Build prompt with engine-specific schema
+        return f"""Convert to my engine format:
+        {natural_language}
+        
+        Output JSON with: ..."""
+    
+    def _parse_compilation_response(
+        self,
+        response: Dict[str, Any],
+        natural_language: str,
+    ) -> CompilationResult:
+        # Parse JSON into engine-specific config
+        config = MyEngineConfig(**response)
+        return CompilationResult(
+            success=True,
+            config=config,
+            metadata={"source": natural_language[:100]}
+        )
+    
+    def export(self, result: CompilationResult, output_path: Path) -> None:
+        # Write config to file(s)
+        with open(output_path, "w") as f:
+            yaml.dump(result.config.to_dict(), f)
+```
+
+**Step 2**: Import the compiler in the engine's `__init__.py` to trigger registration:
+
+```python
+# panoptes/policy/engines/my_engine/__init__.py
+try:
+    from .compiler import MyEngineCompiler
+except ImportError:
+    pass  # Handle missing dependencies gracefully
+```
+
 ---
 
 ## Testing
@@ -689,6 +800,10 @@ If states aren't being classified correctly:
 | `StateClassifier` | `policy.engines.fsm` | Response classification |
 | `WorkflowTracker` | `policy.engines.fsm` | Main orchestrator |
 | `PromptInjector` | `policy.engines.fsm` | Apply interventions |
+| `PolicyCompiler` | `policy.compiler` | Compiler protocol |
+| `CompilationResult` | `policy.compiler` | Compilation output |
+| `PolicyCompilerRegistry` | `policy.compiler` | Compiler factory |
+| `FSMCompiler` | `policy.engines.fsm.compiler` | NL → FSM workflow |
 | `StrategyType` | `core.intervention.strategies` | Intervention strategy enum |
 
 ### Key Functions
