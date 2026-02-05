@@ -221,5 +221,152 @@ def version():
     click.echo(f"Panoptes SDK v{__version__}")
 
 
+@main.command()
+@click.argument("policy", type=str)
+@click.option(
+    "--engine", "-e",
+    type=click.Choice(["fsm", "auto"]),
+    default="fsm",
+    help="Target engine type (default: fsm)",
+)
+@click.option(
+    "--output", "-o",
+    type=click.Path(path_type=Path),
+    help="Output file path (default: workflow.yaml)",
+)
+@click.option(
+    "--model", "-m",
+    type=str,
+    default="gpt-4o-mini",
+    help="LLM model for compilation (default: gpt-4o-mini)",
+)
+@click.option(
+    "--domain", "-d",
+    type=str,
+    help="Application domain hint (e.g., 'customer support')",
+)
+@click.option(
+    "--validate/--no-validate",
+    default=True,
+    help="Validate generated workflow (default: True)",
+)
+@click.option(
+    "--debug/--no-debug",
+    default=False,
+    help="Enable debug logging",
+)
+def compile(
+    policy: str,
+    engine: str,
+    output: Path,
+    model: str,
+    domain: str,
+    validate: bool,
+    debug: bool,
+):
+    """Compile natural language policy to engine configuration.
+
+    POLICY is the natural language policy description.
+
+    Examples:
+
+        # Basic compilation
+        panoptes compile "verify identity before refunds"
+
+        # With output file
+        panoptes compile "never share internal info" -o my_workflow.yaml
+
+        # With domain hint
+        panoptes compile "verify before refunds" -d "customer support"
+
+        # Use a different model
+        panoptes compile "verify identity" -m gpt-4o
+    """
+    import asyncio
+
+    setup_logging(debug)
+
+    # Determine output path
+    if output is None:
+        output = Path("workflow.yaml")
+
+    # Handle 'auto' engine selection (currently just defaults to fsm)
+    if engine == "auto":
+        engine = "fsm"
+        click.echo("Auto-detected engine: fsm")
+
+    # Build context
+    context = {}
+    if domain:
+        context["domain"] = domain
+
+    async def run_compile():
+        from panoptes.policy.compiler import PolicyCompilerRegistry
+
+        try:
+            # Create compiler
+            compiler = PolicyCompilerRegistry.create(engine)
+
+            # Override model if specified
+            if hasattr(compiler, 'model'):
+                compiler.model = model
+
+            click.echo(f"Compiling policy with {engine} compiler...")
+            click.echo(f"Model: {model}")
+
+            # Compile
+            result = await compiler.compile(policy, context if context else None)
+
+            if not result.success:
+                click.echo(click.style("✗ Compilation failed", fg="red"), err=True)
+                for error in result.errors:
+                    click.echo(f"  Error: {error}", err=True)
+                raise SystemExit(1)
+
+            # Show warnings
+            for warning in result.warnings:
+                click.echo(click.style(f"  Warning: {warning}", fg="yellow"))
+
+            # Validate if requested
+            if validate:
+                validation_errors = compiler.validate_result(result)
+                if validation_errors:
+                    click.echo(click.style("✗ Validation errors:", fg="red"), err=True)
+                    for error in validation_errors:
+                        click.echo(f"  {error}", err=True)
+                    raise SystemExit(1)
+
+            # Export
+            compiler.export(result, output)
+
+            click.echo(click.style("✓ Compiled successfully", fg="green"))
+            click.echo(f"  Output: {output}")
+
+            # Show summary
+            if result.metadata:
+                if "state_count" in result.metadata:
+                    click.echo(f"  States: {result.metadata['state_count']}")
+                if "constraint_count" in result.metadata:
+                    click.echo(f"  Constraints: {result.metadata['constraint_count']}")
+
+            # Suggest next step
+            click.echo(f"\nNext steps:")
+            click.echo(f"  panoptes validate {output}")
+            click.echo(f"  panoptes serve --workflow {output}")
+
+        except ValueError as e:
+            click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
+            raise SystemExit(1)
+        except ImportError as e:
+            click.echo(
+                click.style(f"✗ Missing dependency: {e}", fg="red"),
+                err=True,
+            )
+            click.echo("Install with: pip install openai", err=True)
+            raise SystemExit(1)
+
+    asyncio.run(run_compile())
+
+
 if __name__ == "__main__":
     main()

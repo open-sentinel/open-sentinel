@@ -49,6 +49,15 @@ from panoptes.policy.protocols import (
 )
 from panoptes.policy.registry import PolicyEngineRegistry, register_engine
 
+# Compiler imports
+from panoptes.policy.compiler import (
+    PolicyCompiler,
+    CompilationResult,
+    PolicyCompilerRegistry,
+    register_compiler,
+    LLMPolicyCompiler,
+)
+
 # Import engines to trigger auto-registration
 # Note: We use try/except to handle optional dependencies gracefully
 try:
@@ -77,11 +86,18 @@ __all__ = [
     "PolicyDecision",
     "PolicyViolation",
     "StateClassificationResult",
-    # Registry
+    # Engine registry
     "PolicyEngineRegistry",
     "register_engine",
     # Engines (may be None if not available)
     "FSMPolicyEngine",
     "NemoGuardrailsEngine",
     "CompositePolicyEngine",
+    # Compiler protocol
+    "PolicyCompiler",
+    "CompilationResult",
+    # Compiler registry
+    "PolicyCompilerRegistry",
+    "register_compiler",
+    "LLMPolicyCompiler",
 ]
