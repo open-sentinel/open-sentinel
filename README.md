@@ -12,17 +12,18 @@ Panoptes is a **transparent proxy** that sits between your application and LLM p
 - **Observe** - Full tracing via OpenTelemetry for debugging and analysis
 
 ```
-┌─────────────────┐      ┌──────────────────────────────────────────────┐      ┌─────────────────┐
-│                 │      │                  PANOPTES                    │      │                 │
-│  Your App       │─────▶│  ┌──────────┐  ┌──────────┐  ┌───────────┐   │─────▶│  LLM Provider   │
-│  (LLM Client)   │      │  │  Hooks   │─▶│ Tracker  │─▶│ Injector  │   │      │  (OpenAI, etc.) │
-│                 │◀─────│  └──────────┘  └──────────┘  └───────────┘   │◀─────│                 │
-└─────────────────┘      │       │             │              │         │      └─────────────────┘
-                         │       ▼             ▼              ▼         │
-                         │  ┌──────────────────────────────────────┐    │
-                         │  │         OpenTelemetry Tracing        │    │
-                         │  └──────────────────────────────────────┘    │
-                         └──────────────────────────────────────────────┘
+┌──────────────┐       ┌─────────────────────────────────────────┐       ┌──────────────┐
+│              │       │              PANOPTES                   │       │              │
+│   Your App   │──────▶│                                         │──────▶│ LLM Provider │
+│              │       │  ┌───────┐  ┌────────┐  ┌──────────┐    │       │              │
+│              │◀──────│  │ Hooks │─▶│ Policy │─▶│ Injector │    │◀──────│              │
+└──────────────┘       │  └───────┘  └────────┘  └──────────┘    │       └──────────────┘
+                       │       │          │            │         │
+                       │       ▼          ▼            ▼         │
+                       │  ┌─────────────────────────────────┐    │
+                       │  │       OpenTelemetry Tracing     │    │
+                       │  └─────────────────────────────────┘    │
+                       └─────────────────────────────────────────┘
 ```
 
 ## Installation
@@ -78,7 +79,7 @@ For the FSM engine (workflow-based), specify the engine type explicitly:
 
 ```bash
 export PANOPTES_POLICY__ENGINE__TYPE=fsm
-export PANOPTES_POLICY__ENGINE__CONFIG__WORKFLOW_PATH=./workflow.yaml
+export PANOPTES_WORKFLOW_PATH=./workflow.yaml
 panoptes serve
 ```
 
@@ -147,7 +148,7 @@ Environment variables (prefix: `PANOPTES_`):
 |----------|-------------|---------|
 | `PANOPTES_POLICY__ENGINE__TYPE` | Engine: `nemo`, `fsm`, `composite` | nemo |
 | `PANOPTES_POLICY__ENGINE__CONFIG__CONFIG_PATH` | Path to NeMo config directory | - |
-| `PANOPTES_POLICY__ENGINE__CONFIG__WORKFLOW_PATH` | Path to workflow YAML (for FSM) | - |
+| `PANOPTES_WORKFLOW_PATH` | Path to workflow YAML (for FSM) | - |
 | `PANOPTES_PROXY__PORT` | Server port | 4000 |
 | `PANOPTES_OTEL__EXPORTER_TYPE` | Exporter: `otlp`, `langfuse`, `console`, `none` | otlp |
 | `PANOPTES_OTEL__ENDPOINT` | OTLP endpoint (for `otlp` exporter) | http://localhost:4317 |
