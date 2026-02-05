@@ -114,3 +114,17 @@ async def test_evaluate_response_with_violations(engine, mocks):
     assert len(result.violations) == 1
     assert result.intervention_needed == "block"
     mocks["sm"].return_value.set_pending_intervention.assert_called_with("sid", "block")
+
+@pytest.mark.asyncio
+async def test_initialization_with_config_path(engine, mocks):
+    """Test initialization using the unified config_path parameter."""
+    config = {"config_path": "path/to/workflow.yaml"}
+    mocks["parser"]().parse_dict.return_value = MagicMock(name="test_workflow", states=[], constraints=[])
+    mocks["parser"].parse_file.return_value = MagicMock(name="test_workflow", states=[], constraints=[])
+    
+    await engine.initialize(config)
+    
+    assert engine._initialized
+    mocks["parser"].parse_file.assert_called_with("path/to/workflow.yaml")
+    mocks["sm"].assert_called_once()
+    assert engine.engine_type == "fsm"

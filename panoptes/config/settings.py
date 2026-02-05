@@ -15,11 +15,14 @@ Environment variable examples:
 Policy engine examples:
     # Use NeMo Guardrails engine (default)
     PANOPTES_POLICY__ENGINE__TYPE=nemo
-    PANOPTES_POLICY__ENGINE__CONFIG__CONFIG_PATH=/path/to/nemo_config/
+    PANOPTES_POLICY__ENGINE__CONFIG_PATH=/path/to/nemo_config/
 
     # Use FSM engine
     PANOPTES_POLICY__ENGINE__TYPE=fsm
-    PANOPTES_POLICY__ENGINE__CONFIG__WORKFLOW_PATH=/path/to/workflow.yaml
+    # You can use the unified config_path for FSM as well:
+    PANOPTES_POLICY__ENGINE__CONFIG_PATH=/path/to/workflow.yaml
+    # OR the specific workflow_path (nested):
+    # PANOPTES_POLICY__ENGINE__CONFIG__WORKFLOW_PATH=/path/to/workflow.yaml
 
     # Use composite engine (combine multiple)
     PANOPTES_POLICY__ENGINE__TYPE=composite
@@ -109,7 +112,17 @@ class PolicyEngineConfig(BaseModel):
 
     type: Literal["fsm", "nemo", "composite"] = "nemo"
     enabled: bool = True
+    # Unified configuration path (can be set via PANOPTES_POLICY__ENGINE__CONFIG_PATH)
+    config_path: Optional[str] = None
     config: Dict[str, Any] = Field(default_factory=dict)
+    
+    def model_dump(self, **kwargs):
+        """Custom dump to merge config_path into config dict for engines."""
+        data = super().model_dump(**kwargs)
+        # If config_path is set, use it to populate/override config dict
+        if data.get("config_path"):
+            data["config"]["config_path"] = data["config_path"]
+        return data
 
 
 class PolicyConfig(BaseModel):

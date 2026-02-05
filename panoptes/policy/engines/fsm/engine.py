@@ -87,6 +87,9 @@ class FSMPolicyEngine(StatefulPolicyEngine):
         """
         if "workflow_path" in config:
             self._workflow = WorkflowParser.parse_file(config["workflow_path"])
+        elif "config_path" in config:
+            # Support unified config path (alias for workflow_path)
+            self._workflow = WorkflowParser.parse_file(config["config_path"])
         elif "workflow" in config:
             workflow_data = config["workflow"]
             if isinstance(workflow_data, dict):
@@ -95,7 +98,7 @@ class FSMPolicyEngine(StatefulPolicyEngine):
                 self._workflow = workflow_data
         else:
             raise ValueError(
-                "FSM engine requires 'workflow_path' or 'workflow' in config"
+                "FSM engine requires 'workflow_path', 'config_path', or 'workflow' in config"
             )
 
         self._state_machine = WorkflowStateMachine(self._workflow)
