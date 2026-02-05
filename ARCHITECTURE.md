@@ -224,10 +224,9 @@ class PanoptesSettings(BaseSettings):
 ```
 
 **Key Configuration Options**:
-- `PANOPTES_POLICY__ENGINE__CONFIG__WORKFLOW_PATH`: Path to workflow YAML (FSM engine)
+- `PANOPTES_POLICY__ENGINE__CONFIG_PATH`: Path to workflow YAML or NeMo config directory
 - `PANOPTES_PROXY__PORT`: Server port (default 4000)
 - `PANOPTES_OTEL__ENDPOINT`: OpenTelemetry OTLP endpoint
-- `PANOPTES_CLASSIFIER__MODEL_NAME`: Embedding model (default "all-MiniLM-L6-v2")
 
 ---
 

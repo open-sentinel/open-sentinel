@@ -79,14 +79,14 @@ For the FSM engine (workflow-based), specify the engine type explicitly:
 
 ```bash
 export PANOPTES_POLICY__ENGINE__TYPE=fsm
-export PANOPTES_WORKFLOW_PATH=./workflow.yaml
+export PANOPTES_POLICY__ENGINE__CONFIG_PATH=./workflow.yaml
 panoptes serve
 ```
 
 For NeMo Guardrails (default):
 
 ```bash
-export PANOPTES_POLICY__ENGINE__CONFIG__CONFIG_PATH=./nemo_config/
+export PANOPTES_POLICY__ENGINE__CONFIG_PATH=./nemo_config/
 panoptes serve
 ```
 
@@ -147,15 +147,13 @@ Environment variables (prefix: `PANOPTES_`):
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PANOPTES_POLICY__ENGINE__TYPE` | Engine: `nemo`, `fsm`, `composite` | nemo |
-| `PANOPTES_POLICY__ENGINE__CONFIG__CONFIG_PATH` | Path to NeMo config directory | - |
-| `PANOPTES_WORKFLOW_PATH` | Path to workflow YAML (for FSM) | - |
+| `PANOPTES_POLICY__ENGINE__CONFIG_PATH` | Path to NeMo config or FSM workflow | - |
 | `PANOPTES_PROXY__PORT` | Server port | 4000 |
 | `PANOPTES_OTEL__EXPORTER_TYPE` | Exporter: `otlp`, `langfuse`, `console`, `none` | otlp |
 | `PANOPTES_OTEL__ENDPOINT` | OTLP endpoint (for `otlp` exporter) | http://localhost:4317 |
 | `PANOPTES_OTEL__LANGFUSE_PUBLIC_KEY` | Langfuse public key | - |
 | `PANOPTES_OTEL__LANGFUSE_SECRET_KEY` | Langfuse secret key | - |
 | `PANOPTES_OTEL__LANGFUSE_HOST` | Langfuse host (e.g. US region) | https://cloud.langfuse.com |
-| `PANOPTES_CLASSIFIER__MODEL_NAME` | Embedding model | all-MiniLM-L6-v2 |
 
 ### OpenTelemetry Setup (Optional)
 
