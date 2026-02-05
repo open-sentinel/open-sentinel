@@ -66,9 +66,9 @@ Implements LiteLLM's `CustomLogger` interface with four key hooks:
 
 | Hook | Timing | Purpose | Blocking? |
 |------|--------|---------|-----------|
-| `async_pre_call_hook` | Before LLM call | Apply pending interventions, start trace | Yes |
-| `async_moderation_hook` | Parallel with LLM | Classify previous response, check constraints | No |
-| `async_post_call_success_hook` | After LLM response | Update state machine, complete trace | Yes |
+| `async_pre_call_hook` | Before LLM call | Apply pending interventions, run PRE_CALL checkers, start trace | Yes |
+| `async_moderation_hook` | Parallel with LLM | **(Deprecated/Unused)** Logic moved to Interceptor | No |
+| `async_post_call_success_hook` | After LLM response | Run POST_CALL checkers, complete trace | Yes |
 | `async_post_call_failure_hook` | After LLM error | Log failure | Yes |
 
 **Session State Management**: The callback maintains:
@@ -215,7 +215,7 @@ class PanoptesSettings(BaseSettings):
     # Nested delimiter: __ (e.g., PANOPTES_OTEL__ENDPOINT)
     
     debug: bool
-    workflow_path: Optional[str]
+    # workflow_path - REMOVED (use policy.engine configuration)
     
     otel: OTelConfig
     proxy: ProxyConfig
@@ -224,7 +224,7 @@ class PanoptesSettings(BaseSettings):
 ```
 
 **Key Configuration Options**:
-- `PANOPTES_WORKFLOW_PATH`: Path to workflow YAML
+- `PANOPTES_POLICY__ENGINE__CONFIG__WORKFLOW_PATH`: Path to workflow YAML (FSM engine)
 - `PANOPTES_PROXY__PORT`: Server port (default 4000)
 - `PANOPTES_OTEL__ENDPOINT`: OpenTelemetry OTLP endpoint
 - `PANOPTES_CLASSIFIER__MODEL_NAME`: Embedding model (default "all-MiniLM-L6-v2")

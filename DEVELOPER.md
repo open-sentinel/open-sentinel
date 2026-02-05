@@ -15,7 +15,9 @@ pip install -e ".[dev]"
 pytest
 
 # Start proxy with FSM workflow
-panoptes serve --workflow examples/customer_support.yaml --port 4000
+export PANOPTES_POLICY__ENGINE__TYPE=fsm
+export PANOPTES_POLICY__ENGINE__CONFIG__WORKFLOW_PATH=examples/customer_support.yaml
+panoptes serve --port 4000
 
 # Start proxy with NeMo Guardrails (requires examples/nemo_guardrails/config/)
 export PANOPTES_POLICY__ENGINE__CONFIG__CONFIG_PATH=examples/nemo_guardrails/config/
@@ -594,7 +596,7 @@ logging.getLogger("panoptes.workflow.constraints").setLevel(logging.DEBUG)
 ### Common Issues
 
 **"No workflow configured - running in pass-through mode"**
-- Set `PANOPTES_WORKFLOW_PATH` or pass `--workflow` to CLI
+- Set `PANOPTES_POLICY__ENGINE__CONFIG__WORKFLOW_PATH` environment variable
 
 **"Failed to load embedding model"**
 - Ensure `sentence-transformers` is installed
