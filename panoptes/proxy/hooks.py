@@ -154,8 +154,8 @@ class PanoptesCallback(CustomLogger):
             engine_config = policy_config.get("config", {})
 
             # Only initialize if we have configuration
-            if engine_type == "fsm" and not engine_config.get("workflow_path"):
-                logger.debug("No workflow_path configured, skipping policy engine")
+            if engine_type == "fsm" and not engine_config.get("config_path"):
+                logger.debug("No config_path configured, skipping policy engine")
                 self._policy_engine_initialized = True
                 return None
 

@@ -212,11 +212,11 @@ class ConstraintEvaluator:
                 return EvaluationResult.VIOLATED
             return EvaluationResult.SATISFIED
 
-        # For positive condition, check if it's always true
-        # This is a simplification - real G(p) would need p to hold at every step
-        # Here we just check if the condition state has been reached
-        if condition not in history and session.current_state != condition:
-            return EvaluationResult.PENDING
+        # For positive condition, check that EVERY state in history matches
+        # G(p) means p must hold at every step
+        for state in history:
+            if state != condition:
+                return EvaluationResult.VIOLATED
 
         return EvaluationResult.SATISFIED
 
@@ -243,30 +243,44 @@ class ConstraintEvaluator:
         """
         trigger U target: Stay in trigger until target reached.
 
-        All states before target must be trigger.
+        The constraint only begins enforcement once the trigger state is first
+        entered. After that point, all states must be either the trigger or
+        the target (which ends the constraint).
         """
         if not trigger or not target:
             return EvaluationResult.PENDING
 
-        target_idx = None
+        # Find when trigger region begins (first occurrence of trigger)
+        trigger_start = None
         for i, state in enumerate(history):
-            if state == target:
-                target_idx = i
+            if state == trigger:
+                trigger_start = i
                 break
-            # Before target, must be in trigger state
+
+        # If trigger hasn't been entered yet, constraint is pending
+        if trigger_start is None:
+            return EvaluationResult.PENDING
+
+        # Now enforce: from trigger_start onwards, must be trigger or target
+        for i in range(trigger_start, len(history)):
+            state = history[i]
+            if state == target:
+                # Target reached - constraint satisfied
+                return EvaluationResult.SATISFIED
             if state != trigger:
+                # In trigger region but not trigger or target - violated
                 return EvaluationResult.VIOLATED
 
-        if target_idx is not None:
-            return EvaluationResult.SATISFIED
-
+        # Still in trigger state, waiting for target
         return EvaluationResult.PENDING
 
     def _eval_next(self, target: Optional[str], history: List[str]) -> EvaluationResult:
         """
         X(target): Next state must be target.
 
-        Only evaluates after at least one transition.
+        Checks that the second state in history (the first transition from
+        the initial state) matches the target. Evaluated once at position [1]
+        and the result is stable for all subsequent transitions.
         """
         if not target:
             return EvaluationResult.PENDING
@@ -274,8 +288,8 @@ class ConstraintEvaluator:
         if len(history) < 2:
             return EvaluationResult.PENDING
 
-        # Check if most recent transition is to target
-        if history[-1] == target:
+        # Check the state immediately after the initial state
+        if history[1] == target:
             return EvaluationResult.SATISFIED
 
         return EvaluationResult.VIOLATED

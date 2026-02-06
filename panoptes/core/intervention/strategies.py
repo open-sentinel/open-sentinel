@@ -110,6 +110,7 @@ class SystemPromptAppendStrategy(InterventionStrategy):
         config: InterventionConfig,
         context: Dict[str, Any],
     ) -> dict:
+        data = dict(data)
         messages = list(data.get("messages", []))
 
         # Format the correction message
@@ -162,6 +163,7 @@ class UserMessageInjectStrategy(InterventionStrategy):
         config: InterventionConfig,
         context: Dict[str, Any],
     ) -> dict:
+        data = dict(data)
         messages = list(data.get("messages", []))
 
         correction = self.format_message(config.message_template, context)
@@ -211,6 +213,7 @@ class ContextReminderStrategy(InterventionStrategy):
         config: InterventionConfig,
         context: Dict[str, Any],
     ) -> dict:
+        data = dict(data)
         messages = list(data.get("messages", []))
 
         correction = self.format_message(config.message_template, context)

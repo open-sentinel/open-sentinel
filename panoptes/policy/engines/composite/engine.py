@@ -171,6 +171,15 @@ class CompositePolicyEngine(PolicyEngine):
                 else:
                     valid_results.append(result)
 
+            # Truncate at first DENY when strategy is "first_deny"
+            if self._strategy == "first_deny":
+                truncated_results = []
+                for result in valid_results:
+                    truncated_results.append(result)
+                    if result.decision == PolicyDecision.DENY:
+                        break
+                valid_results = truncated_results
+
             return self._merge_results(valid_results)
         else:
             # Sequential evaluation
@@ -252,6 +261,15 @@ class CompositePolicyEngine(PolicyEngine):
                     ))
                 else:
                     valid_results.append(result)
+
+            # Truncate at first DENY when strategy is "first_deny"
+            if self._strategy == "first_deny":
+                truncated_results = []
+                for result in valid_results:
+                    truncated_results.append(result)
+                    if result.decision == PolicyDecision.DENY:
+                        break
+                valid_results = truncated_results
 
             return self._merge_results(valid_results)
         else:
