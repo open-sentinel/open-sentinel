@@ -108,7 +108,7 @@ class PolicyEngineConfig(BaseModel):
     - composite: {"engines": [...], "strategy": "all"|"first_deny"}
     """
 
-    type: Literal["fsm", "nemo", "composite"] = "nemo"
+    type: Literal["fsm", "nemo", "composite", "llm"] = "nemo"
     enabled: bool = True
     # Unified configuration path (can be set via PANOPTES_POLICY__ENGINE__CONFIG_PATH)
     config_path: Optional[str] = None

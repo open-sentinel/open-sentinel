@@ -15,5 +15,7 @@ Engines are auto-registered when imported.
 from panoptes.policy.engines import fsm
 from panoptes.policy.engines import nemo
 from panoptes.policy.engines import composite
+from panoptes.policy.engines import llm
 
-__all__ = ["fsm", "nemo", "composite"]
+__all__ = ["fsm", "nemo", "composite", "llm"]
+

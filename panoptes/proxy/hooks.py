@@ -164,6 +164,11 @@ class PanoptesCallback(CustomLogger):
                 self._policy_engine_initialized = True
                 return None
 
+            if engine_type == "llm" and not engine_config.get("config_path") and not engine_config.get("workflow"):
+                logger.debug("No config_path or workflow for LLM engine, skipping")
+                self._policy_engine_initialized = True
+                return None
+
             if engine_type == "composite" and not engine_config.get("engines"):
                 logger.debug("No engines configured for composite, skipping")
                 self._policy_engine_initialized = True
