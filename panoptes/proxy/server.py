@@ -113,8 +113,23 @@ class PanoptesProxy:
         logger.info("Panoptes hooks registered")
 
     def _shutdown_tracer(self) -> None:
-        """Shutdown callback and flush any pending data."""
+        """Shutdown callback, interceptor, and flush any pending data."""
         logger.info("Panoptes proxy shutting down...")
+
+        if self._callback is not None:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(self._callback.shutdown())
+                else:
+                    loop.run_until_complete(self._callback.shutdown())
+            except RuntimeError:
+                try:
+                    asyncio.run(self._callback.shutdown())
+                except Exception as e:
+                    logger.error(f"Failed to run callback shutdown: {e}")
+            except Exception as e:
+                logger.error(f"Error during shutdown: {e}")
 
     def _create_router(self) -> Router:
         """Create LiteLLM Router with model configuration and callbacks."""

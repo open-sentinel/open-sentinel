@@ -15,6 +15,7 @@ from .types import (
     CheckPhase,
     CheckResult,
     InterceptionResult,
+    PolicyViolation,
 )
 
 __all__ = [
@@ -25,6 +26,7 @@ __all__ = [
     "CheckResult",
     "CheckerContext",
     "InterceptionResult",
+    "PolicyViolation",
     # Classes
     "Checker",
     "Interceptor",

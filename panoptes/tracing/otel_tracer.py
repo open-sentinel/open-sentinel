@@ -324,7 +324,7 @@ class PanoptesTracer:
         hook_type: str,
         input_data: Optional[Any] = None,
         output_data: Optional[Any] = None,
-        violations: Optional[List[Dict[str, Any]]] = None,
+        violations: Optional[List[Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
         """
@@ -337,7 +337,7 @@ class PanoptesTracer:
             hook_type: Which hook triggered this (pre_call, post_call, moderation)
             input_data: Request/messages being evaluated
             output_data: Policy evaluation result
-            violations: List of violation dicts with name, severity, message
+            violations: List of PolicyViolation instances (or dicts with name, severity, message)
             metadata: Additional metadata
         """
         if not self._enabled or not self._tracer:
@@ -375,16 +375,16 @@ class PanoptesTracer:
             # Add violations as structured data
             if violations:
                 span.set_attribute("panoptes.policy.violation_count", len(violations))
-                violation_names = [v.get("name", "unknown") for v in violations]
+                violation_names = [getattr(v, "name", "unknown") for v in violations]
                 span.set_attribute("panoptes.policy.violations", self._safe_json(violation_names))
-                
+
                 # Add each violation as an event
                 for violation in violations:
                     span.add_event(
-                        f"violation:{violation.get('name', 'unknown')}",
+                        f"violation:{getattr(violation, 'name', 'unknown')}",
                         attributes={
-                            "severity": violation.get("severity", "unknown"),
-                            "message": violation.get("message", ""),
+                            "severity": getattr(violation, "severity", "unknown"),
+                            "message": getattr(violation, "message", ""),
                         }
                     )
             

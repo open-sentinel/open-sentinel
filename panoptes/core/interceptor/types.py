@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from panoptes.policy.protocols import PolicyViolation
+
 
 class CheckPhase(Enum):
     """When a checker runs in the request lifecycle."""
@@ -38,7 +40,7 @@ class CheckResult:
     decision: CheckDecision
     checker_name: str
     modified_data: Optional[Dict[str, Any]] = None  # For WARN passthrough
-    violations: List[Dict[str, Any]] = field(default_factory=list)
+    violations: List[PolicyViolation] = field(default_factory=list)
     message: Optional[str] = None
 
 

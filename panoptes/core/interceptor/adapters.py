@@ -119,22 +119,13 @@ class PolicyEngineChecker(Checker):
                 "intervention_context": result.metadata,
             }
 
-        # Build violations list
-        violations = [
-            {
-                "name": v.name,
-                "severity": v.severity,
-                "message": v.message,
-                "intervention": v.intervention,
-                "metadata": v.metadata,
-            }
-            for v in result.violations
-        ]
+        # Pass through violations directly as PolicyViolation instances
+        violations = list(result.violations)
 
         # Build message from violations
         message: Optional[str] = None
         if violations:
-            messages = [str(v["message"]) for v in violations if v.get("message")]
+            messages = [v.message for v in violations if v.message]
             if messages:
                 message = "; ".join(messages)
 
