@@ -37,7 +37,7 @@ This example demonstrates using NVIDIA NeMo Guardrails to filter input/output, s
 1. Start Panoptes with NeMo engine:
    ```bash
    export PANOPTES_POLICY__ENGINE__TYPE=nemo
-   export PANOPTES_POLICY__ENGINE__CONFIG__CONFIG_PATH=$(pwd)/examples/nemo_guardrails/config/
+   export PANOPTES_POLICY__ENGINE__CONFIG_PATH=$(pwd)/examples/nemo_guardrails/config/
    export GOOGLE_API_KEY=your_key_here
    panoptes serve
    ```
@@ -46,4 +46,22 @@ This example demonstrates using NVIDIA NeMo Guardrails to filter input/output, s
 2. Run the agent script:
    ```bash
    python examples/nemo_guardrails/nemo_agent.py
+   ```
+
+## 3. NLP Policy Compiler (Experimental)
+
+You can compile natural language policies into executable workflows using the CLI.
+
+### How to use:
+
+1. Compile a policy:
+   ```bash
+   panoptes compile "verify identity before processing refunds" -o refund_policy.yaml
+   ```
+
+2. Run the compiled workflow:
+   ```bash
+   export PANOPTES_POLICY__ENGINE__TYPE=fsm
+   export PANOPTES_POLICY__ENGINE__CONFIG_PATH=refund_policy.yaml
+   panoptes serve
    ```
