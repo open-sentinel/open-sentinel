@@ -384,36 +384,33 @@ class Interceptor:
         self, response: Any, modifications: Dict[str, Any]
     ) -> Any:
         """
-        Merge modifications into response data.
+        Apply modifications to response data.
 
-        Handles common LLM response structures.
+        Supports:
+        - Full response replacement via "response" key in modifications
+        - Dict-style merge when response is a plain dict
+
+        LLM response objects (e.g., OpenAI ChatCompletion) are typically
+        immutable and cannot be modified in place. For those cases,
+        use the "response" key to provide a complete replacement.
         """
-        # If modifications contain a full response replacement
+        # Full response replacement
         if "response" in modifications:
             return modifications["response"]
 
-        # If response is dict-like, merge directly
+        # Dict responses can be merged directly
         if isinstance(response, dict):
             result = dict(response)
             result.update(modifications)
             return result
 
-        # For LLM response objects, try to modify content
-        if hasattr(response, "choices") and response.choices:
-            # Create a modified copy if possible
-            # This handles OpenAI-style responses
-            if "content" in modifications:
-                # Try to modify the first choice's message content
-                first_choice = response.choices[0]
-                if hasattr(first_choice, "message") and first_choice.message:
-                    # Note: LLM response objects are often frozen
-                    # Modifications may need to be applied by the caller
-                    logger.debug(
-                        "Response modification requested but object may be immutable"
-                    )
-
-        # Return modifications dict for caller to handle
-        return modifications if modifications else response
+        # For immutable LLM response objects, we cannot modify in place.
+        logger.warning(
+            "Response modifications requested but response object is immutable "
+            f"(type={type(response).__name__}). Modifications ignored. "
+            "Use 'response' key for full replacement instead."
+        )
+        return response
 
     async def cleanup_session(self, session_id: str) -> None:
         """

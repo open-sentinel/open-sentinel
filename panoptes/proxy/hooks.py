@@ -188,7 +188,28 @@ class PanoptesCallback(CustomLogger):
 
         return self._policy_engine
 
+    async def shutdown(self) -> None:
+        """
+        Shutdown the callback, cleaning up interceptor and policy engine.
 
+        Cancels running async tasks, clears pending session state,
+        and shuts down the policy engine.
+        """
+        logger.info("PanoptesCallback shutting down...")
+
+        if self._interceptor is not None:
+            try:
+                await self._interceptor.shutdown()
+            except Exception as e:
+                logger.error(f"Error shutting down interceptor: {e}")
+
+        if self._policy_engine is not None:
+            try:
+                await self._policy_engine.shutdown()
+            except Exception as e:
+                logger.error(f"Error shutting down policy engine: {e}")
+
+        logger.info("PanoptesCallback shutdown complete")
 
     @property
     def tracer(self) -> Any:
@@ -297,7 +318,7 @@ class PanoptesCallback(CustomLogger):
                     message = "Request blocked by checker"
                     if fail_results:
                         for r in fail_results:
-                            violations.extend(v.get("name", "unknown") for v in r.violations)
+                            violations.extend(v.name for v in r.violations)
                         message = fail_results[0].message or message
 
                     logger.warning(
@@ -439,7 +460,7 @@ class PanoptesCallback(CustomLogger):
                     message = "Response blocked by checker"
                     if fail_results:
                         for r in fail_results:
-                            violations.extend(v.get("name", "unknown") for v in r.violations)
+                            violations.extend(v.name for v in r.violations)
                         message = fail_results[0].message or message
 
                     logger.warning(
@@ -455,22 +476,27 @@ class PanoptesCallback(CustomLogger):
 
                 # Apply modifications to response if any
                 if result.modified_data:
-                    # For response modifications, we may need to handle the response object
-                    # The interceptor returns modifications as a dict
                     if isinstance(result.modified_data, dict):
-                        # If it's a full response replacement
                         if "response" in result.modified_data:
                             response = result.modified_data["response"]
-                        # Otherwise log that modifications were requested
+                        elif isinstance(response, dict):
+                            response.update(result.modified_data)
                         else:
-                            logger.info(
-                                f"POST_CALL modifications requested for session {session_id}"
+                            logger.warning(
+                                f"POST_CALL modifications requested for session {session_id} "
+                                f"but response is immutable (type={type(response).__name__}). "
+                                "Modifications not applied."
                             )
 
             except WorkflowViolationError:
                 raise
             except Exception as e:
                 logger.error(f"Interceptor post_call failed: {e}")
+                if not self.settings.policy.fail_open:
+                    raise WorkflowViolationError(
+                        f"Interceptor evaluation failed: {e}",
+                        context={"session_id": session_id},
+                    )
 
         # Log LLM call via OTEL
         if self.tracer:
