@@ -12,11 +12,11 @@ This example demonstrates using the Finite State Machine (FSM) engine to enforce
 1. Start Panoptes with FSM engine (default if not specified, but good to be explicit):
    ```bash
    export PANOPTES_POLICY__ENGINE__TYPE=fsm
-   export PANOPTES_WORKFLOW_PATH=./examples/gemini_fsm/customer_support.yaml
+   export PANOPTES_POLICY__ENGINE__CONFIG_PATH=./examples/gemini_fsm/customer_support.yaml
    export GOOGLE_API_KEY=your_key_here
    panoptes serve
    ```
-
+   
 2. Run the agent script:
    ```bash
    python examples/gemini_fsm/gemini_agent.py
@@ -37,11 +37,11 @@ This example demonstrates using NVIDIA NeMo Guardrails to filter input/output, s
 1. Start Panoptes with NeMo engine:
    ```bash
    export PANOPTES_POLICY__ENGINE__TYPE=nemo
-   export PANOPTES_POLICY__ENGINE__CONFIG_PATH=$(pwd)/examples/nemo_guardrails/config/
+   export PANOPTES_POLICY__ENGINE__CONFIG_PATH=./examples/nemo_guardrails/config/
    export GOOGLE_API_KEY=your_key_here
    panoptes serve
    ```
-   *Note: Use absolute path for config path if possible, or ensure it resolves correctly.*
+   *Note: Ensure you run this from the project root.*
 
 2. Run the agent script:
    ```bash
