@@ -1,9 +1,9 @@
 """
-Tests for InterventionDecisionEngine.
+Tests for InterventionHandler.
 """
 
 import pytest
-from panoptes.policy.engines.llm.intervention import InterventionDecisionEngine
+from panoptes.policy.engines.llm.intervention import InterventionHandler
 from panoptes.policy.engines.llm.models import (
     SessionContext,
     ConstraintEvaluation,
@@ -44,8 +44,8 @@ def sample_workflow():
 
 @pytest.fixture
 def engine(sample_workflow):
-    """Create an InterventionDecisionEngine."""
-    return InterventionDecisionEngine(sample_workflow, cooldown_turns=2)
+    """Create an InterventionHandler."""
+    return InterventionHandler(sample_workflow, cooldown_turns=2)
 
 
 @pytest.fixture

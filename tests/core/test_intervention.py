@@ -11,7 +11,7 @@ from panoptes.core.intervention.strategies import (
     WorkflowViolationError,
     STRATEGY_REGISTRY,
 )
-from panoptes.policy.engines.fsm.injector import PromptInjector
+from panoptes.policy.engines.fsm.intervention import InterventionHandler
 
 
 class TestInterventionStrategies:
@@ -113,8 +113,8 @@ class TestInterventionStrategies:
         assert template == result  # Returns original if key missing
 
 
-class TestPromptInjector:
-    """Tests for PromptInjector."""
+class TestInterventionHandler:
+    """Tests for InterventionHandler."""
 
     @pytest.fixture
     def workflow(self, simple_workflow):
@@ -123,8 +123,8 @@ class TestPromptInjector:
 
     @pytest.fixture
     def injector(self, workflow):
-        """Create PromptInjector."""
-        return PromptInjector(workflow)
+        """Create InterventionHandler."""
+        return InterventionHandler(workflow)
 
     def test_inject_known_intervention(self, injector):
         """Test injecting a known intervention."""
