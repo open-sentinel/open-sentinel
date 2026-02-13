@@ -23,7 +23,7 @@ from panoptes.policy.engines.fsm.workflow.schema import WorkflowDefinition
 logger = logging.getLogger(__name__)
 
 
-class PromptInjector:
+class InterventionHandler:
     """
     Injects correction prompts into LLM requests.
 
@@ -32,10 +32,10 @@ class PromptInjector:
 
     Example:
         ```python
-        from panoptes.policy.engines.fsm import PromptInjector, WorkflowParser
+        from panoptes.policy.engines.fsm import InterventionHandler, WorkflowParser
 
         workflow = WorkflowParser.parse_file("workflow.yaml")
-        injector = PromptInjector(workflow)
+        injector = InterventionHandler(workflow)
 
         # Apply intervention to request data
         modified_data = injector.inject(
@@ -59,7 +59,7 @@ class PromptInjector:
         self._application_counts: Dict[str, Dict[str, int]] = {}
 
         logger.debug(
-            f"PromptInjector initialized with {len(self._intervention_configs)} interventions"
+            f"InterventionHandler initialized with {len(self._intervention_configs)} interventions"
         )
 
     def _load_configs(self) -> Dict[str, InterventionConfig]:

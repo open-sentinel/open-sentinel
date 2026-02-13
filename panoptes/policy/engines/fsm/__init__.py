@@ -7,7 +7,7 @@ as a PolicyEngine for use with the pluggable policy infrastructure.
 This module now contains all FSM-specific components:
 - Workflow: Schema, Parser, StateMachine, Constraints
 - Monitor: StateClassifier, WorkflowTracker
-- Intervention: PromptInjector, InterventionBuilder
+- Intervention: InterventionHandler, InterventionBuilder
 """
 
 from panoptes.policy.engines.fsm.engine import FSMPolicyEngine
@@ -47,8 +47,8 @@ from panoptes.policy.engines.fsm.tracker import (
 )
 
 # Intervention components
-from panoptes.policy.engines.fsm.injector import (
-    PromptInjector,
+from panoptes.policy.engines.fsm.intervention import (
+    InterventionHandler,
     InterventionBuilder,
 )
 
@@ -84,7 +84,7 @@ __all__ = [
     "TrackingResult",
     "WorkflowTracker",
     # Intervention
-    "PromptInjector",
+    "InterventionHandler",
     "InterventionBuilder",
     # Compiler
     "FSMCompiler",
