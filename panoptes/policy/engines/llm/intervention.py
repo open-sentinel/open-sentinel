@@ -25,14 +25,14 @@ from panoptes.policy.engines.fsm.workflow.schema import WorkflowDefinition
 logger = logging.getLogger(__name__)
 
 
-class InterventionDecisionEngine:
+class InterventionHandler:
     """Decides when and how to intervene based on violations and drift.
     
     Maps constraint violations and drift levels to intervention strategies,
     with cooldown to prevent intervention spam and self-correction detection.
     
     Example:
-        engine = InterventionDecisionEngine(workflow, cooldown_turns=2)
+        engine = InterventionHandler(workflow, cooldown_turns=2)
         intervention = engine.decide(session, violations, drift)
         if intervention:
             modified_request = engine.apply_intervention(

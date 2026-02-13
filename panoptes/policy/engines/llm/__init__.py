@@ -35,7 +35,7 @@ from panoptes.policy.engines.llm.llm_client import LLMClient, LLMClientError
 from panoptes.policy.engines.llm.state_classifier import LLMStateClassifier
 from panoptes.policy.engines.llm.drift_detector import DriftDetector
 from panoptes.policy.engines.llm.constraint_evaluator import LLMConstraintEvaluator
-from panoptes.policy.engines.llm.intervention import InterventionDecisionEngine
+from panoptes.policy.engines.llm.intervention import InterventionHandler
 
 __all__ = [
     # Main engine
@@ -55,5 +55,5 @@ __all__ = [
     "LLMStateClassifier",
     "DriftDetector",
     "LLMConstraintEvaluator",
-    "InterventionDecisionEngine",
+    "InterventionHandler",
 ]

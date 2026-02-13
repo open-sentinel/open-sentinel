@@ -27,7 +27,7 @@ from panoptes.policy.engines.llm.llm_client import LLMClient
 from panoptes.policy.engines.llm.state_classifier import LLMStateClassifier
 from panoptes.policy.engines.llm.drift_detector import DriftDetector
 from panoptes.policy.engines.llm.constraint_evaluator import LLMConstraintEvaluator
-from panoptes.policy.engines.llm.intervention import InterventionDecisionEngine
+from panoptes.policy.engines.llm.intervention import InterventionHandler
 from panoptes.policy.engines.fsm.workflow.schema import WorkflowDefinition
 
 logger = logging.getLogger(__name__)
@@ -66,7 +66,7 @@ class LLMPolicyEngine(StatefulPolicyEngine):
         self._state_classifier: Optional[LLMStateClassifier] = None
         self._drift_detector: Optional[DriftDetector] = None
         self._constraint_evaluator: Optional[LLMConstraintEvaluator] = None
-        self._intervention_engine: Optional[InterventionDecisionEngine] = None
+        self._intervention_engine: Optional[InterventionHandler] = None
         self._sessions: Dict[str, SessionContext] = {}
         self._initialized = False
 
@@ -144,7 +144,7 @@ class LLMPolicyEngine(StatefulPolicyEngine):
             max_constraints_per_batch=config.get("max_constraints_per_batch", 5),
         )
         
-        self._intervention_engine = InterventionDecisionEngine(
+        self._intervention_engine = InterventionHandler(
             self._workflow,
             cooldown_turns=config.get("cooldown_turns", 2),
         )
