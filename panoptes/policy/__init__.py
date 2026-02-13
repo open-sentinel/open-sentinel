@@ -66,10 +66,10 @@ except ImportError:
     FSMPolicyEngine = None  # type: ignore
 
 try:
-    from panoptes.policy.engines.nemo import NemoGuardrailsEngine
+    from panoptes.policy.engines.nemo import NemoGuardrailsPolicyEngine
 except ImportError:
     # NeMo is optional
-    NemoGuardrailsEngine = None  # type: ignore
+    NemoGuardrailsPolicyEngine = None  # type: ignore
 
 try:
     from panoptes.policy.engines.composite import CompositePolicyEngine
@@ -91,7 +91,7 @@ __all__ = [
     "register_engine",
     # Engines (may be None if not available)
     "FSMPolicyEngine",
-    "NemoGuardrailsEngine",
+    "NemoGuardrailsPolicyEngine",
     "CompositePolicyEngine",
     # Compiler protocol
     "PolicyCompiler",

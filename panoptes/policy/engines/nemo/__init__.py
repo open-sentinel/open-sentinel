@@ -7,6 +7,6 @@ input/output filtering, jailbreak detection, and content moderation.
 Requires: pip install nemoguardrails
 """
 
-from panoptes.policy.engines.nemo.engine import NemoGuardrailsEngine
+from panoptes.policy.engines.nemo.engine import NemoGuardrailsPolicyEngine
 
-__all__ = ["NemoGuardrailsEngine"]
+__all__ = ["NemoGuardrailsPolicyEngine"]

@@ -40,7 +40,7 @@ BLOCKED_MARKERS = [
 
 
 @register_engine("nemo")
-class NemoGuardrailsEngine(PolicyEngine):
+class NemoGuardrailsPolicyEngine(PolicyEngine):
     """
     NeMo Guardrails based policy engine.
 
@@ -59,7 +59,7 @@ class NemoGuardrailsEngine(PolicyEngine):
 
     Example:
         ```python
-        engine = NemoGuardrailsEngine()
+        engine = NemoGuardrailsPolicyEngine()
         await engine.initialize({
             "config_path": "./nemo_config/"
         })
@@ -146,7 +146,7 @@ class NemoGuardrailsEngine(PolicyEngine):
 
         self._initialized = True
         logger.info(
-            f"NemoGuardrailsEngine initialized with rails: {self._enabled_rails}"
+            f"NemoGuardrailsPolicyEngine initialized with rails: {self._enabled_rails}"
         )
 
     def _register_panoptes_actions(self):
@@ -218,7 +218,7 @@ class NemoGuardrailsEngine(PolicyEngine):
         """
         if not self._initialized:
             raise RuntimeError(
-                "NemoGuardrailsEngine not initialized. Call initialize() first."
+                "NemoGuardrailsPolicyEngine not initialized. Call initialize() first."
             )
 
         if "input" not in self._enabled_rails:
@@ -339,7 +339,7 @@ class NemoGuardrailsEngine(PolicyEngine):
         """
         if not self._initialized:
             raise RuntimeError(
-                "NemoGuardrailsEngine not initialized. Call initialize() first."
+                "NemoGuardrailsPolicyEngine not initialized. Call initialize() first."
             )
 
         if "output" not in self._enabled_rails:
@@ -500,4 +500,4 @@ class NemoGuardrailsEngine(PolicyEngine):
         self._config = None
         self._session_contexts.clear()
         self._initialized = False
-        logger.info("NemoGuardrailsEngine shutdown")
+        logger.info("NemoGuardrailsPolicyEngine shutdown")
