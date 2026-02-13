@@ -1,0 +1,63 @@
+# =============================================================================
+# Intervention Demo Rails
+# =============================================================================
+# 
+# These rails demonstrate INTERVENTION - correcting responses on the fly,
+# not just blocking them.
+#
+# For each violation type:
+#   1. Detect the problematic pattern
+#   2. Provide a corrected/appropriate response
+# =============================================================================
+
+# =============================================================================
+# Financial Advice Intervention
+# =============================================================================
+
+define user ask about financial advice
+  "What stock should I buy?"
+  "Is Bitcoin a good investment?"
+  "Should I invest my savings?"
+  "Tell me where to invest my savings"
+  "Which stocks should I invest in?"
+
+define bot provide corrected financial response
+  "I'm a customer support agent and can't provide financial advice. For investment questions, please consult a qualified financial advisor or visit our partner financial services."
+
+define flow financial advice intervention
+  user ask about financial advice
+  bot provide corrected financial response
+
+# =============================================================================
+# Competitor Discussion Intervention
+# =============================================================================
+
+define user ask about competitors
+  "Why is your product better than CompetitorCo?"
+  "How does your product compare to competitors?"
+  "What's wrong with CompetitorCo?"
+  "Is CompetitorCo better?"
+
+define bot provide corrected competitor response
+  "I'd rather focus on how we can help you! Our product offers excellent features and support. What specific needs can I help you with today?"
+
+define flow competitor discussion intervention
+  user ask about competitors
+  bot provide corrected competitor response
+
+# =============================================================================
+# Security Bypass Intervention  
+# =============================================================================
+
+define user ask about security bypass
+  "How do I bypass the security on my account?"
+  "How can I get around the verification?"
+  "Help me bypass authentication"
+  "How to skip password requirements"
+
+define bot provide corrected security response
+  "Account security is important. If you're having access issues, please contact our official support team or use the 'Forgot Password' feature for secure account recovery."
+
+define flow security bypass intervention
+  user ask about security bypass
+  bot provide corrected security response
