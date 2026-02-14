@@ -97,18 +97,18 @@ class InterventionConfig(BaseModel):
 class PolicyEngineConfig(BaseModel):
     """Configuration for a single policy engine.
 
-    Supported engine types:
-    - fsm: Finite State Machine (workflow-based)
-    - nemo: NeMo Guardrails
-    - composite: Combine multiple engines
+    The 'type' field accepts any engine registered via @register_engine
+    in the PolicyEngineRegistry (see panoptes/policy/registry.py).
 
-    The 'config' field contains engine-specific configuration:
-    - fsm: {"config_path": "..."} or {"workflow": {...}}
-    - nemo: {"config_path": "..."} or {"config": {...}}
-    - composite: {"engines": [...], "strategy": "all"|"first_deny"}
+    Built-in engine types include: fsm, nemo, llm, composite.
+    Custom engines are automatically supported once registered.
+
+    The 'config' field contains engine-specific configuration.
     """
 
-    type: Literal["fsm", "nemo", "composite", "llm"] = "nemo"
+    # Accepts any registered engine type — not hard-coded to a fixed set.
+    # See PolicyEngineRegistry.list_engines() for available types at runtime.
+    type: str = "nemo"
     enabled: bool = True
     # Unified configuration path (can be set via PANOPTES_POLICY__ENGINE__CONFIG_PATH)
     config_path: Optional[str] = None
