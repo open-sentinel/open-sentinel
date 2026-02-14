@@ -7,7 +7,6 @@ Key responsibilities:
 - Request/response transformation
 """
 
-import hashlib
 import uuid
 from typing import Optional, Tuple, Dict, Any
 
@@ -25,8 +24,7 @@ class SessionExtractor:
     1. Custom header: x-panoptes-session-id (or x-session-id)
     2. Metadata field: metadata.session_id
     3. OpenAI user field
-    4. Deterministic hash from conversation
-    5. Random UUID (last resort)
+    4. Random UUID
     """
 
     @staticmethod
@@ -69,42 +67,8 @@ class SessionExtractor:
         if thread_id := data.get("thread_id"):
             return str(thread_id)
 
-        # 5. Generate deterministic ID from messages
-        messages = data.get("messages", [])
-        if messages:
-            return SessionExtractor._hash_messages(messages)
-
-        # 6. Last resort: random UUID
-        return str(uuid.uuid4())[:16]
-
-    @staticmethod
-    def _hash_messages(messages: list) -> str:
-        """
-        Generate deterministic session ID from message content.
-
-        Uses the first user message as the session anchor.
-        This ensures the same conversation gets the same session ID.
-        """
-        # Find first user message
-        first_user_msg = None
-        for msg in messages:
-            if msg.get("role") == "user":
-                first_user_msg = msg.get("content", "")
-                break
-
-        if first_user_msg:
-            # Hash the content
-            content = str(first_user_msg)[:500]  # Use first 500 chars
-            hash_val = hashlib.sha256(content.encode()).hexdigest()
-            return f"conv_{hash_val[:12]}"
-
-        # No user message found, hash entire first message
-        if messages:
-            content = str(messages[0])[:500]
-            hash_val = hashlib.sha256(content.encode()).hexdigest()
-            return f"conv_{hash_val[:12]}"
-
-        return str(uuid.uuid4())[:16]
+        # 5. Generate random UUID
+        return str(uuid.uuid4())
 
 
 class WorkflowContextExtractor:
