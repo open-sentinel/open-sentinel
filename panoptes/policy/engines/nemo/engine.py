@@ -107,7 +107,7 @@ class NemoGuardrailsPolicyEngine(PolicyEngine):
         except ImportError:
             raise ImportError(
                 "NeMo Guardrails not installed. "
-                "Install with: pip install 'panoptes-sdk[nemo]' "
+                "Install with: pip install 'panoptes[nemo]' "
                 "or: pip install nemoguardrails"
             )
 

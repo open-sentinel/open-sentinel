@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "panoptes-sdk"
+name = "panoptes"
 version = "0.1.0"
 description = "Reliability layer for AI agents - monitors workflow adherence and intervenes when agents deviate"
 readme = "README.md"
@@ -67,9 +67,9 @@ all = [
 panoptes = "panoptes.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/panoptes/panoptes-sdk"
-Documentation = "https://github.com/panoptes/panoptes-sdk#readme"
-Repository = "https://github.com/panoptes/panoptes-sdk"
+Homepage = "https://github.com/panoptes-ai/panoptes"
+Documentation = "https://github.com/panoptes-ai/panoptes#readme"
+Repository = "https://github.com/panoptes-ai/panoptes"
 
 [tool.hatch.build.targets.wheel]
 packages = ["panoptes"]

@@ -29,7 +29,7 @@ Panoptes is a **transparent proxy** that sits between your application and LLM p
 ## Installation
 
 ```bash
-pip install panoptes-sdk
+pip install panoptes
 ```
 
 For development:
