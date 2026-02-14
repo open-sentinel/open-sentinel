@@ -1,0 +1,283 @@
+"""Tests for fail-open hardening of Panoptes proxy hooks."""
+
+import asyncio
+import pytest
+from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import datetime
+
+from panoptes.core.intervention.strategies import WorkflowViolationError
+from panoptes.proxy.hooks import safe_hook, _fail_open_counter, get_fail_open_counts
+
+
+# ---------------------------------------------------------------------------
+# safe_hook unit tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def reset_fail_open_counter():
+    """Reset the module-level counter between tests."""
+    _fail_open_counter.clear()
+    yield
+    _fail_open_counter.clear()
+
+
+@pytest.mark.asyncio
+async def test_safe_hook_success():
+    """Normal execution passes through unchanged."""
+
+    async def good_hook(x, y):
+        return x + y
+
+    result = await safe_hook(good_hook, 3, 4, timeout=1.0, hook_name="test_good")
+    assert result == 7
+    assert get_fail_open_counts() == {}
+
+
+@pytest.mark.asyncio
+async def test_safe_hook_timeout_returns_fallback():
+    """A slow hook is cancelled and the fallback is returned."""
+
+    async def slow_hook():
+        await asyncio.sleep(10)
+        return "should not reach"
+
+    result = await safe_hook(
+        slow_hook, timeout=0.05, fallback="fallback_val", hook_name="test_slow"
+    )
+    assert result == "fallback_val"
+    assert get_fail_open_counts()["test_slow"] == 1
+
+
+@pytest.mark.asyncio
+async def test_safe_hook_exception_returns_fallback():
+    """A crashing hook returns the fallback value."""
+
+    async def bad_hook():
+        raise RuntimeError("boom")
+
+    result = await safe_hook(
+        bad_hook, timeout=1.0, fallback={"original": True}, hook_name="test_crash"
+    )
+    assert result == {"original": True}
+    assert get_fail_open_counts()["test_crash"] == 1
+
+
+@pytest.mark.asyncio
+async def test_safe_hook_propagates_workflow_violation():
+    """WorkflowViolationError is NOT swallowed -- intentional blocks must propagate."""
+
+    async def blocking_hook():
+        raise WorkflowViolationError("policy block", context={"reason": "test"})
+
+    with pytest.raises(WorkflowViolationError, match="policy block"):
+        await safe_hook(
+            blocking_hook, timeout=1.0, fallback=None, hook_name="test_block"
+        )
+    # Counter should NOT be incremented for intentional blocks
+    assert get_fail_open_counts() == {}
+
+
+@pytest.mark.asyncio
+async def test_safe_hook_counter_increments_on_repeated_failures():
+    """The fail-open counter correctly tracks multiple failures for the same hook."""
+
+    async def flaky_hook():
+        raise ValueError("flaky")
+
+    for i in range(5):
+        await safe_hook(flaky_hook, timeout=1.0, fallback=None, hook_name="flaky")
+
+    assert get_fail_open_counts()["flaky"] == 5
+
+
+@pytest.mark.asyncio
+async def test_safe_hook_passes_kwargs():
+    """Keyword arguments are forwarded to the hook function."""
+
+    async def kw_hook(*, greeting, name):
+        return f"{greeting}, {name}!"
+
+    result = await safe_hook(
+        kw_hook, timeout=1.0, hook_name="kw_test", greeting="Hello", name="World"
+    )
+    assert result == "Hello, World!"
+
+
+# ---------------------------------------------------------------------------
+# Integration tests: PanoptesCallback hooks with fail-open
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def mock_settings():
+    """Create mock PanoptesSettings for testing."""
+    settings = MagicMock()
+    settings.policy.fail_open = True
+    settings.policy.hook_timeout_seconds = 0.1  # Aggressive timeout for tests
+    settings.otel.enabled = False
+    settings.debug = False
+    return settings
+
+
+@pytest.fixture
+def callback(mock_settings):
+    """Create PanoptesCallback with mocked settings."""
+    with patch("panoptes.proxy.hooks.PanoptesSettings", return_value=mock_settings):
+        from panoptes.proxy.hooks import PanoptesCallback
+
+        cb = PanoptesCallback(settings=mock_settings)
+        # Ensure tracer is None
+        cb._tracer = None
+        return cb
+
+
+@pytest.fixture
+def mock_api_key():
+    return MagicMock()
+
+
+@pytest.fixture
+def mock_cache():
+    return MagicMock()
+
+
+@pytest.mark.asyncio
+async def test_pre_call_hook_timeout_returns_original_data(
+    callback, mock_api_key, mock_cache
+):
+    """When interceptor is slow, pre_call_hook returns original data unchanged."""
+    original_data = {
+        "messages": [{"role": "user", "content": "hello"}],
+        "model": "gpt-4",
+    }
+
+    async def slow_pre_call(*a, **kw):
+        await asyncio.sleep(10)
+
+    # Mock _get_interceptor to return a slow interceptor
+    slow_interceptor = AsyncMock()
+    slow_interceptor.run_pre_call = slow_pre_call
+    callback._get_interceptor = AsyncMock(return_value=slow_interceptor)
+    callback._interceptor_initialized = True
+
+    result = await callback.async_pre_call_hook(
+        mock_api_key, mock_cache, original_data, "completion"
+    )
+    # Should return original data unchanged (fail-open)
+    assert result is original_data
+
+
+@pytest.mark.asyncio
+async def test_post_call_hook_timeout_returns_original_response(
+    callback, mock_api_key
+):
+    """When interceptor is slow, post_call_success_hook returns original response."""
+    original_response = MagicMock()
+    original_response.choices = []
+    data = {"messages": [{"role": "user", "content": "hello"}]}
+
+    async def slow_post_call(*a, **kw):
+        await asyncio.sleep(10)
+
+    slow_interceptor = AsyncMock()
+    slow_interceptor.run_post_call = slow_post_call
+    callback._get_interceptor = AsyncMock(return_value=slow_interceptor)
+    callback._get_policy_engine = AsyncMock(return_value=None)
+    callback._interceptor_initialized = True
+
+    result = await callback.async_post_call_success_hook(
+        data, mock_api_key, original_response
+    )
+    # Should return original response unchanged (fail-open)
+    assert result is original_response
+
+
+@pytest.mark.asyncio
+async def test_pre_call_hook_exception_returns_original_data(
+    callback, mock_api_key, mock_cache
+):
+    """When interceptor crashes, pre_call_hook returns original data unchanged."""
+    original_data = {"messages": [{"role": "user", "content": "hello"}]}
+
+    crashing_interceptor = AsyncMock()
+    crashing_interceptor.run_pre_call = AsyncMock(
+        side_effect=RuntimeError("interceptor broke")
+    )
+    callback._get_interceptor = AsyncMock(return_value=crashing_interceptor)
+
+    result = await callback.async_pre_call_hook(
+        mock_api_key, mock_cache, original_data, "completion"
+    )
+    assert result is original_data
+
+
+@pytest.mark.asyncio
+async def test_pre_call_hook_propagates_violation(
+    callback, mock_api_key, mock_cache
+):
+    """WorkflowViolationError from interceptor still propagates through safe_hook."""
+    data = {"messages": [{"role": "user", "content": "hello"}]}
+
+    async def blocking_impl(*a, **kw):
+        raise WorkflowViolationError("blocked", context={"session_id": "test"})
+
+    callback._pre_call_impl = blocking_impl
+
+    with pytest.raises(WorkflowViolationError, match="blocked"):
+        await callback.async_pre_call_hook(
+            mock_api_key, mock_cache, data, "completion"
+        )
+
+
+@pytest.mark.asyncio
+async def test_post_call_failure_hook_exception_is_swallowed(
+    callback, mock_api_key
+):
+    """Exceptions in post_call_failure_hook are swallowed (fail-open)."""
+    data = {"messages": [{"role": "user", "content": "hello"}]}
+
+    async def crashing_impl(*a, **kw):
+        raise RuntimeError("failure hook crashed")
+
+    callback._post_call_failure_impl = crashing_impl
+
+    # Should NOT raise
+    result = await callback.async_post_call_failure_hook(
+        data, mock_api_key, RuntimeError("original error")
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_log_success_event_exception_is_swallowed(callback):
+    """Exceptions in async_log_success_event are swallowed (fail-open)."""
+
+    async def crashing_impl(*a, **kw):
+        raise RuntimeError("log hook crashed")
+
+    callback._log_success_impl = crashing_impl
+    now = datetime.now()
+
+    # Should NOT raise
+    result = await callback.async_log_success_event(
+        {"messages": []}, MagicMock(), now, now
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_log_failure_event_exception_is_swallowed(callback):
+    """Exceptions in async_log_failure_event are swallowed (fail-open)."""
+
+    async def crashing_impl(*a, **kw):
+        raise RuntimeError("log failure hook crashed")
+
+    callback._log_failure_impl = crashing_impl
+    now = datetime.now()
+
+    # Should NOT raise
+    result = await callback.async_log_failure_event(
+        {"messages": []}, MagicMock(), now, now
+    )
+    assert result is None
