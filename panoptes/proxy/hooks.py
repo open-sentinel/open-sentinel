@@ -17,16 +17,19 @@ This module implements the core hook system that intercepts LLM calls:
    - Starts async checkers in background
    - Completes tracing
 
-The hook system uses the Interceptor for clean checker orchestration:
-- Sync checkers block and can modify request/response
-- Async checkers run in background, results applied next request
+All hooks are wrapped with fail-open semantics via `safe_hook()`:
+- Timeout enforcement (configurable via hook_timeout_seconds)
+- Exception catch-all returns fallback (pass-through unchanged)
+- WorkflowViolationError (intentional blocks) always propagates
+- Failure counter for monitoring
 
 Based on LiteLLM's CustomLogger API:
 https://docs.litellm.ai/docs/observability/custom_callback
 """
 
+import asyncio
 import logging
-from typing import Optional, Union, Dict, Any, Literal, List
+from typing import Optional, Union, Dict, Any, Literal, List, Callable, TypeVar
 from datetime import datetime
 
 from litellm.integrations.custom_logger import CustomLogger
@@ -46,6 +49,61 @@ from panoptes.core.interceptor import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Fail-open infrastructure
+# ---------------------------------------------------------------------------
+
+# Module-level counter tracking fail-open activations per hook.
+# Useful for monitoring/alerting without requiring an external metrics library.
+_fail_open_counter: Dict[str, int] = {}
+
+
+def get_fail_open_counts() -> Dict[str, int]:
+    """Return a snapshot of fail-open activation counts per hook."""
+    return dict(_fail_open_counter)
+
+
+async def safe_hook(
+    hook_fn: Callable,
+    *args: Any,
+    timeout: float = 5.0,
+    fallback: Any = None,
+    hook_name: str = "unknown",
+    **kwargs: Any,
+) -> Any:
+    """
+    Execute a hook with timeout and fail-open semantics.
+
+    If the hook raises ``WorkflowViolationError`` it is intentional (a policy
+    block) and is re-raised.  Every other exception — including
+    ``asyncio.TimeoutError`` — is caught, logged, counted, and the *fallback*
+    value is returned so the agent's request passes through unchanged.
+
+    Args:
+        hook_fn:   Async callable to execute.
+        timeout:   Maximum seconds before the hook is cancelled.
+        fallback:  Value to return on failure/timeout.
+        hook_name: Human-readable name for logging and metrics.
+    """
+    try:
+        return await asyncio.wait_for(hook_fn(*args, **kwargs), timeout=timeout)
+    except WorkflowViolationError:
+        raise  # Intentional policy blocks must propagate
+    except asyncio.TimeoutError:
+        _fail_open_counter[hook_name] = _fail_open_counter.get(hook_name, 0) + 1
+        logger.error(
+            f"Panoptes hook '{hook_name}' timed out after {timeout}s "
+            f"(fail-open, count={_fail_open_counter[hook_name]})"
+        )
+        return fallback
+    except Exception as e:
+        _fail_open_counter[hook_name] = _fail_open_counter.get(hook_name, 0) + 1
+        logger.error(
+            f"Panoptes hook '{hook_name}' failed (fail-open, "
+            f"count={_fail_open_counter[hook_name]}): {e}"
+        )
+        return fallback
 
 # Type alias for call types
 CallType = Literal[
@@ -245,113 +303,104 @@ class PanoptesCallback(CustomLogger):
         call_type: CallType,
     ) -> Optional[Union[Exception, str, dict]]:
         """
-        Execute BEFORE LLM call.
+        Execute BEFORE LLM call.  Wrapped with fail-open + timeout.
 
-        This hook:
-        1. Runs interceptor.run_pre_call() which:
-           - Applies pending async results from previous call
-           - Runs sync PRE_CALL checkers
-        2. If FAIL, raises WorkflowViolationError
-        3. If WARN with modified_data, applies modifications
-        4. Logs via OTEL tracer
-
-        Args:
-            user_api_key_dict: User API key information
-            cache: LiteLLM cache instance
-            data: Request data (messages, model, etc.)
-            call_type: Type of LLM call
-
-        Returns:
-            Modified data dict, or None to proceed unchanged
+        Returns modified data dict, or original data on failure.
+        WorkflowViolationError (intentional blocks) still propagates.
         """
+        return await safe_hook(
+            self._pre_call_impl,
+            user_api_key_dict, cache, data, call_type,
+            timeout=self.settings.policy.hook_timeout_seconds,
+            fallback=data,
+            hook_name="async_pre_call_hook",
+        )
+
+    async def _pre_call_impl(
+        self,
+        user_api_key_dict: UserAPIKeyAuth,
+        cache: DualCache,
+        data: dict,
+        call_type: CallType,
+    ) -> Optional[Union[Exception, str, dict]]:
+        """Inner implementation for async_pre_call_hook."""
         session_id = self._extract_session_id(data)
 
         logger.debug(f"pre_call_hook: session={session_id}, call_type={call_type}")
 
         interceptor = await self._get_interceptor()
         if interceptor:
-            try:
-                # Wrap in a trace block
+            # Wrap in a trace block
+            if self.tracer:
+                cm = self.tracer.trace_block(
+                    "interceptor_pre_call",
+                    session_id,
+                    attributes={"hook": "pre_call"},
+                    input_data=data.get("messages", []),
+                    metadata={
+                        "call_type": call_type,
+                        "model": data.get("model", "unknown"),
+                    },
+                )
+            else:
+                from contextlib import nullcontext
+
+                cm = nullcontext()
+
+            with cm as span:
+                result = await interceptor.run_pre_call(
+                    session_id=session_id,
+                    request_data=data,
+                    user_request_id=str(id(data)),
+                )
+
+                # Set output on span
+                if span is not None:
+                    import json
+
+                    output_data = {
+                        "allowed": result.allowed,
+                        "num_results": len(result.results),
+                        "has_modifications": result.modified_data is not None,
+                    }
+                    output_json = json.dumps(output_data, default=str)
+                    span.set_attribute("output.value", output_json)
+                    span.set_attribute("langfuse.span.output", output_json)
+
+            # Handle result
+            if not result.allowed:
+                # Find the failing result for context
+                fail_results = [
+                    r for r in result.results if r.decision == CheckDecision.FAIL
+                ]
+                violations = []
+                message = "Request blocked by checker"
+                if fail_results:
+                    for r in fail_results:
+                        violations.extend(v.name for v in r.violations)
+                    message = fail_results[0].message or message
+
+                logger.warning(
+                    f"Request blocked for session {session_id}: {violations}"
+                )
+                raise WorkflowViolationError(
+                    message,
+                    context={
+                        "session_id": session_id,
+                        "violations": violations,
+                    },
+                )
+
+            # Apply modifications if any
+            if result.modified_data:
+                data = result.modified_data
+
+                # Log intervention via OTEL
                 if self.tracer:
-                    cm = self.tracer.trace_block(
-                        "interceptor_pre_call",
-                        session_id,
-                        attributes={"hook": "pre_call"},
-                        input_data=data.get("messages", []),
-                        metadata={
-                            "call_type": call_type,
-                            "model": data.get("model", "unknown"),
-                        },
-                    )
-                else:
-                    from contextlib import nullcontext
-
-                    cm = nullcontext()
-
-                with cm as span:
-                    result = await interceptor.run_pre_call(
+                    self.tracer.log_intervention(
                         session_id=session_id,
-                        request_data=data,
-                        user_request_id=str(id(data)),
-                    )
-
-                    # Set output on span
-                    if span is not None:
-                        import json
-
-                        output_data = {
-                            "allowed": result.allowed,
-                            "num_results": len(result.results),
-                            "has_modifications": result.modified_data is not None,
-                        }
-                        output_json = json.dumps(output_data, default=str)
-                        span.set_attribute("output.value", output_json)
-                        span.set_attribute("langfuse.span.output", output_json)
-
-                # Handle result
-                if not result.allowed:
-                    # Find the failing result for context
-                    fail_results = [
-                        r for r in result.results if r.decision == CheckDecision.FAIL
-                    ]
-                    violations = []
-                    message = "Request blocked by checker"
-                    if fail_results:
-                        for r in fail_results:
-                            violations.extend(v.name for v in r.violations)
-                        message = fail_results[0].message or message
-
-                    logger.warning(
-                        f"Request blocked for session {session_id}: {violations}"
-                    )
-                    raise WorkflowViolationError(
-                        message,
-                        context={
-                            "session_id": session_id,
-                            "violations": violations,
-                        },
-                    )
-
-                # Apply modifications if any
-                if result.modified_data:
-                    data = result.modified_data
-
-                    # Log intervention via OTEL
-                    if self.tracer:
-                        self.tracer.log_intervention(
-                            session_id=session_id,
-                            intervention_name="pre_call_modification",
-                            context={"num_checkers": len(result.results)},
-                        )
-
-            except WorkflowViolationError:
-                raise
-            except Exception as e:
-                logger.error(f"Interceptor pre_call failed: {e}")
-                if not self.settings.policy.fail_open:
-                    raise WorkflowViolationError(
-                        f"Interceptor evaluation failed: {e}",
-                        context={"session_id": session_id},
+                        intervention_name="pre_call_modification",
+                        context={"num_checkers": len(result.results)},
                     )
 
         return data
@@ -362,7 +411,22 @@ class PanoptesCallback(CustomLogger):
         user_api_key_dict: UserAPIKeyAuth,
         call_type: CallType,
     ) -> None:
-        """Execute IN PARALLEL with LLM call. Currently unused."""
+        """Execute IN PARALLEL with LLM call. Currently unused. Wrapped fail-open."""
+        return await safe_hook(
+            self._moderation_impl,
+            data, user_api_key_dict, call_type,
+            timeout=self.settings.policy.hook_timeout_seconds,
+            fallback=None,
+            hook_name="async_moderation_hook",
+        )
+
+    async def _moderation_impl(
+        self,
+        data: dict,
+        user_api_key_dict: UserAPIKeyAuth,
+        call_type: CallType,
+    ) -> None:
+        """Inner implementation for async_moderation_hook."""
         pass
 
     async def async_post_call_success_hook(
@@ -372,24 +436,26 @@ class PanoptesCallback(CustomLogger):
         response: Any,
     ) -> Any:
         """
-        Execute AFTER successful LLM response.
+        Execute AFTER successful LLM response.  Wrapped with fail-open + timeout.
 
-        This hook:
-        1. Runs interceptor.run_post_call() which:
-           - Runs sync POST_CALL checkers (can modify response on WARN)
-           - Starts async checkers in background
-        2. If FAIL, raises WorkflowViolationError
-        3. If WARN with modified_data, applies modifications to response
-        4. Logs via OTEL tracer
-
-        Args:
-            data: Original request data
-            user_api_key_dict: User API key information
-            response: LLM response
-
-        Returns:
-            Response (potentially modified)
+        Returns response (potentially modified), or original response on failure.
+        WorkflowViolationError (intentional blocks) still propagates.
         """
+        return await safe_hook(
+            self._post_call_success_impl,
+            data, user_api_key_dict, response,
+            timeout=self.settings.policy.hook_timeout_seconds,
+            fallback=response,
+            hook_name="async_post_call_success_hook",
+        )
+
+    async def _post_call_success_impl(
+        self,
+        data: dict,
+        user_api_key_dict: UserAPIKeyAuth,
+        response: Any,
+    ) -> Any:
+        """Inner implementation for async_post_call_success_hook."""
         session_id = self._extract_session_id(data)
 
         interceptor = await self._get_interceptor()
@@ -402,101 +468,90 @@ class PanoptesCallback(CustomLogger):
         )
 
         if interceptor:
-            try:
-                # Extract response content for tracing
-                response_content_for_trace = None
-                if hasattr(response, "choices") and response.choices:
-                    first_choice = response.choices[0]
-                    if hasattr(first_choice, "message") and first_choice.message:
-                        response_content_for_trace = first_choice.message.content
-                    elif hasattr(first_choice, "text"):
-                        response_content_for_trace = first_choice.text
+            # Extract response content for tracing
+            response_content_for_trace = None
+            if hasattr(response, "choices") and response.choices:
+                first_choice = response.choices[0]
+                if hasattr(first_choice, "message") and first_choice.message:
+                    response_content_for_trace = first_choice.message.content
+                elif hasattr(first_choice, "text"):
+                    response_content_for_trace = first_choice.text
 
-                if self.tracer:
-                    cm = self.tracer.trace_block(
-                        "interceptor_post_call",
-                        session_id,
-                        attributes={"hook": "post_call_success"},
-                        input_data={
-                            "response": response_content_for_trace,
-                            "messages": data.get("messages", []),
-                        },
-                        metadata={
-                            "model": data.get("model", "unknown"),
-                        },
-                    )
-                else:
-                    from contextlib import nullcontext
+            if self.tracer:
+                cm = self.tracer.trace_block(
+                    "interceptor_post_call",
+                    session_id,
+                    attributes={"hook": "post_call_success"},
+                    input_data={
+                        "response": response_content_for_trace,
+                        "messages": data.get("messages", []),
+                    },
+                    metadata={
+                        "model": data.get("model", "unknown"),
+                    },
+                )
+            else:
+                from contextlib import nullcontext
 
-                    cm = nullcontext()
+                cm = nullcontext()
 
-                with cm as span:
-                    result = await interceptor.run_post_call(
-                        session_id=session_id,
-                        request_data=data,
-                        response_data=response,
-                        user_request_id=str(id(data)),
-                    )
+            with cm as span:
+                result = await interceptor.run_post_call(
+                    session_id=session_id,
+                    request_data=data,
+                    response_data=response,
+                    user_request_id=str(id(data)),
+                )
 
-                    # Set output on span
-                    if span is not None:
-                        import json
+                # Set output on span
+                if span is not None:
+                    import json
 
-                        output_data = {
-                            "allowed": result.allowed,
-                            "num_results": len(result.results),
-                            "has_modifications": result.modified_data is not None,
-                        }
-                        output_json = json.dumps(output_data, default=str)
-                        span.set_attribute("output.value", output_json)
-                        span.set_attribute("langfuse.span.output", output_json)
+                    output_data = {
+                        "allowed": result.allowed,
+                        "num_results": len(result.results),
+                        "has_modifications": result.modified_data is not None,
+                    }
+                    output_json = json.dumps(output_data, default=str)
+                    span.set_attribute("output.value", output_json)
+                    span.set_attribute("langfuse.span.output", output_json)
 
-                # Handle result
-                if not result.allowed:
-                    fail_results = [
-                        r for r in result.results if r.decision == CheckDecision.FAIL
-                    ]
-                    violations = []
-                    message = "Response blocked by checker"
-                    if fail_results:
-                        for r in fail_results:
-                            violations.extend(v.name for v in r.violations)
-                        message = fail_results[0].message or message
+            # Handle result
+            if not result.allowed:
+                fail_results = [
+                    r for r in result.results if r.decision == CheckDecision.FAIL
+                ]
+                violations = []
+                message = "Response blocked by checker"
+                if fail_results:
+                    for r in fail_results:
+                        violations.extend(v.name for v in r.violations)
+                    message = fail_results[0].message or message
 
-                    logger.warning(
-                        f"Response blocked for session {session_id}: {violations}"
-                    )
-                    raise WorkflowViolationError(
-                        message,
-                        context={
-                            "session_id": session_id,
-                            "violations": violations,
-                        },
-                    )
+                logger.warning(
+                    f"Response blocked for session {session_id}: {violations}"
+                )
+                raise WorkflowViolationError(
+                    message,
+                    context={
+                        "session_id": session_id,
+                        "violations": violations,
+                    },
+                )
 
-                # Apply modifications to response if any
-                if result.modified_data:
-                    if isinstance(result.modified_data, dict):
-                        if "response" in result.modified_data:
-                            response = result.modified_data["response"]
-                        elif isinstance(response, dict):
-                            response.update(result.modified_data)
-                        else:
-                            logger.warning(
-                                f"POST_CALL modifications requested for session {session_id} "
-                                f"but response is immutable (type={type(response).__name__}). "
-                                "Modifications not applied."
-                            )
-
-            except WorkflowViolationError:
-                raise
-            except Exception as e:
-                logger.error(f"Interceptor post_call failed: {e}")
-                if not self.settings.policy.fail_open:
-                    raise WorkflowViolationError(
-                        f"Interceptor evaluation failed: {e}",
-                        context={"session_id": session_id},
-                    )
+            # Apply modifications to response if any
+            if result.modified_data:
+                if isinstance(result.modified_data, dict):
+                    if "response" in result.modified_data:
+                        response = result.modified_data["response"]
+                    elif isinstance(response, dict):
+                        response.update(result.modified_data)
+                    else:
+                        logger.warning(
+                            f"POST_CALL modifications requested for session {session_id} "
+                            f"but response is immutable (type={type(response).__name__}). "
+                            "Modifications not applied."
+                        )
 
         # Log LLM call via OTEL
         if self.tracer:
@@ -538,11 +593,24 @@ class PanoptesCallback(CustomLogger):
         original_exception: Exception,
         **kwargs: Any,
     ) -> None:
-        """
-        Execute AFTER failed LLM call.
+        """Execute AFTER failed LLM call.  Wrapped fail-open."""
+        return await safe_hook(
+            self._post_call_failure_impl,
+            request_data, user_api_key_dict, original_exception,
+            timeout=self.settings.policy.hook_timeout_seconds,
+            fallback=None,
+            hook_name="async_post_call_failure_hook",
+            **kwargs,
+        )
 
-        Logs the failure.
-        """
+    async def _post_call_failure_impl(
+        self,
+        request_data: dict,
+        user_api_key_dict: UserAPIKeyAuth,
+        original_exception: Exception,
+        **kwargs: Any,
+    ) -> None:
+        """Inner implementation for async_post_call_failure_hook."""
         session_id = self._extract_session_id(request_data)
 
         logger.warning(f"LLM call failed for session {session_id}: {original_exception}")
@@ -596,11 +664,23 @@ class PanoptesCallback(CustomLogger):
         start_time: datetime,
         end_time: datetime,
     ) -> None:
-        """
-        Called AFTER successful LLM response (library/router mode).
+        """Called AFTER successful LLM response (library/router mode). Wrapped fail-open."""
+        return await safe_hook(
+            self._log_success_impl,
+            kwargs, response_obj, start_time, end_time,
+            timeout=self.settings.policy.hook_timeout_seconds,
+            fallback=None,
+            hook_name="async_log_success_event",
+        )
 
-        Uses interceptor for evaluation, falls back to legacy tracker.
-        """
+    async def _log_success_impl(
+        self,
+        kwargs: dict,
+        response_obj: Any,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> None:
+        """Inner implementation for async_log_success_event."""
         session_id = self._extract_session_id(kwargs)
 
         interceptor = await self._get_interceptor()
@@ -654,9 +734,23 @@ class PanoptesCallback(CustomLogger):
         start_time: datetime,
         end_time: datetime,
     ) -> None:
-        """
-        Called AFTER failed LLM call (library/router mode).
-        """
+        """Called AFTER failed LLM call (library/router mode). Wrapped fail-open."""
+        return await safe_hook(
+            self._log_failure_impl,
+            kwargs, response_obj, start_time, end_time,
+            timeout=self.settings.policy.hook_timeout_seconds,
+            fallback=None,
+            hook_name="async_log_failure_event",
+        )
+
+    async def _log_failure_impl(
+        self,
+        kwargs: dict,
+        response_obj: Any,
+        start_time: datetime,
+        end_time: datetime,
+    ) -> None:
+        """Inner implementation for async_log_failure_event."""
         session_id = self._extract_session_id(kwargs)
 
         logger.warning(f"LLM call failed for session {session_id}: {response_obj}")

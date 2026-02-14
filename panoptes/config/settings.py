@@ -168,6 +168,10 @@ class PolicyConfig(BaseModel):
     # False = deny request on error (fail closed)
     fail_open: bool = True
 
+    # Maximum time (seconds) any hook is allowed to run before fail-open timeout.
+    # Set generously since interceptor checks may involve LLM calls.
+    hook_timeout_seconds: float = 30.0
+
 
 class PanoptesSettings(BaseSettings):
     """
