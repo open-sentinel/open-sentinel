@@ -2,13 +2,52 @@
 Middleware for extracting and propagating context through Panoptes.
 
 Key responsibilities:
-- Session ID extraction from various sources
+- Session ID extraction from various sources (headers, metadata, body fields)
 - Workflow context extraction
 - Request/response transformation
+
+Session extraction is designed to work with:
+- Direct HTTP headers (when called from FastAPI middleware)
+- LiteLLM proxy callbacks (where HTTP headers are embedded in
+  ``data["proxy_server_request"]["headers"]`` and ``data["metadata"]["headers"]``)
+- OpenClaw and other agent frameworks that pass custom headers or metadata
 """
 
+import logging
 import uuid
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Dict, Any, List
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Header names checked for session identity, in priority order.
+# Case-insensitive lookup is performed by _get_header().
+# ---------------------------------------------------------------------------
+_SESSION_HEADER_NAMES: List[str] = [
+    "x-panoptes-session-id",
+    "x-session-id",
+]
+
+
+def _get_header(
+    headers: Dict[str, str],
+    name: str,
+) -> Optional[str]:
+    """Case-insensitive header lookup.
+
+    HTTP headers are case-insensitive per RFC 7230.  LiteLLM sometimes
+    stores them lower-cased, sometimes not — this helper normalises.
+    """
+    # Fast path: exact match (common when LiteLLM already lower-cased them)
+    val = headers.get(name)
+    if val:
+        return val
+    # Slow path: case-insensitive scan
+    name_lower = name.lower()
+    for k, v in headers.items():
+        if k.lower() == name_lower and v:
+            return v
+    return None
 
 
 class SessionExtractor:
@@ -18,14 +57,63 @@ class SessionExtractor:
     Session IDs are used to:
     - Group related LLM calls together
     - Maintain workflow state across calls
-    - Correlate traces in Langfuse
+    - Correlate traces in observability backends (Langfuse, Jaeger, etc.)
 
-    Extraction priority:
-    1. Custom header: x-panoptes-session-id (or x-session-id)
-    2. Metadata field: metadata.session_id
-    3. OpenAI user field
-    4. Random UUID
+    Extraction priority (first match wins):
+    1. Explicit ``headers`` parameter (direct HTTP header access)
+    2. HTTP headers embedded by LiteLLM in the data dict:
+       a. ``data["proxy_server_request"]["headers"]``
+       b. ``data["metadata"]["headers"]``
+    3. ``metadata.session_id`` / ``metadata.panoptes_session_id``
+    4. ``metadata.run_id`` (LangChain convention)
+    5. ``user`` field (OpenAI convention)
+    6. ``thread_id`` field (OpenAI Assistants convention)
+    7. Random UUID (last resort — logged as warning)
     """
+
+    @staticmethod
+    def _resolve_headers(
+        data: Dict[str, Any],
+        headers: Optional[Dict[str, str]] = None,
+    ) -> Optional[Dict[str, str]]:
+        """Resolve the best available HTTP headers dict.
+
+        Priority:
+        1. Explicitly passed ``headers`` (caller already has them).
+        2. ``data["proxy_server_request"]["headers"]`` — set by LiteLLM proxy
+           for every request through ``add_litellm_data_to_request()``.
+        3. ``data["metadata"]["headers"]`` — also set by LiteLLM proxy
+           (duplicate of #2 for guardrails access).
+
+        Returns ``None`` if no headers can be found.
+        """
+        if headers:
+            return headers
+
+        # LiteLLM proxy embeds the original HTTP headers here:
+        psr = data.get("proxy_server_request")
+        if isinstance(psr, dict):
+            psr_headers = psr.get("headers")
+            if isinstance(psr_headers, dict) and psr_headers:
+                return psr_headers
+
+        # Fallback: metadata.headers (also set by LiteLLM)
+        metadata = data.get("metadata")
+        if isinstance(metadata, dict):
+            meta_headers = metadata.get("headers")
+            if isinstance(meta_headers, dict) and meta_headers:
+                return meta_headers
+
+        # LiteLLM library mode: litellm_params.metadata.headers
+        litellm_params = data.get("litellm_params")
+        if isinstance(litellm_params, dict):
+            lp_meta = litellm_params.get("metadata")
+            if isinstance(lp_meta, dict):
+                lp_headers = lp_meta.get("headers")
+                if isinstance(lp_headers, dict) and lp_headers:
+                    return lp_headers
+
+        return None
 
     @staticmethod
     def extract_session_id(
@@ -33,22 +121,35 @@ class SessionExtractor:
         headers: Optional[Dict[str, str]] = None,
     ) -> str:
         """
-        Extract session ID from request data and headers.
+        Extract session ID from request data and/or headers.
+
+        Works in all deployment modes:
+        - **LiteLLM Proxy mode**: HTTP headers are automatically extracted
+          from ``data["proxy_server_request"]["headers"]``.
+        - **LiteLLM Library/Router mode**: Headers from
+          ``data["litellm_params"]["metadata"]["headers"]``.
+        - **Direct call**: Pass ``headers`` explicitly.
+        - **OpenClaw / other frameworks**: Send
+          ``x-panoptes-session-id`` header or
+          ``metadata.session_id`` in the request body.
 
         Args:
             data: Request data dict (messages, metadata, etc.)
-            headers: Optional HTTP headers
+            headers: Optional explicit HTTP headers (takes top priority)
 
         Returns:
-            Session ID string
+            A deterministic session ID string.
         """
-        # 1. Check headers
-        if headers:
-            for header_name in ["x-panoptes-session-id", "x-session-id"]:
-                if session_id := headers.get(header_name):
+        resolved_headers = SessionExtractor._resolve_headers(data, headers)
+
+        # 1. Check HTTP headers (case-insensitive)
+        if resolved_headers:
+            for header_name in _SESSION_HEADER_NAMES:
+                session_id = _get_header(resolved_headers, header_name)
+                if session_id:
                     return session_id
 
-        # 2. Check metadata
+        # 2. Check metadata fields
         metadata = data.get("metadata", {})
         if isinstance(metadata, dict):
             if session_id := metadata.get("session_id"):
@@ -67,8 +168,16 @@ class SessionExtractor:
         if thread_id := data.get("thread_id"):
             return str(thread_id)
 
-        # 5. Generate random UUID
-        return str(uuid.uuid4())
+        # 5. Last resort: random UUID
+        generated = str(uuid.uuid4())
+        logger.warning(
+            "No session ID found in request headers or metadata. "
+            "Generated fallback UUID: %s. "
+            "Set 'x-panoptes-session-id' header or 'metadata.session_id' "
+            "in the request body for reliable session tracking.",
+            generated,
+        )
+        return generated
 
 
 class WorkflowContextExtractor:
@@ -102,13 +211,19 @@ class WorkflowContextExtractor:
         """
         context: Dict[str, Any] = {}
 
+        # Resolve headers using the same logic as SessionExtractor
+        resolved_headers = SessionExtractor._resolve_headers(data, headers)
+
         # Check headers
-        if headers:
-            if workflow := headers.get("x-panoptes-workflow"):
+        if resolved_headers:
+            if workflow := _get_header(resolved_headers, "x-panoptes-workflow"):
                 context["workflow_name"] = workflow
-            if state := headers.get("x-panoptes-expected-state"):
+            if state := _get_header(resolved_headers, "x-panoptes-expected-state"):
                 context["expected_state"] = state
-            if headers.get("x-panoptes-disable-intervention", "").lower() == "true":
+            disable = _get_header(
+                resolved_headers, "x-panoptes-disable-intervention"
+            )
+            if disable and disable.lower() == "true":
                 context["disable_intervention"] = True
 
         # Check metadata

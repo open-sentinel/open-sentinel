@@ -285,11 +285,19 @@ class PanoptesCallback(CustomLogger):
         """
         Extract session ID from request data.
 
+        HTTP headers are automatically resolved from the LiteLLM data dict
+        (``data["proxy_server_request"]["headers"]`` or
+        ``data["metadata"]["headers"]``), so callers like OpenClaw that
+        send ``x-panoptes-session-id`` as an HTTP header are supported
+        without extra wiring.
+
         Priority:
-        1. x-session-id in metadata
-        2. metadata.session_id
-        3. user field
-        4. Hash of first message
+        1. HTTP header: x-panoptes-session-id / x-session-id
+        2. metadata.session_id / metadata.panoptes_session_id
+        3. metadata.run_id (LangChain)
+        4. user field (OpenAI pattern)
+        5. thread_id (OpenAI Assistants)
+        6. Random UUID (last resort, logged as warning)
         """
         from panoptes.proxy.middleware import SessionExtractor
 
