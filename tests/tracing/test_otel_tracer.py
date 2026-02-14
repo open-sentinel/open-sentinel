@@ -1,4 +1,5 @@
 
+import time
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -110,3 +111,129 @@ def test_shutdown(mock_otel):
     # But checking if method calls proceed without error is good start.
     # Actually mock_provider is the class, mock_provider() is the instance.
     mock_otel["provider"].return_value.shutdown.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Session memory management tests
+# ---------------------------------------------------------------------------
+
+class TestSessionEviction:
+    """Tests for TTL-based and max-cap session eviction."""
+
+    def test_stale_sessions_evicted_by_ttl(self, mock_otel):
+        """Sessions older than session_ttl_seconds should be ended and removed."""
+        config = OTelConfig(enabled=True)
+        tracer = PanoptesTracer(config, session_ttl_seconds=2)
+
+        # Create session spans
+        mock_span_a = MagicMock()
+        mock_span_b = MagicMock()
+        mock_otel["tracer"].start_span.side_effect = [mock_span_a, mock_span_b]
+
+        tracer._get_or_create_session_span("sess-a")
+        tracer._get_or_create_session_span("sess-b")
+        assert len(tracer._session_spans) == 2
+
+        # Simulate time passing beyond the TTL
+        for sid in tracer._session_timestamps:
+            tracer._session_timestamps[sid] -= 5  # push 5s into the past
+
+        # Next access should trigger eviction of both stale sessions
+        mock_span_c = MagicMock()
+        mock_otel["tracer"].start_span.side_effect = [mock_span_c]
+        tracer._get_or_create_session_span("sess-c")
+
+        assert "sess-a" not in tracer._session_spans
+        assert "sess-b" not in tracer._session_spans
+        assert "sess-c" in tracer._session_spans
+        # The stale spans should have been ended
+        mock_span_a.end.assert_called_once()
+        mock_span_b.end.assert_called_once()
+
+    def test_active_session_refreshed_on_access(self, mock_otel):
+        """Accessing an existing session should refresh its timestamp so it isn't evicted."""
+        config = OTelConfig(enabled=True)
+        tracer = PanoptesTracer(config, session_ttl_seconds=10)
+
+        mock_span = MagicMock()
+        mock_otel["tracer"].start_span.return_value = mock_span
+
+        tracer._get_or_create_session_span("sess-1")
+        old_ts = tracer._session_timestamps["sess-1"]
+
+        # Small sleep to ensure monotonic() advances
+        time.sleep(0.01)
+
+        span = tracer._get_or_create_session_span("sess-1")
+        assert span is mock_span  # same span returned
+        assert tracer._session_timestamps["sess-1"] > old_ts
+
+    def test_max_sessions_cap(self, mock_otel):
+        """When max_sessions is exceeded, oldest sessions should be evicted."""
+        config = OTelConfig(enabled=True)
+        tracer = PanoptesTracer(config, max_sessions=3, session_ttl_seconds=9999)
+
+        spans = [MagicMock() for _ in range(5)]
+        mock_otel["tracer"].start_span.side_effect = spans
+
+        for i in range(5):
+            tracer._get_or_create_session_span(f"sess-{i}")
+
+        # Only the last 3 should remain
+        assert len(tracer._session_spans) == 3
+        assert "sess-0" not in tracer._session_spans
+        assert "sess-1" not in tracer._session_spans
+        assert "sess-2" in tracer._session_spans
+        assert "sess-3" in tracer._session_spans
+        assert "sess-4" in tracer._session_spans
+        # The evicted spans should have been ended
+        spans[0].end.assert_called_once()
+        spans[1].end.assert_called_once()
+
+    def test_end_trace_cleans_up_timestamps(self, mock_otel):
+        """end_trace should remove the session from both tracking dicts."""
+        config = OTelConfig(enabled=True)
+        tracer = PanoptesTracer(config)
+
+        mock_span = MagicMock()
+        mock_otel["tracer"].start_span.return_value = mock_span
+
+        tracer._get_or_create_session_span("sess-1")
+        assert "sess-1" in tracer._session_timestamps
+
+        tracer.end_trace("sess-1")
+        assert "sess-1" not in tracer._session_spans
+        assert "sess-1" not in tracer._session_timestamps
+        mock_span.end.assert_called_once()
+
+    def test_default_ttl_and_max_sessions(self, mock_otel):
+        """Verify default values are applied when not explicitly provided."""
+        config = OTelConfig(enabled=True)
+        tracer = PanoptesTracer(config)
+
+        assert tracer._session_ttl == PanoptesTracer.DEFAULT_SESSION_TTL
+        assert tracer._max_sessions == PanoptesTracer.DEFAULT_MAX_SESSIONS
+
+    def test_custom_ttl_zero_allowed(self, mock_otel):
+        """A TTL of 0 should be allowed (immediate eviction of all prior sessions)."""
+        config = OTelConfig(enabled=True)
+        tracer = PanoptesTracer(config, session_ttl_seconds=0)
+
+        assert tracer._session_ttl == 0
+
+    def test_shutdown_cleans_all_sessions(self, mock_otel):
+        """shutdown() should end all remaining sessions and clear tracking."""
+        config = OTelConfig(enabled=True)
+        tracer = PanoptesTracer(config)
+
+        spans = [MagicMock() for _ in range(3)]
+        mock_otel["tracer"].start_span.side_effect = spans
+
+        for i in range(3):
+            tracer._get_or_create_session_span(f"sess-{i}")
+
+        tracer.shutdown()
+        assert len(tracer._session_spans) == 0
+        assert len(tracer._session_timestamps) == 0
+        for s in spans:
+            s.end.assert_called_once()
