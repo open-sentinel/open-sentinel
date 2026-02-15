@@ -1,5 +1,5 @@
 """
-Panoptes SDK - Reliability layer for AI agents.
+Panoptes - Reliability layer for AI agents.
 
 Monitors workflow adherence and intervenes when agents deviate from expected behavior.
 Uses LiteLLM proxy approach - customers only need to change their base_url.

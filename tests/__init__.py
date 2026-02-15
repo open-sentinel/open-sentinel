@@ -1,1 +1,1 @@
-"""Panoptes SDK tests."""
+"""Panoptes tests."""

@@ -218,7 +218,7 @@ def info(config_path: Path, verbose: bool):
 @main.command()
 def version():
     """Show version information."""
-    click.echo(f"Panoptes SDK v{__version__}")
+    click.echo(f"Panoptes v{__version__}")
 
 
 @main.command()
