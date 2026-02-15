@@ -33,6 +33,12 @@ from panoptes.policy.engines.judge.evaluator import JudgeEvaluator
 from panoptes.policy.engines.judge.rubrics import RubricRegistry
 from panoptes.policy.engines.judge.bias import randomize_positions
 from panoptes.policy.engines.judge.ensemble import JudgeEnsemble, AggregationStrategy
+from panoptes.policy.engines.judge.modes import (
+    ReliabilityMode,
+    list_reliability_modes,
+    get_reliability_mode,
+    build_mode_config,
+)
 
 __all__ = [
     "JudgePolicyEngine",
@@ -53,4 +59,8 @@ __all__ = [
     "AggregationStrategy",
     "RubricRegistry",
     "randomize_positions",
+    "ReliabilityMode",
+    "list_reliability_modes",
+    "get_reliability_mode",
+    "build_mode_config",
 ]
