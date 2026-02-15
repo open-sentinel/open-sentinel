@@ -175,7 +175,7 @@ class JudgeEnsemble:
         elif self._strategy == AggregationStrategy.MEDIAN_SCORE:
             final_scores, final_composite = self._aggregate_median(verdicts)
         elif self._strategy == AggregationStrategy.MAJORITY_VOTE:
-            final_scores, final_composite = self._aggregate_mean(verdicts)
+            final_scores, final_composite = self._aggregate_median(verdicts)
         elif self._strategy == AggregationStrategy.CONSERVATIVE:
             final_scores, final_composite = self._aggregate_conservative(verdicts)
         else:
