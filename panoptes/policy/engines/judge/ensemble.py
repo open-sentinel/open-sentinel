@@ -30,8 +30,9 @@ class AggregationStrategy:
     MAJORITY_VOTE = "majority_vote"
     MEDIAN_SCORE = "median_score"
     CONSERVATIVE = "conservative"
+    MINORITY_VETO = "minority_veto"
 
-    ALL = {MEAN_SCORE, MAJORITY_VOTE, MEDIAN_SCORE, CONSERVATIVE}
+    ALL = {MEAN_SCORE, MAJORITY_VOTE, MEDIAN_SCORE, CONSERVATIVE, MINORITY_VETO}
 
 
 class JudgeEnsemble:
@@ -178,6 +179,8 @@ class JudgeEnsemble:
             final_scores, final_composite = self._aggregate_median(verdicts)
         elif self._strategy == AggregationStrategy.CONSERVATIVE:
             final_scores, final_composite = self._aggregate_conservative(verdicts)
+        elif self._strategy == AggregationStrategy.MINORITY_VETO:
+            final_scores, final_composite = self._aggregate_mean(verdicts)
         else:
             final_scores, final_composite = self._aggregate_mean(verdicts)
 
@@ -185,6 +188,8 @@ class JudgeEnsemble:
         if self._strategy == AggregationStrategy.MAJORITY_VOTE:
             final_action = self._majority_vote_action(verdicts)
         elif self._strategy == AggregationStrategy.CONSERVATIVE:
+            final_action = self._most_restrictive_action(verdicts)
+        elif self._strategy == AggregationStrategy.MINORITY_VETO:
             final_action = self._most_restrictive_action(verdicts)
         else:
             final_action = self._evaluator._map_action(final_composite, rubric)
