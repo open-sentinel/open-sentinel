@@ -7,7 +7,10 @@ policy engine infrastructure via PolicyEngine ABC.
 """
 
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from panoptes.policy.engines.judge.ensemble import JudgeEnsemble
 
 from panoptes.policy.protocols import (
     PolicyEngine,
@@ -50,7 +53,9 @@ class JudgePolicyEngine(PolicyEngine):
         self._initialized = False
         self._client: Optional[JudgeClient] = None
         self._evaluator: Optional[JudgeEvaluator] = None
+        self._ensemble: Optional["JudgeEnsemble"] = None
         self._sessions: Dict[str, JudgeSessionContext] = {}
+        self._tracer: Optional[Any] = None
 
         # Config
         self._default_rubric: str = "agent_behavior"
@@ -58,6 +63,7 @@ class JudgePolicyEngine(PolicyEngine):
         self._pre_call_enabled: bool = False
         self._pre_call_rubric: str = "safety"
         self._conversation_eval_interval: int = 5
+        self._ensemble_enabled: bool = False
 
     @property
     def name(self) -> str:
@@ -105,6 +111,7 @@ class JudgePolicyEngine(PolicyEngine):
             pass_threshold=config.get("pass_threshold", 0.6),
             warn_threshold=config.get("warn_threshold", 0.4),
             block_threshold=config.get("block_threshold", 0.2),
+            confidence_threshold=config.get("confidence_threshold", 0.5),
         )
 
         # Config
@@ -114,6 +121,19 @@ class JudgePolicyEngine(PolicyEngine):
         self._pre_call_rubric = config.get("pre_call_rubric", "safety")
         self._conversation_eval_interval = config.get("conversation_eval_interval", 5)
 
+        # Ensemble configuration
+        self._ensemble_enabled = config.get("ensemble_enabled", False)
+        if self._ensemble_enabled and len(self._client.model_names) > 1:
+            from panoptes.policy.engines.judge.ensemble import JudgeEnsemble, AggregationStrategy
+            strategy = config.get("aggregation_strategy", AggregationStrategy.MEAN_SCORE)
+            min_agreement = config.get("min_agreement", 0.6)
+            self._ensemble = JudgeEnsemble(
+                evaluator=self._evaluator,
+                strategy=strategy,
+                min_agreement=min_agreement,
+            )
+            logger.info(f"Ensemble enabled: strategy={strategy}, min_agreement={min_agreement}")
+
         # Load custom rubrics if configured
         custom_path = config.get("custom_rubrics_path")
         if custom_path:
@@ -121,6 +141,10 @@ class JudgePolicyEngine(PolicyEngine):
 
         self._initialized = True
         logger.info(f"JudgePolicyEngine initialized: {self.name}")
+
+    def set_tracer(self, tracer: Any) -> None:
+        """Set an optional PanoptesTracer for OTEL tracing."""
+        self._tracer = tracer
 
     async def evaluate_request(
         self,
@@ -215,13 +239,42 @@ class JudgePolicyEngine(PolicyEngine):
         turn_rubric = RubricRegistry.get(self._default_rubric)
         if turn_rubric:
             try:
-                turn_verdict = await self._evaluator.evaluate_turn(
-                    model_name=primary_model,
-                    rubric=turn_rubric,
-                    response_content=response_content,
-                    conversation=conversation,
-                    metadata=metadata,
-                )
+                if self._ensemble_enabled and self._ensemble:
+                    ensemble_verdict = await self._ensemble.evaluate_turn(
+                        model_names=self._client.model_names,
+                        rubric=turn_rubric,
+                        response_content=response_content,
+                        conversation=conversation,
+                        metadata=metadata,
+                    )
+                    # Use ensemble's final verdict as a JudgeVerdict
+                    turn_verdict = JudgeVerdict(
+                        scores=ensemble_verdict.final_scores,
+                        composite_score=ensemble_verdict.final_composite,
+                        action=ensemble_verdict.final_action,
+                        summary=f"Ensemble ({ensemble_verdict.aggregation_strategy}), "
+                                f"agreement={ensemble_verdict.agreement_rate:.2f}",
+                        judge_model="ensemble",
+                        scope=EvaluationScope.TURN,
+                        metadata={
+                            "ensemble": True,
+                            "agreement_rate": ensemble_verdict.agreement_rate,
+                            "criterion_agreement": ensemble_verdict.criterion_agreement,
+                            "individual_count": len(ensemble_verdict.individual_verdicts),
+                        },
+                    )
+                    self._trace_verdict(session_id, turn_verdict, turn_rubric.name,
+                                        ensemble=True,
+                                        agreement_rate=ensemble_verdict.agreement_rate)
+                else:
+                    turn_verdict = await self._evaluator.evaluate_turn(
+                        model_name=primary_model,
+                        rubric=turn_rubric,
+                        response_content=response_content,
+                        conversation=conversation,
+                        metadata=metadata,
+                    )
+                    self._trace_verdict(session_id, turn_verdict, turn_rubric.name)
                 verdicts.append(turn_verdict)
                 session.record_verdict(turn_verdict)
             except Exception as e:
@@ -234,12 +287,37 @@ class JudgePolicyEngine(PolicyEngine):
             conv_rubric = RubricRegistry.get(self._conversation_rubric)
             if conv_rubric:
                 try:
-                    conv_verdict = await self._evaluator.evaluate_conversation(
-                        model_name=primary_model,
-                        rubric=conv_rubric,
-                        full_conversation=conversation,
-                        metadata=metadata,
-                    )
+                    if self._ensemble_enabled and self._ensemble:
+                        ensemble_verdict = await self._ensemble.evaluate_conversation(
+                            model_names=self._client.model_names,
+                            rubric=conv_rubric,
+                            full_conversation=conversation,
+                            metadata=metadata,
+                        )
+                        conv_verdict = JudgeVerdict(
+                            scores=ensemble_verdict.final_scores,
+                            composite_score=ensemble_verdict.final_composite,
+                            action=ensemble_verdict.final_action,
+                            summary=f"Conversation ensemble ({ensemble_verdict.aggregation_strategy}), "
+                                    f"agreement={ensemble_verdict.agreement_rate:.2f}",
+                            judge_model="ensemble",
+                            scope=EvaluationScope.CONVERSATION,
+                            metadata={
+                                "ensemble": True,
+                                "agreement_rate": ensemble_verdict.agreement_rate,
+                            },
+                        )
+                        self._trace_verdict(session_id, conv_verdict, conv_rubric.name,
+                                            ensemble=True,
+                                            agreement_rate=ensemble_verdict.agreement_rate)
+                    else:
+                        conv_verdict = await self._evaluator.evaluate_conversation(
+                            model_name=primary_model,
+                            rubric=conv_rubric,
+                            full_conversation=conversation,
+                            metadata=metadata,
+                        )
+                        self._trace_verdict(session_id, conv_verdict, conv_rubric.name)
                     verdicts.append(conv_verdict)
                     session.record_verdict(conv_verdict)
                 except Exception as e:
@@ -270,6 +348,45 @@ class JudgePolicyEngine(PolicyEngine):
     # =========================================================================
     # Private helpers
     # =========================================================================
+
+    def _trace_verdict(
+        self,
+        session_id: str,
+        verdict: JudgeVerdict,
+        rubric_name: str,
+        ensemble: bool = False,
+        agreement_rate: Optional[float] = None,
+    ) -> None:
+        """Log a verdict to the OTEL tracer if available."""
+        if not self._tracer:
+            return
+        try:
+            self._tracer.log_judge_evaluation(
+                session_id=session_id,
+                rubric_name=rubric_name,
+                scope=verdict.scope.value,
+                composite_score=verdict.composite_score,
+                action=verdict.action.value,
+                judge_model=verdict.judge_model,
+                scores=[
+                    {
+                        "criterion": s.criterion,
+                        "score": s.score,
+                        "max_score": s.max_score,
+                        "normalized": s.normalized,
+                        "confidence": s.confidence,
+                        "reasoning": s.reasoning,
+                    }
+                    for s in verdict.scores
+                ],
+                latency_ms=verdict.latency_ms,
+                token_usage=verdict.token_usage,
+                ensemble=ensemble,
+                agreement_rate=agreement_rate,
+                metadata=verdict.metadata,
+            )
+        except Exception as e:
+            logger.debug(f"Failed to trace verdict: {e}")
 
     def _get_or_create_session(self, session_id: str) -> JudgeSessionContext:
         if session_id not in self._sessions:
@@ -382,15 +499,25 @@ class JudgePolicyEngine(PolicyEngine):
             session.pending_intervention = worst_verdict.summary
             intervention_needed = "system_prompt_append"
 
+        # Confidence info
+        any_low_confidence = any(v.low_confidence for v in verdicts)
+
         metadata = {
             "judge": {
                 "verdicts": [v.to_dict() for v in verdicts],
                 "session_turn": session.turn_count,
+                "low_confidence": any_low_confidence,
             }
         }
 
         if worst_verdict.action == VerdictAction.ESCALATE:
             metadata["escalate"] = True
+
+        if any_low_confidence:
+            metadata["judge"]["confidence_warning"] = (
+                "One or more judge evaluations had low confidence. "
+                "Results may be unreliable."
+            )
 
         return PolicyEvaluationResult(
             decision=decision,

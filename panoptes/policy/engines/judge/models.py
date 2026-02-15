@@ -123,6 +123,8 @@ class JudgeVerdict:
     token_usage: int = 0
     scope: EvaluationScope = EvaluationScope.TURN
     metadata: Dict[str, Any] = field(default_factory=dict)
+    overall_confidence: float = 1.0  # Weighted confidence across criteria
+    low_confidence: bool = False  # Flag when confidence is below threshold
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -145,6 +147,8 @@ class JudgeVerdict:
             "latency_ms": self.latency_ms,
             "token_usage": self.token_usage,
             "scope": self.scope.value,
+            "overall_confidence": self.overall_confidence,
+            "low_confidence": self.low_confidence,
         }
 
 

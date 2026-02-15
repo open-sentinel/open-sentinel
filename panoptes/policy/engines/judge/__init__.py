@@ -32,6 +32,7 @@ from panoptes.policy.engines.judge.client import JudgeClient
 from panoptes.policy.engines.judge.evaluator import JudgeEvaluator
 from panoptes.policy.engines.judge.rubrics import RubricRegistry
 from panoptes.policy.engines.judge.bias import randomize_positions
+from panoptes.policy.engines.judge.ensemble import JudgeEnsemble, AggregationStrategy
 
 __all__ = [
     "JudgePolicyEngine",
@@ -48,6 +49,8 @@ __all__ = [
     "JudgeSessionContext",
     "JudgeClient",
     "JudgeEvaluator",
+    "JudgeEnsemble",
+    "AggregationStrategy",
     "RubricRegistry",
     "randomize_positions",
 ]
