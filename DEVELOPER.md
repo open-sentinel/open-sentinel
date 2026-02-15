@@ -22,6 +22,11 @@ export PANOPTES_POLICY__ENGINE__TYPE=fsm
 export PANOPTES_POLICY__ENGINE__CONFIG_PATH=workflow.yaml
 panoptes serve --port 4000
 
+# Start proxy with LLM engine
+export PANOPTES_POLICY__ENGINE__TYPE=llm
+export PANOPTES_POLICY__ENGINE__CONFIG_PATH=workflow.yaml
+panoptes serve --port 4000
+
 # Start proxy with NeMo Guardrails (requires examples/nemo_guardrails/config/)
 export PANOPTES_POLICY__ENGINE__CONFIG_PATH=examples/nemo_guardrails/config/
 panoptes serve --port 4000
@@ -86,7 +91,7 @@ from pydantic import BaseModel
 import litellm
 
 # 3. Local imports
-from panoptes.workflow.schema import WorkflowDefinition
+from panoptes.policy.protocols import PolicyEngine
 from panoptes.config.settings import PanoptesSettings
 ```
 
@@ -220,6 +225,76 @@ panoptes compile "never share internal info" \\
     -m gpt-4o
 ```
 
+### Working with Policy Engines
+
+#### Using the Engine Registry
+
+```python
+from panoptes.policy import PolicyEngineRegistry
+
+# Create and initialize any registered engine
+engine = await PolicyEngineRegistry.create_and_initialize(
+    "fsm",
+    {"config_path": "./workflow.yaml"}
+)
+
+# Evaluate a request
+result = await engine.evaluate_request(
+    session_id="session-123",
+    request_data={"messages": [{"role": "user", "content": "Hello!"}]},
+)
+
+if result.decision == PolicyDecision.DENY:
+    print("Blocked:", result.violations)
+
+# List available engines
+print(PolicyEngineRegistry.list_engines())  # ["fsm", "llm", "nemo", "composite"]
+```
+
+#### Choosing an Engine
+
+| Engine | When to Use |
+|--------|-------------|
+| `fsm` | Deterministic workflows with known states, tools, and transitions |
+| `llm` | Soft constraints requiring reasoning, drift detection, or fuzzy classification |
+| `nemo` | Content safety, jailbreak detection, PII filtering, Colang-scripted dialog flows |
+| `composite` | Combining multiple engines (e.g., `nemo` for safety + `fsm` for workflow) |
+
+### Working with the LLM Engine
+
+The LLM engine uses a lightweight LLM for all policy evaluation tasks.
+
+```python
+engine = await PolicyEngineRegistry.create_and_initialize(
+    "llm",
+    {
+        "config_path": "./workflow.yaml",
+        "model": "gpt-4o-mini",            # LLM used for classification/evaluation
+        "temporal_weight": 0.55,            # Weight for temporal drift (vs semantic)
+        "cooldown_turns": 2,                # Turns between interventions
+    }
+)
+
+# Evaluate a response
+result = await engine.evaluate_response(
+    session_id="session-123",
+    response_data=llm_response,
+    request_data={"messages": [...]},
+)
+
+# Access session state (rich with LLM engine info)
+state = await engine.get_session_state("session-123")
+print(state["current_state"])
+print(state["drift_score"])
+print(state["is_structurally_drifting"])
+```
+
+**Key Concepts**:
+- **Confidence Tiers**: CONFIDENT (>0.8), UNCERTAIN (0.5–0.8), LOST (<0.5)
+- **Drift Scores**: Composite of temporal (state sequence divergence) and semantic (content drift) scores
+- **Cooldown**: Prevents intervention spam — default 2 turns between interventions
+- **Self-Correction**: If drift decreases between turns, pending intervention is cancelled
+
 ### Working with NeMo Guardrails
 
 #### Configuration Structure
@@ -261,7 +336,71 @@ with tracer.trace_block("nemo_step", session_id) as span:
     pass
 ```
 
-### Working with the State Machine
+### Working with the Interceptor
+
+The Interceptor is the core orchestration layer. Policy engines are wrapped as `Checker` instances via the `PolicyEngineChecker` adapter.
+
+#### Creating a Custom Checker
+
+```python
+from panoptes.core.interceptor import Checker, CheckPhase, CheckerMode, CheckResult, CheckDecision, CheckerContext
+
+class MyChecker(Checker):
+    @property
+    def name(self) -> str:
+        return "my_custom_checker"
+    
+    @property
+    def phase(self) -> CheckPhase:
+        return CheckPhase.POST_CALL  # Run after LLM response
+    
+    @property
+    def mode(self) -> CheckerMode:
+        return CheckerMode.SYNC  # Block until complete
+    
+    async def check(self, context: CheckerContext) -> CheckResult:
+        # Access request/response data
+        response = context.response_data
+        
+        # Your custom logic here
+        if some_condition:
+            return CheckResult(
+                decision=CheckDecision.FAIL,
+                checker_name=self.name,
+                message="Custom check failed",
+            )
+        
+        return CheckResult(
+            decision=CheckDecision.PASS,
+            checker_name=self.name,
+        )
+```
+
+#### Using the Interceptor Directly
+
+```python
+from panoptes.core.interceptor import Interceptor
+
+interceptor = Interceptor(checkers=[my_checker, another_checker])
+
+# Pre-call phase
+result = await interceptor.run_pre_call(
+    session_id="session-123",
+    request_data={"messages": [...]},
+)
+
+if not result.allowed:
+    raise Exception("Request blocked")
+
+# Post-call phase  
+result = await interceptor.run_post_call(
+    session_id="session-123",
+    request_data={"messages": [...]},
+    response_data=llm_response,
+)
+```
+
+### Working with the State Machine (FSM Engine)
 
 ```python
 from panoptes.policy.engines.fsm import WorkflowStateMachine
@@ -289,7 +428,7 @@ is_done = await machine.is_in_terminal_state("session-123")
 await machine.set_pending_intervention("session-123", "intervention_name")
 ```
 
-### Working with the Classifier
+### Working with the Classifier (FSM Engine)
 
 ```python
 from panoptes.policy.engines.fsm import StateClassifier
@@ -317,7 +456,7 @@ print(result.method)        # "pattern"
 result = classifier.classify_from_tool_call("search_kb")
 ```
 
-### Working with Constraints
+### Working with Constraints (FSM Engine)
 
 ```python
 from panoptes.policy.engines.fsm import ConstraintEvaluator
@@ -338,7 +477,7 @@ for v in violations:
     print(f"  Intervention: {v.intervention}")
 ```
 
-### Working with Interventions
+### Working with Interventions (FSM Engine)
 
 ```python
 from panoptes.policy.engines.fsm import PromptInjector
@@ -360,7 +499,7 @@ names = injector.list_interventions()
 info = injector.get_intervention_info("prompt_verify_identity")
 ```
 
-### Working with the Tracker
+### Working with the Tracker (FSM Engine)
 
 ```python
 from panoptes.policy.engines.fsm import WorkflowTracker
@@ -384,6 +523,81 @@ info = tracker.get_workflow_info()
 ---
 
 ## Adding New Features
+
+### Adding a New Policy Engine
+
+**Step 1**: Create the engine class:
+
+```python
+# panoptes/policy/engines/my_engine/engine.py
+from panoptes.policy.protocols import PolicyEngine, PolicyEvaluationResult, PolicyDecision
+from panoptes.policy.registry import register_engine
+
+@register_engine("my_engine")
+class MyPolicyEngine(PolicyEngine):
+    @property
+    def name(self) -> str:
+        return "my_engine"
+    
+    @property
+    def engine_type(self) -> str:
+        return "my_engine"
+    
+    async def initialize(self, config):
+        # Load configuration
+        ...
+    
+    async def evaluate_request(self, session_id, request_data, context=None):
+        # Evaluate incoming request
+        return PolicyEvaluationResult(decision=PolicyDecision.ALLOW)
+    
+    async def evaluate_response(self, session_id, response_data, request_data, context=None):
+        # Evaluate LLM response
+        return PolicyEvaluationResult(decision=PolicyDecision.ALLOW)
+    
+    async def get_session_state(self, session_id):
+        return None
+    
+    async def reset_session(self, session_id):
+        pass
+```
+
+**Step 2**: Import in `__init__.py` to trigger registration:
+
+```python
+# panoptes/policy/engines/my_engine/__init__.py
+from .engine import MyPolicyEngine
+```
+
+The engine will be automatically wrapped as a `PolicyEngineChecker` by the hook system.
+
+### Adding a New Checker
+
+For custom checks that don't fit the `PolicyEngine` pattern:
+
+```python
+# panoptes/core/interceptor/my_checker.py
+from panoptes.core.interceptor import Checker, CheckPhase, CheckerMode, CheckResult, CheckDecision, CheckerContext
+
+class MyChecker(Checker):
+    @property
+    def name(self) -> str:
+        return "my_checker"
+    
+    @property
+    def phase(self) -> CheckPhase:
+        return CheckPhase.POST_CALL
+    
+    @property
+    def mode(self) -> CheckerMode:
+        return CheckerMode.ASYNC  # Runs in background
+    
+    async def check(self, context: CheckerContext) -> CheckResult:
+        # Your logic here
+        return CheckResult(decision=CheckDecision.PASS, checker_name=self.name)
+```
+
+Then register it in `PanoptesCallback._get_interceptor()`.
 
 ### Adding a New Constraint Type
 
@@ -473,7 +687,7 @@ STRATEGY_REGISTRY: Dict[StrategyType, InterventionStrategy] = {
 }
 ```
 
-### Adding a New Classification Method
+### Adding a New Classification Method (FSM Engine)
 
 Modify `StateClassifier` in `panoptes/policy/engines/fsm/classifier.py`:
 
@@ -565,14 +779,24 @@ tests/
 ├── tracing/
 │   └── test_otel_tracer.py   # Tracing tests
 ├── core/
-│   └── intervention/         # Strategy tests
+│   ├── interceptor/
+│   │   ├── test_interceptor.py   # Interceptor orchestration tests
+│   │   └── test_adapters.py      # PolicyEngineChecker adapter tests
+│   └── test_intervention.py      # Strategy tests
+├── proxy/
+│   ├── test_hooks.py         # PanoptesCallback tests
+│   └── test_middleware.py    # Session extraction tests
 └── policy/
+    ├── compiler/             # Compiler tests
     └── engines/
-        └── fsm/
-            ├── test_classifier.py    # StateClassifier tests
-            ├── test_constraints.py   # ConstraintEvaluator tests
-            ├── test_state_machine.py # WorkflowStateMachine tests
-            └── test_workflow_parser.py # Parser tests
+        ├── fsm/
+        │   ├── test_classifier.py    # StateClassifier tests
+        │   ├── test_constraints.py   # ConstraintEvaluator tests
+        │   ├── test_state_machine.py # WorkflowStateMachine tests
+        │   └── test_workflow_parser.py # Parser tests
+        ├── llm/              # LLM engine tests
+        ├── nemo/             # NeMo engine tests
+        └── composite/        # Composite engine tests
 ```
 
 ### Key Fixtures (in `conftest.py`)
@@ -599,7 +823,7 @@ def mock_tool_call():
 
 ```python
 import pytest
-from panoptes.workflow.state_machine import WorkflowStateMachine, TransitionResult
+from panoptes.policy.engines.fsm import WorkflowStateMachine, TransitionResult
 
 class TestMyFeature:
     @pytest.fixture
@@ -683,7 +907,7 @@ Environment variables: `PANOPTES_MY_COMPONENT__OPTION_A=value`
 **Enable debug logging:**
 
 ```bash
-PANOPTES_DEBUG=true panoptes serve --workflow workflow.yaml
+PANOPTES_DEBUG=true panoptes serve
 ```
 
 **Or in code:**
@@ -696,8 +920,17 @@ logging.basicConfig(level=logging.DEBUG)
 **Check specific loggers:**
 
 ```python
-logging.getLogger("panoptes.monitor.classifier").setLevel(logging.DEBUG)
-logging.getLogger("panoptes.workflow.constraints").setLevel(logging.DEBUG)
+logging.getLogger("panoptes.policy.engines.fsm.classifier").setLevel(logging.DEBUG)
+logging.getLogger("panoptes.policy.engines.llm.engine").setLevel(logging.DEBUG)
+logging.getLogger("panoptes.core.interceptor").setLevel(logging.DEBUG)
+```
+
+**Monitor fail-open activations:**
+
+```python
+from panoptes.proxy.hooks import get_fail_open_counts
+counts = get_fail_open_counts()
+# {"pre_call": 0, "post_call": 1, ...}
 ```
 
 ---
@@ -707,7 +940,7 @@ logging.getLogger("panoptes.workflow.constraints").setLevel(logging.DEBUG)
 ### Common Issues
 
 **"No workflow configured - running in pass-through mode"**
-- Set `PANOPTES_POLICY__ENGINE__CONFIG__WORKFLOW_PATH` environment variable
+- Set `PANOPTES_POLICY__ENGINE__CONFIG_PATH` environment variable
 
 **"Failed to load embedding model"**
 - Ensure `sentence-transformers` is installed
@@ -722,18 +955,46 @@ logging.getLogger("panoptes.workflow.constraints").setLevel(logging.DEBUG)
 **"Constraint references unknown state"**
 - Check that `trigger` and `target` in constraints match state names exactly
 
+**"Unknown policy engine type: '...'"**
+- Check `PANOPTES_POLICY__ENGINE__TYPE` is one of: `fsm`, `llm`, `nemo`, `composite`
+- Ensure the engine module is imported (check `panoptes/policy/engines/__init__.py`)
+
 ### NeMo Guardrails Issues
 
 **"API key not valid (400)"**
 - Ensure `PANOPTES_POLICY__ENGINE__TYPE` is set to `nemo` (default)
-- Check that your model configuration (e.g., `gemini-1.5-flash`) maps to a valid API key in your `.env` file
-- Verify `config.yml` refers to models that are properly configured in `nemo_agent.py` or `PanoptesSettings`
+- Check that your model configuration maps to a valid API key in your `.env` file
+- Verify `config.yml` refers to properly configured models
 
 **"No workflow_path configured - running in pass-through mode"**
-- This is a WARN log from the FSM engine. If you are using the `nemo` engine, you can safely ignore this as the FSM engine is not being used, or ensure your logs are filtered.
+- This is a WARN log from the FSM engine. If using the `nemo` engine, you can safely ignore it.
 
 **"TypeError: 'function' object is not subscriptable"**
-- Conflict between Pydantic V1 (used by LangChain) and V2 (used by Panoptes). Ensure you have applied the monkeypatch or are using compatible versions.
+- Conflict between Pydantic V1 (used by LangChain) and V2 (used by Panoptes). Ensure compatible versions.
+
+### LLM Engine Issues
+
+**LLM classification returning low confidence**
+- Add more descriptive state descriptions and exemplars in the workflow
+- Try a more capable model (e.g., `gpt-4o` instead of `gpt-4o-mini`)
+- Check the `turn_window` — the LLM needs conversation context
+
+**Excessive interventions**
+- Increase `cooldown_turns` in the LLM engine config
+- Check `self_correction_margin` — a lower value makes self-correction detection more sensitive
+
+**High drift scores**
+- Adjust `temporal_weight` to balance temporal vs semantic drift weighting
+- Ensure workflow states and transitions accurately reflect the expected agent behavior
+
+### Interceptor Issues
+
+**Async checker results not being applied**
+- Async results are collected at the start of the *next* `run_pre_call`. Ensure the session ID is consistent across requests.
+- Check `interceptor._pending_results` for accumulated results
+
+**Checker errors not propagating**
+- By default, checker errors result in a `FAIL` decision. If using `safe_hook`, only `WorkflowViolationError` propagates — all other errors result in pass-through.
 
 ### Session ID Issues
 
@@ -743,7 +1004,7 @@ If workflows aren't being tracked properly:
 2. Ensure you're sending consistent session identifiers across calls
 3. Use `x-panoptes-session-id` header for explicit control
 
-### Classification Issues
+### Classification Issues (FSM Engine)
 
 If states aren't being classified correctly:
 
@@ -763,15 +1024,16 @@ If states aren't being classified correctly:
 | Tool calls | ~0ms | When response has tool_calls |
 | Patterns | ~1ms | When patterns defined and no tool match |
 | Embeddings | ~50ms | When exemplars defined and no pattern match |
+| LLM (LLM engine) | ~200-500ms | LLM-based classification |
 
-**Optimization**: Define `tool_calls` and `patterns` for states to avoid embedding inference.
+**Optimization**: Define `tool_calls` and `patterns` for states to avoid embedding inference. For the LLM engine, use a fast model like `gpt-4o-mini`.
 
 ### Memory
 
 - Embedding model: ~100MB RAM
 - Compiled regex patterns: Cached per workflow
 - State embeddings: Cached after first computation
-- Session state: ~1KB per active session
+- Session state: ~1KB per active session (FSM), ~5KB (LLM engine due to turn window)
 
 ### Concurrent Sessions
 
@@ -800,11 +1062,22 @@ If states aren't being classified correctly:
 | `StateClassifier` | `policy.engines.fsm` | Response classification |
 | `WorkflowTracker` | `policy.engines.fsm` | Main orchestrator |
 | `PromptInjector` | `policy.engines.fsm` | Apply interventions |
+| `PolicyEngine` | `policy.protocols` | Engine base class |
+| `PolicyEngineRegistry` | `policy.registry` | Engine factory |
+| `PolicyDecision` | `policy.protocols` | Decision enum |
+| `PolicyEvaluationResult` | `policy.protocols` | Evaluation result |
+| `PolicyViolation` | `policy.protocols` | Violation details |
 | `PolicyCompiler` | `policy.compiler` | Compiler protocol |
 | `CompilationResult` | `policy.compiler` | Compilation output |
 | `PolicyCompilerRegistry` | `policy.compiler` | Compiler factory |
 | `FSMCompiler` | `policy.engines.fsm.compiler` | NL → FSM workflow |
+| `Interceptor` | `core.interceptor` | Checker orchestrator |
+| `Checker` | `core.interceptor` | Checker base class |
+| `PolicyEngineChecker` | `core.interceptor` | Engine-to-checker adapter |
 | `StrategyType` | `core.intervention.strategies` | Intervention strategy enum |
+| `LLMPolicyEngine` | `policy.engines.llm` | LLM-based engine |
+| `NemoGuardrailsPolicyEngine` | `policy.engines.nemo` | NeMo engine |
+| `CompositePolicyEngine` | `policy.engines.composite` | Multi-engine combiner |
 
 ### Key Functions
 
@@ -812,6 +1085,8 @@ If states aren't being classified correctly:
 |----------|--------|---------|
 | `start_proxy()` | `proxy.server` | Start proxy (blocking) |
 | `get_strategy()` | `core.intervention.strategies` | Get strategy by type |
+| `safe_hook()` | `proxy.hooks` | Fail-open hook wrapper |
+| `get_fail_open_counts()` | `proxy.hooks` | Monitor fail-open activations |
 
 ---
 
