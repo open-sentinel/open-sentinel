@@ -559,6 +559,104 @@ class PanoptesTracer:
 
             logger.info(f"Logged LLM call for session {session_id} (model={model})")
 
+    def log_judge_evaluation(
+        self,
+        session_id: str,
+        rubric_name: str,
+        scope: str,
+        composite_score: float,
+        action: str,
+        judge_model: str,
+        scores: Optional[List[Dict[str, Any]]] = None,
+        latency_ms: Optional[float] = None,
+        token_usage: Optional[int] = None,
+        ensemble: bool = False,
+        agreement_rate: Optional[float] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Log a judge evaluation as an OTEL span with judge-specific attributes.
+
+        Args:
+            session_id: Session identifier.
+            rubric_name: Name of the rubric used for evaluation.
+            scope: Evaluation scope ("turn" or "conversation").
+            composite_score: Normalized composite score (0-1).
+            action: Verdict action (pass/warn/intervene/block/escalate).
+            judge_model: Model used for evaluation.
+            scores: Per-criterion score details.
+            latency_ms: Evaluation latency in milliseconds.
+            token_usage: Total tokens consumed.
+            ensemble: Whether this was an ensemble evaluation.
+            agreement_rate: Inter-judge agreement rate (ensemble only).
+            metadata: Additional metadata.
+        """
+        if not self._enabled or not self._tracer:
+            return
+
+        parent_span = self._get_or_create_session_span(session_id)
+        parent_ctx = trace.set_span_in_context(parent_span) if parent_span else None
+
+        span_attrs = {
+            "panoptes.session_id": session_id,
+            "panoptes.judge.rubric": rubric_name,
+            "panoptes.judge.scope": scope,
+            "panoptes.judge.composite_score": composite_score,
+            "panoptes.judge.action": action,
+            "panoptes.judge.model": judge_model,
+            "panoptes.judge.ensemble": ensemble,
+        }
+
+        if latency_ms is not None:
+            span_attrs["panoptes.judge.latency_ms"] = latency_ms
+        if token_usage is not None:
+            span_attrs["panoptes.judge.token_usage"] = token_usage
+        if agreement_rate is not None:
+            span_attrs["panoptes.judge.agreement_rate"] = agreement_rate
+
+        with self._tracer.start_as_current_span(
+            f"judge_evaluation_{scope}",
+            context=parent_ctx,
+            attributes=span_attrs,
+        ) as span:
+            # Add per-criterion scores as events
+            if scores:
+                span.set_attribute("panoptes.judge.criteria_count", len(scores))
+                for score_data in scores:
+                    criterion = score_data.get("criterion", "unknown")
+                    span.add_event(
+                        f"score:{criterion}",
+                        attributes={
+                            "score": score_data.get("score", 0),
+                            "max_score": score_data.get("max_score", 5),
+                            "normalized": score_data.get("normalized", 0.0),
+                            "confidence": score_data.get("confidence", 1.0),
+                            "reasoning": score_data.get("reasoning", ""),
+                        },
+                    )
+
+            # Structured output for Langfuse
+            output = {
+                "composite_score": composite_score,
+                "action": action,
+                "rubric": rubric_name,
+                "scope": scope,
+            }
+            if scores:
+                output["scores"] = scores
+            span.set_attribute("output.value", self._safe_json(output))
+            span.set_attribute("langfuse.span.output", self._safe_json(output))
+
+            if metadata:
+                span.set_attribute("langfuse.span.metadata", self._safe_json(metadata))
+                for key, value in metadata.items():
+                    span.set_attribute(f"panoptes.metadata.{key}", str(value))
+
+            logger.debug(
+                f"Logged judge evaluation for session {session_id} "
+                f"(rubric={rubric_name}, action={action}, score={composite_score:.2f})"
+            )
+
     def end_trace(self, session_id: str) -> None:
         """Mark a session trace as complete and free the session memory."""
         if session_id in self._session_spans:
