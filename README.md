@@ -1,4 +1,4 @@
-# Panoptes SDK
+# Panoptes
 
 > Reliability layer for AI agents - monitors workflow adherence and intervenes when agents deviate.
 
@@ -15,11 +15,11 @@ Panoptes is a **transparent proxy** that sits between your application and LLM p
 ┌──────────────┐       ┌─────────────────────────────────────────┐       ┌──────────────┐
 │              │       │              PANOPTES                   │       │              │
 │   Your App   │──────▶│                                         │──────▶│ LLM Provider │
-│              │       │  ┌───────┐  ┌────────┐  ┌──────────┐    │       │              │
-│              │◀──────│  │ Hooks │─▶│ Policy │─▶│ Injector │    │◀──────│              │
-└──────────────┘       │  └───────┘  └────────┘  └──────────┘    │       └──────────────┘
-                       │       │          │            │         │
-                       │       ▼          ▼            ▼         │
+│              │       │  ┌───────┐  ┌─────────────┐  ┌───────┐  │       │              │
+│              │◀──────│  │ Hooks │─▶│ Interceptor │─▶│Checker│  │◀──────│              │
+└──────────────┘       │  └───────┘  └─────────────┘  └───────┘  │       └──────────────┘
+                       │       │            │             │      │
+                       │       ▼            ▼             ▼      │
                        │  ┌─────────────────────────────────┐    │
                        │  │       OpenTelemetry Tracing     │    │
                        │  └─────────────────────────────────┘    │
@@ -93,6 +93,14 @@ export PANOPTES_POLICY__ENGINE__CONFIG_PATH=./workflow.yaml
 panoptes serve
 ```
 
+For the LLM engine (LLM-as-judge classification + drift detection):
+
+```bash
+export PANOPTES_POLICY__ENGINE__TYPE=llm
+export PANOPTES_POLICY__ENGINE__CONFIG_PATH=./workflow.yaml
+panoptes serve
+```
+
 For NeMo Guardrails (default):
 
 ```bash
@@ -116,6 +124,29 @@ response = client.chat.completions.create(
 )
 ```
 
+## Policy Engines
+
+Panoptes supports **pluggable policy engines** that can be used individually or combined:
+
+| Engine | Type | Best For |
+|--------|------|----------|
+| **FSM** | `fsm` | Deterministic workflow enforcement via state machines |
+| **LLM** | `llm` | Soft constraint evaluation using LLM-as-judge reasoning |
+| **NeMo** | `nemo` | Content safety, jailbreak detection, dialog rails (NVIDIA NeMo Guardrails) |
+| **Composite** | `composite` | Running multiple engines in parallel, merging results |
+
+### FSM Engine
+Finite State Machine with deterministic classification (tool calls, regex patterns, embeddings), LTL-lite constraint evaluation, and prompt injection interventions.
+
+### LLM Engine
+Uses a lightweight LLM (e.g. `gpt-4o-mini`) as a reasoning backbone for state classification with confidence tiers, temporal + semantic drift detection, and soft constraint evaluation with evidence memory.
+
+### NeMo Guardrails Engine
+Native integration with NVIDIA NeMo Guardrails for input/output rails, jailbreak detection, PII filtering, toxicity checks, and Colang-scripted dialog flows.
+
+### Composite Engine
+Runs multiple engines in parallel and merges results. The most restrictive decision wins (DENY > MODIFY > WARN > ALLOW). All violations are collected.
+
 ## Key Features
 
 ### Zero Code Changes
@@ -124,11 +155,19 @@ Customers only change `base_url` in their LLM client to point at Panoptes. No SD
 ### Non-Blocking Monitoring
 State classification and constraint evaluation run in parallel with LLM calls, adding **zero latency** to the critical path.
 
+### Interceptor Framework
+A general-purpose checker system that orchestrates policy evaluation. Checkers can run synchronously (blocking) or asynchronously (results applied on next request). Policy engines are automatically wrapped as checkers via the `PolicyEngineChecker` adapter.
+
+### Fail-Open Hardening
+All hooks are wrapped with timeout and exception handling via `safe_hook`. If a hook fails or times out:
+- `WorkflowViolationError` (intentional blocks) still propagates
+- All other errors result in pass-through, preventing Panoptes from blocking your app
+
 ### LTL-Lite Constraints
-Simplified temporal logic for practical workflow constraints (FSM engine):
+Simplified temporal logic for practical workflow constraints (FSM + LLM engines):
 
 | Type | Meaning | Example |
-|------|---------|---------|
+|------|---------|---------| 
 | `eventually` | Must eventually reach target | "Must reach resolution" |
 | `always` | Condition always holds | "Always maintain session" |
 | `never` | Target must never occur | "Never share credentials" |
@@ -156,8 +195,10 @@ Environment variables (prefix: `PANOPTES_`):
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `PANOPTES_POLICY__ENGINE__TYPE` | Engine: `nemo`, `fsm`, `composite` | nemo |
-| `PANOPTES_POLICY__ENGINE__CONFIG_PATH` | Path to NeMo config or FSM workflow | - |
+| `PANOPTES_POLICY__ENGINE__TYPE` | Engine: `nemo`, `fsm`, `llm`, `composite` | nemo |
+| `PANOPTES_POLICY__ENGINE__CONFIG_PATH` | Path to config (workflow YAML, NeMo dir) | - |
+| `PANOPTES_POLICY__FAIL_OPEN` | Pass-through on hook failures | true |
+| `PANOPTES_POLICY__HOOK_TIMEOUT_SECONDS` | Max hook execution time | 30.0 |
 | `PANOPTES_PROXY__PORT` | Server port | 4000 |
 | `PANOPTES_OTEL__EXPORTER_TYPE` | Exporter: `otlp`, `langfuse`, `console`, `none` | otlp |
 | `PANOPTES_OTEL__ENDPOINT` | OTLP endpoint (for `otlp` exporter) | http://localhost:4317 |
