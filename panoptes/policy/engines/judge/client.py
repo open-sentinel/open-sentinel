@@ -27,7 +27,7 @@ class JudgeClient:
     def add_model(
         self,
         name: str,
-        model: str,
+        model: Optional[str] = None,
         temperature: float = 0.0,
         max_tokens: int = 2048,
         timeout: float = 15.0,
@@ -37,7 +37,7 @@ class JudgeClient:
 
         Args:
             name: Logical name for this judge (e.g., "primary").
-            model: Model identifier (e.g., "gpt-4o-mini").
+            model: Model identifier (e.g., "gpt-4o-mini"). If None, use system default.
             temperature: Sampling temperature.
             max_tokens: Max response tokens.
             timeout: Request timeout in seconds.

@@ -13,6 +13,13 @@ def client():
     return LLMClient(model="gpt-4o-mini", temperature=0.0)
 
 
+def test_default_model_selection():
+    """Test that LLMClient picks up system default if no model is provided."""
+    with patch("panoptes.config.settings.get_default_model", return_value="custom-default-model"):
+        client = LLMClient()
+        assert client.model == "custom-default-model"
+
+
 class TestJSONParsing:
     """Tests for JSON parsing."""
 

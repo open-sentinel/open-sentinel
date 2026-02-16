@@ -100,20 +100,14 @@ class JudgePolicyEngine(PolicyEngine):
         models = config.get("models", [])
         
         if not models:
-            # Fall back to the same model the proxy uses
-            auto_model = config.get("default_model")
-            if auto_model:
-                logger.info(f"No judge models configured, using default from settings: {auto_model}")
-            else:
-                from panoptes.config.settings import detect_available_model
-                auto_model, provider, _ = detect_available_model()
-                logger.info(f"No judge models or default configured, using detected model: {auto_model}")
-            
+            # No explicit models — create a primary model entry.
+            # model may be None; LLMClient will resolve via get_default_model().
             models = [{
                 "name": "primary",
-                "model": auto_model,
+                "model": config.get("default_model") or config.get("llm_model"),
                 "temperature": 0.0,
             }]
+            logger.info("No judge models explicitly configured; using system default model")
 
         for model_config in models:
             self._client.add_model(
