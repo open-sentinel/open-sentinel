@@ -41,7 +41,7 @@ For composite engines:
 from panoptes.policy.protocols import (
     PolicyEngine,
     StatefulPolicyEngine,
-    InterventionProvider,
+
     PolicyEvaluationResult,
     PolicyDecision,
     PolicyViolation,
@@ -85,7 +85,8 @@ __all__ = [
     # Core protocols
     "PolicyEngine",
     "StatefulPolicyEngine",
-    "InterventionProvider",
+    "require_initialized",
+
     # Result types
     "PolicyEvaluationResult",
     "PolicyDecision",

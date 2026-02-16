@@ -15,20 +15,14 @@ import re
 from typing import Optional, List, Dict, Any
 from dataclasses import dataclass
 
+from panoptes.policy.protocols import StateClassificationResult
 from panoptes.policy.engines.fsm.workflow.schema import State, ClassificationHint
 from panoptes.config.settings import ClassifierConfig
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ClassificationResult:
-    """Result of state classification."""
 
-    state_name: str
-    confidence: float  # 0.0 to 1.0
-    method: str  # "tool_call", "pattern", "embedding", "fallback"
-    details: Dict[str, Any]
 
 
 class StateClassifier:
@@ -131,7 +125,7 @@ class StateClassifier:
         self,
         response: Any,
         current_state: Optional[str] = None,
-    ) -> ClassificationResult:
+    ) -> StateClassificationResult:
         """
         Classify an LLM response to a workflow state.
 
@@ -140,7 +134,7 @@ class StateClassifier:
             current_state: Current state (for transition-aware classification)
 
         Returns:
-            ClassificationResult with state name, confidence, and method used.
+            StateClassificationResult with state name, confidence, and method used.
         """
         # Extract content and tool calls from response
         content = self._extract_content(response)
@@ -179,7 +173,7 @@ class StateClassifier:
         fallback_state = current_state or "unknown"
         logger.debug(f"Fallback classification: {fallback_state}")
 
-        return ClassificationResult(
+        return StateClassificationResult(
             state_name=fallback_state,
             confidence=0.0,
             method="fallback",
@@ -189,14 +183,14 @@ class StateClassifier:
     def _classify_by_tools(
         self,
         tool_calls: List[str],
-    ) -> Optional[ClassificationResult]:
+    ) -> Optional[StateClassificationResult]:
         """Classify by matching tool call names."""
         for state_name, state in self.states.items():
             hint = state.classification
             if hint.tool_calls:
                 matches = set(tool_calls) & set(hint.tool_calls)
                 if matches:
-                    return ClassificationResult(
+                    return StateClassificationResult(
                         state_name=state_name,
                         confidence=1.0,
                         method="tool_call",
@@ -207,13 +201,13 @@ class StateClassifier:
     def _classify_by_patterns(
         self,
         content: str,
-    ) -> Optional[ClassificationResult]:
+    ) -> Optional[StateClassificationResult]:
         """Classify by regex pattern matching."""
         for state_name, patterns in self._compiled_patterns.items():
             for pattern in patterns:
                 match = pattern.search(content)
                 if match:
-                    return ClassificationResult(
+                    return StateClassificationResult(
                         state_name=state_name,
                         confidence=0.9,
                         method="pattern",
@@ -227,7 +221,7 @@ class StateClassifier:
     def _classify_by_embeddings(
         self,
         content: str,
-    ) -> Optional[ClassificationResult]:
+    ) -> Optional[StateClassificationResult]:
         """Classify by semantic similarity to state exemplars."""
         state_embeddings = self._get_state_embeddings()
         if not state_embeddings:
@@ -257,7 +251,7 @@ class StateClassifier:
                 threshold = self.states[best_state].classification.min_similarity
 
                 if best_similarity >= threshold:
-                    return ClassificationResult(
+                    return StateClassificationResult(
                         state_name=best_state,
                         confidence=float(best_similarity),
                         method="embedding",
@@ -317,7 +311,7 @@ class StateClassifier:
         self,
         tool_name: str,
         tool_args: Optional[Dict[str, Any]] = None,
-    ) -> Optional[ClassificationResult]:
+    ) -> Optional[StateClassificationResult]:
         """
         Quick classification based on tool usage.
 
@@ -326,7 +320,7 @@ class StateClassifier:
         for state_name, state in self.states.items():
             hint = state.classification
             if hint.tool_calls and tool_name in hint.tool_calls:
-                return ClassificationResult(
+                return StateClassificationResult(
                     state_name=state_name,
                     confidence=1.0,
                     method="tool_call",

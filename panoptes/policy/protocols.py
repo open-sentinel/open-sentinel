@@ -9,6 +9,8 @@ from typing import Protocol, Optional, Dict, Any, List, runtime_checkable
 from dataclasses import dataclass, field
 from enum import Enum
 from abc import ABC, abstractmethod
+import functools
+import inspect
 
 
 class PolicyDecision(Enum):
@@ -28,11 +30,8 @@ class PolicyViolation:
     severity: str                                      # "warning", "error", "critical"
     message: str                                       # Human-readable description
     intervention: Optional[str] = None                 # Suggested intervention name
-    metadata: Optional[Dict[str, Any]] = None          # Additional context
-
-    def __post_init__(self):
-        if self.metadata is None:
-            self.metadata = {}
+    intervention: Optional[str] = None                 # Suggested intervention name
+    metadata: Dict[str, Any] = field(default_factory=dict)          # Additional context
 
 
 @dataclass
@@ -43,11 +42,8 @@ class PolicyEvaluationResult:
     violations: List[PolicyViolation] = field(default_factory=list)
     intervention_needed: Optional[str] = None
     modified_request: Optional[Dict[str, Any]] = None
-    metadata: Optional[Dict[str, Any]] = None
-
-    def __post_init__(self):
-        if self.metadata is None:
-            self.metadata = {}
+    modified_request: Optional[Dict[str, Any]] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -57,11 +53,7 @@ class StateClassificationResult:
     state_name: str
     confidence: float
     method: str
-    details: Optional[Dict[str, Any]] = None
-
-    def __post_init__(self):
-        if self.details is None:
-            self.details = {}
+    details: Dict[str, Any] = field(default_factory=dict)
 
 
 class PolicyEngine(ABC):
@@ -246,52 +238,21 @@ class StatefulPolicyEngine(PolicyEngine):
         ...
 
 
-@runtime_checkable
-class InterventionProvider(Protocol):
+def require_initialized(method):
     """
-    Protocol for providing interventions when policies are violated.
-
-    Separated from policy evaluation to allow flexible intervention
-    strategies across different policy engines.
+    Decorator to ensure engine is initialized before method call.
+    Raises RuntimeError if self._initialized is False.
     """
+    @functools.wraps(method)
+    async def wrapper(self, *args, **kwargs):
+        if not getattr(self, "_initialized", False):
+            raise RuntimeError(f"{type(self).__name__} not initialized. Call initialize() first.")
+        
+        # Check if original method is coroutine
+        if inspect.iscoroutinefunction(method):
+            return await method(self, *args, **kwargs)
+        return method(self, *args, **kwargs)
+    return wrapper
 
-    def get_intervention(
-        self,
-        violation: PolicyViolation,
-        context: Dict[str, Any],
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Get intervention configuration for a violation.
 
-        Args:
-            violation: The policy violation
-            context: Additional context
 
-        Returns:
-            Dict with intervention config:
-            - name: Intervention name
-            - strategy: How to apply (system_prompt, user_message, etc.)
-            - content: Intervention content/template
-
-            Or None if no intervention available
-        """
-        ...
-
-    def apply_intervention(
-        self,
-        request_data: Dict[str, Any],
-        intervention: Dict[str, Any],
-        context: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """
-        Apply an intervention to request data.
-
-        Args:
-            request_data: The request to modify
-            intervention: Intervention configuration
-            context: Additional context
-
-        Returns:
-            Modified request data
-        """
-        ...

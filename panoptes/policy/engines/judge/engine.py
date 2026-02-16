@@ -17,6 +17,7 @@ from panoptes.policy.protocols import (
     PolicyDecision,
     PolicyEvaluationResult,
     PolicyViolation,
+    require_initialized,
 )
 from panoptes.policy.registry import register_engine
 from panoptes.policy.engines.judge.models import (
@@ -178,6 +179,7 @@ class JudgePolicyEngine(PolicyEngine):
         if not self._initialized:
             return PolicyEvaluationResult(decision=PolicyDecision.ALLOW)
 
+
         session = self._get_or_create_session(session_id)
 
         # Apply pending intervention from previous turn's evaluation
@@ -229,6 +231,7 @@ class JudgePolicyEngine(PolicyEngine):
         Returns:
             PolicyEvaluationResult with decision and any violations.
         """
+
         if not self._initialized:
             return PolicyEvaluationResult(decision=PolicyDecision.ALLOW)
 

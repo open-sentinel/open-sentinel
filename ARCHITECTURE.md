@@ -219,7 +219,7 @@ Wraps the workflow state machine, monitor, and injector for deterministic workfl
 
 **Components**:
 - **Workflow**: Schema, Parser, StateMachine, Constraints (in `workflow/` subpackage)
-- **Monitor**: StateClassifier, WorkflowTracker
+- **Monitor**: StateClassifier
 - **Injector**: PromptInjector for FSM-based interventions
 
 #### `workflow/schema.py` - Workflow Data Models
@@ -538,7 +538,7 @@ panoptes/
 │       ├── fsm/         # FSM Engine
 │       │   ├── workflow/ # Schema, Parser, StateMachine, Constraints
 │       │   ├── classifier.py
-│       │   ├── tracker.py
+
 │       │   ├── injector.py
 │       │   ├── compiler.py  # FSMCompiler (NL → YAML)
 │       │   └── engine.py

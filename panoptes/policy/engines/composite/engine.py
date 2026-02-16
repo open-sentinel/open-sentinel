@@ -17,6 +17,7 @@ from panoptes.policy.protocols import (
     PolicyEvaluationResult,
     PolicyDecision,
     PolicyViolation,
+    require_initialized,
 )
 from panoptes.policy.registry import register_engine, PolicyEngineRegistry
 
@@ -119,6 +120,7 @@ class CompositePolicyEngine(PolicyEngine):
             f"{[e.engine_type for e in self._engines]}"
         )
 
+    @require_initialized
     async def evaluate_request(
         self,
         session_id: str,
@@ -139,10 +141,6 @@ class CompositePolicyEngine(PolicyEngine):
         Returns:
             Merged PolicyEvaluationResult
         """
-        if not self._initialized:
-            raise RuntimeError(
-                "CompositePolicyEngine not initialized. Call initialize() first."
-            )
 
         if self._parallel:
             results = await asyncio.gather(*[
@@ -210,6 +208,7 @@ class CompositePolicyEngine(PolicyEngine):
 
             return self._merge_results(results)
 
+    @require_initialized
     async def evaluate_response(
         self,
         session_id: str,
@@ -231,10 +230,6 @@ class CompositePolicyEngine(PolicyEngine):
         Returns:
             Merged PolicyEvaluationResult
         """
-        if not self._initialized:
-            raise RuntimeError(
-                "CompositePolicyEngine not initialized. Call initialize() first."
-            )
 
         if self._parallel:
             results = await asyncio.gather(*[

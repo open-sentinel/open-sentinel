@@ -17,6 +17,7 @@ from panoptes.policy.protocols import (
     PolicyDecision,
     PolicyViolation,
     StateClassificationResult,
+    require_initialized,
 )
 from panoptes.policy.engines.llm.models import (
     SessionContext,
@@ -360,6 +361,7 @@ class LLMPolicyEngine(StatefulPolicyEngine):
                 metadata={"error": str(e)},
             )
 
+    @require_initialized
     async def classify_response(
         self,
         session_id: str,
@@ -367,12 +369,6 @@ class LLMPolicyEngine(StatefulPolicyEngine):
         current_state: Optional[str] = None,
     ) -> StateClassificationResult:
         """Classify a response to a workflow state."""
-        if not self._initialized:
-            return StateClassificationResult(
-                state_name="unknown",
-                confidence=0.0,
-                method="uninitialized",
-            )
         
         session = self._get_or_create_session(session_id)
         

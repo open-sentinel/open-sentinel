@@ -65,11 +65,8 @@ class RubricCriterion:
     scale: ScoreScale = ScoreScale.LIKERT_5
     weight: float = 1.0
     fail_threshold: Optional[float] = None
-    score_descriptions: Optional[Dict[int, str]] = None
-
-    def __post_init__(self):
-        if self.score_descriptions is None:
-            self.score_descriptions = {}
+    fail_threshold: Optional[float] = None
+    score_descriptions: Dict[int, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -82,11 +79,7 @@ class Rubric:
     scope: EvaluationScope = EvaluationScope.TURN
     pass_threshold: float = 0.6
     fail_action: VerdictAction = VerdictAction.WARN
-    prompt_overrides: Optional[Dict[str, str]] = None
-
-    def __post_init__(self):
-        if self.prompt_overrides is None:
-            self.prompt_overrides = {}
+    prompt_overrides: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

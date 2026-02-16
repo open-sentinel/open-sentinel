@@ -2,7 +2,8 @@
 
 import pytest
 
-from panoptes.policy.engines.fsm.classifier import StateClassifier, ClassificationResult
+from panoptes.policy.protocols import StateClassificationResult
+from panoptes.policy.engines.fsm.classifier import StateClassifier
 from panoptes.policy.engines.fsm.workflow.schema import State, ClassificationHint
 
 
@@ -164,15 +165,17 @@ class TestStateClassifier:
 class TestClassificationResult:
     """Tests for ClassificationResult dataclass."""
 
-    def test_classification_result_fields(self):
-        """Test ClassificationResult has expected fields."""
-        result = ClassificationResult(
+    @pytest.fixture
+    def result(self):
+        return StateClassificationResult(
             state_name="test",
             confidence=0.95,
             method="pattern",
             details={"matched_pattern": "test"},
         )
 
+    def test_classification_result_fields(self, result):
+        """Test StateClassificationResult fields."""
         assert result.state_name == "test"
         assert result.confidence == 0.95
         assert result.method == "pattern"

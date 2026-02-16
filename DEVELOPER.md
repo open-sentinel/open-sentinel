@@ -83,7 +83,7 @@ Traces appear in your OTLP-compatible backend (Jaeger, Zipkin, etc.) grouped by 
 | Entity | Convention | Example |
 |--------|------------|---------|
 | Files | `snake_case.py` | `state_machine.py` |
-| Classes | `PascalCase` | `WorkflowTracker` |
+| Classes | `PascalCase` | `PolicyEngine` |
 | Functions/Methods | `snake_case` | `process_response` |
 | Constants | `UPPER_SNAKE_CASE` | `STRATEGY_REGISTRY` |
 | Private | `_prefix` | `_sessions`, `_extract_content` |
@@ -508,26 +508,7 @@ names = injector.list_interventions()
 info = injector.get_intervention_info("prompt_verify_identity")
 ```
 
-### Working with the Tracker (FSM Engine)
 
-```python
-from panoptes.policy.engines.fsm import WorkflowTracker
-
-tracker = WorkflowTracker(workflow)
-
-# Process an LLM response
-result = await tracker.process_response(
-    session_id="session-123",
-    response=llm_response,
-    context={"messages": messages}
-)
-
-if result.intervention_needed:
-    print(f"Intervention: {result.intervention_needed}")
-    
-# Get workflow info
-info = tracker.get_workflow_info()
-```
 
 ---
 

@@ -30,7 +30,7 @@ Response ──► evaluate_response() ──► Classify ──► Check Constr
 fsm/
 ├── engine.py           # FSMPolicyEngine — main entry point
 ├── classifier.py       # StateClassifier — response → state classification
-├── tracker.py          # WorkflowTracker — orchestration (legacy, pre-engine API)
+
 ├── intervention.py     # InterventionHandler + InterventionBuilder
 ├── compiler.py         # FSMCompiler — natural language → workflow YAML
 └── workflow/
@@ -49,7 +49,7 @@ fsm/
 | `WorkflowStateMachine` | Session lifecycle, state transitions | `schema.WorkflowDefinition` |
 | `ConstraintEvaluator` | LTL-lite constraint evaluation | `schema.Constraint`, `SessionState` |
 | `InterventionHandler` | Prompt injection for corrections | `core.intervention.strategies` |
-| `WorkflowParser` | YAML/JSON deserialization | `schema.WorkflowDefinition` |
+
 | `FSMCompiler` | NL → YAML via LLM | `schema.*`, `LLMClient` |
 
 ---

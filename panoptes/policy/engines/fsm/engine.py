@@ -14,6 +14,7 @@ from panoptes.policy.protocols import (
     PolicyDecision,
     PolicyViolation,
     StateClassificationResult,
+    require_initialized,
 )
 from panoptes.policy.registry import register_engine
 from panoptes.policy.engines.fsm.workflow.schema import WorkflowDefinition
@@ -110,6 +111,7 @@ class FSMPolicyEngine(StatefulPolicyEngine):
             f"{len(self._workflow.constraints)} constraints)"
         )
 
+    @require_initialized
     async def evaluate_request(
         self,
         session_id: str,
@@ -130,8 +132,6 @@ class FSMPolicyEngine(StatefulPolicyEngine):
         Returns:
             PolicyEvaluationResult with decision
         """
-        if not self._initialized:
-            raise RuntimeError("FSMPolicyEngine not initialized. Call initialize() first.")
 
         session = await self._state_machine.get_or_create_session(session_id)
 
@@ -160,6 +160,7 @@ class FSMPolicyEngine(StatefulPolicyEngine):
             },
         )
 
+    @require_initialized
     async def evaluate_response(
         self,
         session_id: str,
@@ -185,8 +186,6 @@ class FSMPolicyEngine(StatefulPolicyEngine):
         Returns:
             PolicyEvaluationResult with decision and any violations
         """
-        if not self._initialized:
-            raise RuntimeError("FSMPolicyEngine not initialized. Call initialize() first.")
 
         session = await self._state_machine.get_or_create_session(session_id)
         previous_state = session.current_state
@@ -263,6 +262,7 @@ class FSMPolicyEngine(StatefulPolicyEngine):
             },
         )
 
+    @require_initialized
     async def classify_response(
         self,
         session_id: str,
@@ -280,41 +280,29 @@ class FSMPolicyEngine(StatefulPolicyEngine):
         Returns:
             StateClassificationResult with detected state
         """
-        if not self._initialized:
-            raise RuntimeError("FSMPolicyEngine not initialized. Call initialize() first.")
 
         if current_state is None:
             session = await self._state_machine.get_or_create_session(session_id)
             current_state = session.current_state
 
-        result = self._classifier.classify(response_data, current_state)
+        return self._classifier.classify(response_data, current_state)
 
-        return StateClassificationResult(
-            state_name=result.state_name,
-            confidence=result.confidence,
-            method=result.method,
-            details=result.details,
-        )
-
+    @require_initialized
     async def get_current_state(self, session_id: str) -> str:
         """Get current state name for session."""
-        if not self._initialized:
-            raise RuntimeError("FSMPolicyEngine not initialized. Call initialize() first.")
 
         session = await self._state_machine.get_or_create_session(session_id)
         return session.current_state
 
+    @require_initialized
     async def get_state_history(self, session_id: str) -> List[str]:
         """Get state transition history."""
-        if not self._initialized:
-            raise RuntimeError("FSMPolicyEngine not initialized. Call initialize() first.")
 
         return await self._state_machine.get_state_history(session_id)
 
+    @require_initialized
     async def get_valid_next_states(self, session_id: str) -> List[str]:
         """Get valid next states from current state."""
-        if not self._initialized:
-            raise RuntimeError("FSMPolicyEngine not initialized. Call initialize() first.")
 
         valid = await self._state_machine.get_valid_transitions(session_id)
         return list(valid)

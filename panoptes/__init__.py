@@ -65,7 +65,7 @@ from panoptes.policy.engines.fsm import (
     ConstraintType,
     WorkflowParser,
     WorkflowStateMachine,
-    WorkflowTracker,
+
     StateClassifier,
 )
 
@@ -95,7 +95,7 @@ __all__ = [
     "WorkflowParser",
     "WorkflowStateMachine",
     # Monitoring
-    "WorkflowTracker",
+
     "StateClassifier",
     # Policy engines
     "PolicyEngine",

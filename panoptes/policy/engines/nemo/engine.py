@@ -21,6 +21,7 @@ from panoptes.policy.protocols import (
     PolicyEvaluationResult,
     PolicyDecision,
     PolicyViolation,
+    require_initialized,
 )
 from panoptes.policy.registry import register_engine
 
@@ -194,6 +195,7 @@ class NemoGuardrailsPolicyEngine(PolicyEngine):
             panoptes_request_intervention, "panoptes_request_intervention"
         )
 
+    @require_initialized
     async def evaluate_request(
         self,
         session_id: str,
@@ -216,10 +218,6 @@ class NemoGuardrailsPolicyEngine(PolicyEngine):
         Returns:
             PolicyEvaluationResult with decision
         """
-        if not self._initialized:
-            raise RuntimeError(
-                "NemoGuardrailsPolicyEngine not initialized. Call initialize() first."
-            )
 
         if "input" not in self._enabled_rails:
             return PolicyEvaluationResult(
@@ -312,6 +310,7 @@ class NemoGuardrailsPolicyEngine(PolicyEngine):
                 ],
             )
 
+    @require_initialized
     async def evaluate_response(
         self,
         session_id: str,
@@ -337,10 +336,6 @@ class NemoGuardrailsPolicyEngine(PolicyEngine):
         Returns:
             PolicyEvaluationResult with decision
         """
-        if not self._initialized:
-            raise RuntimeError(
-                "NemoGuardrailsPolicyEngine not initialized. Call initialize() first."
-            )
 
         if "output" not in self._enabled_rails:
             return PolicyEvaluationResult(
