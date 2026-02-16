@@ -127,7 +127,8 @@ class LLMClient:
                 last_error = e
                 logger.warning(
                     f"LLM call attempt {attempt + 1}/{self.max_retries + 1} "
-                    f"failed: {e}"
+                    f"failed: {e}",
+                    exc_info=True,
                 )
                 if attempt == self.max_retries:
                     break

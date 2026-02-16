@@ -73,7 +73,7 @@ class RubricRegistry:
                     cls.register(rubric)
                     logger.info(f"Loaded custom rubric '{rubric.name}' from {file}")
 
-            except Exception as e:
+            except (OSError, yaml.YAMLError, KeyError, ValueError) as e:
                 logger.error(f"Failed to load rubric from {file}: {e}")
 
 

@@ -16,7 +16,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime, timezone
 from contextlib import contextmanager
 
-
+from panoptes import __version__
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter
@@ -205,7 +205,7 @@ class PanoptesTracer:
                 "panoptes-session",
                 attributes={
                     "panoptes.session_id": session_id,
-                    "panoptes.version": "0.1.0",
+                    "panoptes.version": __version__,
                 },
             )
             self._session_spans[session_id] = span

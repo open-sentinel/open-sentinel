@@ -142,10 +142,10 @@ class JudgeClient:
 
     def get_total_tokens(self) -> int:
         """Get total tokens used across all judge models."""
-        return sum(c._total_tokens_used for c in self._clients.values())
+        return sum(c.total_tokens_used for c in self._clients.values())
 
     def get_tokens_for_model(self, name: str) -> int:
         """Get tokens used by a specific judge model."""
         if name not in self._clients:
             return 0
-        return self._clients[name]._total_tokens_used
+        return self._clients[name].total_tokens_used

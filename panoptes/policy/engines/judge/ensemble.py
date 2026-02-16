@@ -8,7 +8,7 @@ and can escalate when judges disagree significantly.
 
 import asyncio
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Callable, Dict, Any, List, Optional, Tuple
 
 from panoptes.policy.engines.judge.models import (
     Rubric,
@@ -180,7 +180,7 @@ class JudgeEnsemble:
         elif self._strategy == AggregationStrategy.MEDIAN_SCORE:
             final_scores, final_composite = self._aggregate_median(verdicts)
         elif self._strategy == AggregationStrategy.MAJORITY_VOTE:
-            final_scores, final_composite = self._aggregate_median(verdicts)
+            final_scores, final_composite = self._aggregate_mean(verdicts)
         elif self._strategy == AggregationStrategy.CONSERVATIVE:
             final_scores, final_composite = self._aggregate_conservative(verdicts)
         elif self._strategy == AggregationStrategy.MINORITY_VETO:
@@ -221,7 +221,7 @@ class JudgeEnsemble:
 
     def _aggregate_mean(
         self, verdicts: List[JudgeVerdict]
-    ) -> tuple[List[JudgeScore], float]:
+    ) -> Tuple[List[JudgeScore], float]:
         """Average scores across judges."""
         final_composite = sum(v.composite_score for v in verdicts) / len(verdicts)
         final_scores = self._merge_scores_mean(verdicts)
@@ -229,7 +229,7 @@ class JudgeEnsemble:
 
     def _aggregate_median(
         self, verdicts: List[JudgeVerdict]
-    ) -> tuple[List[JudgeScore], float]:
+    ) -> Tuple[List[JudgeScore], float]:
         """Median scores across judges."""
         composites = sorted(v.composite_score for v in verdicts)
         n = len(composites)
@@ -242,7 +242,7 @@ class JudgeEnsemble:
 
     def _aggregate_conservative(
         self, verdicts: List[JudgeVerdict]
-    ) -> tuple[List[JudgeScore], float]:
+    ) -> Tuple[List[JudgeScore], float]:
         """Take the lowest (most conservative) scores."""
         final_composite = min(v.composite_score for v in verdicts)
         final_scores = self._merge_scores_min(verdicts)
@@ -267,7 +267,7 @@ class JudgeEnsemble:
     def _merge_scores(
         self,
         verdicts: List[JudgeVerdict],
-        agg_fn,
+        agg_fn: Callable[[List[float]], float],
     ) -> List[JudgeScore]:
         """Merge per-criterion scores using an aggregation function."""
         # Group scores by criterion
@@ -280,11 +280,16 @@ class JudgeEnsemble:
         for criterion, scores in by_criterion.items():
             raw_scores = [s.score for s in scores]
             max_score = scores[0].max_score
+            if not all(s.max_score == max_score for s in scores):
+                logger.warning(
+                    f"Criterion '{criterion}' has mismatched max_score across judges, "
+                    f"using first judge's value ({max_score})"
+                )
             confidences = [s.confidence for s in scores]
 
             merged.append(JudgeScore(
                 criterion=criterion,
-                score=round(agg_fn(raw_scores)),
+                score=round(agg_fn(raw_scores), 2),
                 max_score=max_score,
                 reasoning=f"Aggregated from {len(scores)} judges ({self._strategy})",
                 evidence=[],
@@ -299,6 +304,9 @@ class JudgeEnsemble:
 
     def _majority_vote_action(self, verdicts: List[JudgeVerdict]) -> VerdictAction:
         """Pick the action that the majority of judges agree on."""
+        if not verdicts:
+            return VerdictAction.ESCALATE
+
         counts: Dict[VerdictAction, int] = {}
         for v in verdicts:
             counts[v.action] = counts.get(v.action, 0) + 1

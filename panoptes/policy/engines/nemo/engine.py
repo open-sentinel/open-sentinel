@@ -286,7 +286,7 @@ class NemoGuardrailsPolicyEngine(PolicyEngine):
             )
 
         except Exception as e:
-            logger.error(f"NeMo input rail evaluation failed: {e}")
+            logger.error(f"NeMo input rail evaluation failed: {e}", exc_info=True)
 
             if self._fail_closed:
                 return PolicyEvaluationResult(
@@ -400,7 +400,7 @@ class NemoGuardrailsPolicyEngine(PolicyEngine):
             )
 
         except Exception as e:
-            logger.error(f"NeMo output rail evaluation failed: {e}")
+            logger.error(f"NeMo output rail evaluation failed: {e}", exc_info=True)
 
             if self._fail_closed:
                 return PolicyEvaluationResult(
