@@ -3,13 +3,13 @@ Tests for rubric registry and built-in rubrics.
 """
 
 import pytest
-from panoptes.policy.engines.judge.models import (
+from opensentinel.policy.engines.judge.models import (
     EvaluationType,
     EvaluationScope,
     ScoreScale,
     VerdictAction,
 )
-from panoptes.policy.engines.judge.rubrics import RubricRegistry
+from opensentinel.policy.engines.judge.rubrics import RubricRegistry
 
 
 class TestRubricRegistry:
@@ -61,7 +61,7 @@ class TestRubricRegistry:
 
 class TestCreateRulesRubric:
     def test_creates_binary_rubric(self):
-        from panoptes.policy.engines.judge.rubrics import create_rules_rubric
+        from opensentinel.policy.engines.judge.rubrics import create_rules_rubric
         rules = ["No financial advice", "Be professional"]
         rubric = create_rules_rubric(rules)
 
@@ -75,7 +75,7 @@ class TestCreateRulesRubric:
         assert "Be professional" in rubric.prompt_overrides["additional_instructions"]
 
     def test_custom_name(self):
-        from panoptes.policy.engines.judge.rubrics import create_rules_rubric
+        from opensentinel.policy.engines.judge.rubrics import create_rules_rubric
         rubric = create_rules_rubric(["rule1"], name="my_policy")
         assert rubric.name == "my_policy"
 

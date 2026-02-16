@@ -1,0 +1,106 @@
+"""
+Open Sentinel - Reliability layer for AI agents.
+
+Monitors workflow adherence and intervenes when agents deviate from expected behavior.
+Uses LiteLLM proxy approach - customers only need to change their base_url.
+
+Supports multiple policy engines:
+- FSM: Finite State Machine workflow enforcement
+- NeMo: NVIDIA NeMo Guardrails integration
+- Composite: Combine multiple engines together
+
+Quick Start:
+    Configure via environment variables:
+    ```bash
+    export OSNTL_POLICY__ENGINE__TYPE=fsm
+    export OSNTL_POLICY__ENGINE__CONFIG__WORKFLOW_PATH=workflow.yaml
+    osentinel serve --port 4000
+    ```
+
+    Or programmatically:
+    ```python
+    from opensentinel import SentinelProxy, SentinelSettings
+
+    # Configure and start proxy
+    settings = SentinelSettings()
+    proxy = SentinelProxy(settings)
+    await proxy.start()
+    ```
+
+    Then point your LLM client to http://localhost:4000/v1
+
+Using Policy Engines Directly:
+    ```python
+    from opensentinel.policy import PolicyEngineRegistry, PolicyDecision
+
+    # Create and initialize an FSM engine
+    engine = PolicyEngineRegistry.create("fsm")
+    await engine.initialize({"workflow_path": "./workflow.yaml"})
+
+    # Evaluate a request
+    result = await engine.evaluate_request(
+        session_id="session-123",
+        request_data={"messages": [...]},
+    )
+
+    if result.decision == PolicyDecision.DENY:
+        print("Request blocked:", result.violations)
+    ```
+"""
+
+__version__ = "0.1.0"
+
+# Core configuration
+from opensentinel.config.settings import SentinelSettings
+
+# Proxy server
+from opensentinel.proxy.server import SentinelProxy, start_proxy
+
+# Workflow components (from FSM engine)
+from opensentinel.policy.engines.fsm import (
+    WorkflowDefinition,
+    State,
+    Transition,
+    Constraint,
+    ConstraintType,
+    WorkflowParser,
+    WorkflowStateMachine,
+
+    StateClassifier,
+)
+
+# Policy engines
+from opensentinel.policy import (
+    PolicyEngine,
+    PolicyEngineRegistry,
+    PolicyDecision,
+    PolicyEvaluationResult,
+    PolicyViolation,
+)
+
+__all__ = [
+    # Version
+    "__version__",
+    # Configuration
+    "SentinelSettings",
+    # Proxy
+    "SentinelProxy",
+    "start_proxy",
+    # Workflow
+    "WorkflowDefinition",
+    "State",
+    "Transition",
+    "Constraint",
+    "ConstraintType",
+    "WorkflowParser",
+    "WorkflowStateMachine",
+    # Monitoring
+
+    "StateClassifier",
+    # Policy engines
+    "PolicyEngine",
+    "PolicyEngineRegistry",
+    "PolicyDecision",
+    "PolicyEvaluationResult",
+    "PolicyViolation",
+]

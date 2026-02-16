@@ -8,14 +8,14 @@ evaluate_response calls and decision types to Checker/CheckResult types.
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from panoptes.core.interceptor import (
+from opensentinel.core.interceptor import (
     CheckPhase,
     CheckerMode,
     CheckDecision,
     CheckerContext,
 )
-from panoptes.core.interceptor.adapters import PolicyEngineChecker
-from panoptes.policy.protocols import PolicyDecision, PolicyEvaluationResult, PolicyViolation
+from opensentinel.core.interceptor.adapters import PolicyEngineChecker
+from opensentinel.policy.protocols import PolicyDecision, PolicyEvaluationResult, PolicyViolation
 
 
 # ---------------------------------------------------------------------------

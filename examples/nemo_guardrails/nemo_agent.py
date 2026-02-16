@@ -11,8 +11,8 @@ dotenv.load_dotenv()
 # Configuration
 # =============================================================================
 
-# Panoptes Proxy URL
-PANOPTES_URL = os.getenv("PANOPTES_URL", "http://localhost:4000/v1")
+# Open Sentinel Proxy URL
+OSNTL_URL = os.getenv("OSNTL_URL", "http://localhost:4000/v1")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Session ID for tracking conversation state
@@ -31,9 +31,9 @@ You help with refunds, subscriptions, and general questions.
 """
 
 def create_client():
-    """Create OpenAI client configured for Panoptes."""
+    """Create OpenAI client configured for Open Sentinel."""
     return OpenAI(
-        base_url=PANOPTES_URL,
+        base_url=OSNTL_URL,
         api_key=GOOGLE_API_KEY or "dummy" 
     )
 
@@ -43,13 +43,13 @@ def create_client():
 
 def run_nemo_conversation():
     print("=" * 60)
-    print("NeMo Guardrails Demo with Panoptes")
+    print("NeMo Guardrails Demo with Open Sentinel")
     print("=" * 60)
-    print(f"\nConnecting to Panoptes at: {PANOPTES_URL}")
-    print("Note: Ensure Panoptes is running with NeMo engine:")
-    print("export PANOPTES_POLICY__ENGINE__TYPE=nemo")
-    print("export PANOPTES_POLICY__ENGINE__CONFIG__CONFIG_PATH=./examples/nemo_guardrails/config/")
-    print("panoptes serve\n")
+    print(f"\nConnecting to Open Sentinel at: {OSNTL_URL}")
+    print("Note: Ensure Open Sentinel is running with NeMo engine:")
+    print("export OSNTL_POLICY__ENGINE__TYPE=nemo")
+    print("export OSNTL_POLICY__ENGINE__CONFIG__CONFIG_PATH=./examples/nemo_guardrails/config/")
+    print("osentinel serve\n")
     
     client = create_client()
     messages = [

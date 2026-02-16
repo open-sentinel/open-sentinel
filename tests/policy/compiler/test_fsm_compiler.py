@@ -5,10 +5,10 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 import json
 
-from panoptes.policy.compiler.protocol import CompilationResult
-from panoptes.policy.compiler.registry import PolicyCompilerRegistry
-from panoptes.policy.engines.fsm.compiler import FSMCompiler
-from panoptes.policy.engines.fsm.workflow.schema import (
+from opensentinel.policy.compiler.protocol import CompilationResult
+from opensentinel.policy.compiler.registry import PolicyCompilerRegistry
+from opensentinel.policy.engines.fsm.compiler import FSMCompiler
+from opensentinel.policy.engines.fsm.workflow.schema import (
     WorkflowDefinition,
     ConstraintType,
 )
@@ -254,7 +254,7 @@ class TestFSMCompilerValidation:
 
         # Manually add an invalid constraint to test validation
         # (This simulates a case where parsing created an invalid state)
-        from panoptes.policy.engines.fsm.workflow.schema import Constraint, ConstraintType
+        from opensentinel.policy.engines.fsm.workflow.schema import Constraint, ConstraintType
         workflow.constraints.append(
             Constraint(
                 name="bad_constraint",
@@ -345,7 +345,7 @@ class TestFSMCompilerExport:
 
     def test_exported_yaml_is_valid_workflow(self, compiler, sample_workflow, tmp_path):
         """Test that exported YAML can be parsed back."""
-        from panoptes.policy.engines.fsm.workflow.parser import WorkflowParser
+        from opensentinel.policy.engines.fsm.workflow.parser import WorkflowParser
 
         result = CompilationResult(success=True, config=sample_workflow)
         output_path = tmp_path / "workflow.yaml"

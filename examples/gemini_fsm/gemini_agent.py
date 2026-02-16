@@ -11,8 +11,8 @@ dotenv.load_dotenv()
 # Configuration
 # =============================================================================
 
-# Panoptes Proxy URL (OpenAI compatible)
-PANOPTES_URL = os.getenv("PANOPTES_URL", "http://localhost:4000/v1")
+# Open Sentinel Proxy URL (OpenAI compatible)
+OSNTL_URL = os.getenv("OSNTL_URL", "http://localhost:4000/v1")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Session ID for tracking conversation state
@@ -210,9 +210,9 @@ Current customer context:
 """
 
 def create_client():
-    """Create OpenAI client configured for Panoptes."""
+    """Create OpenAI client configured for Open Sentinel."""
     return OpenAI(
-        base_url=PANOPTES_URL,
+        base_url=OSNTL_URL,
         api_key=GOOGLE_API_KEY # OpenAI client requires a key, even if using proxy
     )
 
@@ -222,9 +222,9 @@ def create_client():
 
 def run_support_conversation():
     print("=" * 60)
-    print("Customer Support Agent Demo with Panoptes (OpenAI Compatible)")
+    print("Customer Support Agent Demo with Open Sentinel (OpenAI Compatible)")
     print("=" * 60)
-    print(f"\nConnecting to Panoptes at: {PANOPTES_URL}")
+    print(f"\nConnecting to Open Sentinel at: {OSNTL_URL}")
     print(f"Session ID: {SESSION_ID}\n")
 
     client = create_client()
@@ -252,7 +252,7 @@ def run_support_conversation():
         try:
             # We must use "stream=False" (default) for simplicity in demo
             response = client.chat.completions.create(
-                model="gemini/gemini-2.5-flash", # Panoptes maps this to Google
+                model="gemini/gemini-2.5-flash", # Open Sentinel maps this to Google
                 messages=messages,
                 tools=tools,
                 tool_choice="auto"

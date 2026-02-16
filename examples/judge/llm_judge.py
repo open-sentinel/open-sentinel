@@ -11,8 +11,8 @@ dotenv.load_dotenv()
 # Configuration
 # =============================================================================
 
-# Panoptes Proxy URL
-PANOPTES_URL = os.getenv("PANOPTES_URL", "http://localhost:4000/v1")
+# Open Sentinel Proxy URL
+OSNTL_URL = os.getenv("OSNTL_URL", "http://localhost:4000/v1")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 # Session ID for tracking conversation state
@@ -31,9 +31,9 @@ You help people understand basic financial concepts like budgeting and saving.
 """
 
 def create_client():
-    """Create OpenAI client configured for Panoptes."""
+    """Create OpenAI client configured for Open Sentinel."""
     return OpenAI(
-        base_url=PANOPTES_URL,
+        base_url=OSNTL_URL,
         api_key=GOOGLE_API_KEY or "dummy" 
     )
 
@@ -43,11 +43,11 @@ def create_client():
 
 def run_judge_conversation():
     print("=" * 60)
-    print("LLM Judge Policy Demo with Panoptes")
+    print("LLM Judge Policy Demo with Open Sentinel")
     print("=" * 60)
-    print(f"\nConnecting to Panoptes at: {PANOPTES_URL}")
-    print("Note: Ensure Panoptes is running with Judge engine:")
-    print("panoptes serve -c examples/judge/panoptes.yaml")
+    print(f"\nConnecting to Open Sentinel at: {OSNTL_URL}")
+    print("Note: Ensure Open Sentinel is running with Judge engine:")
+    print("osentinel serve -c examples/judge/osentinel.yaml")
     print("\n")
     
     client = create_client()
@@ -80,7 +80,7 @@ def run_judge_conversation():
                 response = client.chat.completions.create(
                     model="gemini/gemini-2.5-flash", 
                     messages=messages,
-                    extra_headers={"X-Panoptes-Session-ID": SESSION_ID} # Pass session ID for judging context
+                    extra_headers={"X-Sentinel-Session-ID": SESSION_ID} # Pass session ID for judging context
                 )
                 
                 message = response.choices[0].message
@@ -90,7 +90,7 @@ def run_judge_conversation():
                 break # Success, exit retry loop
 
             except Exception as e:
-                # If blocked, we might get a 400 or other error depending on how Panoptes handles BLOCK
+                # If blocked, we might get a 400 or other error depending on how Open Sentinel handles BLOCK
                 if "429" in str(e) and attempt < max_retries - 1:
                     print(f"⚠️ Rate limited (429). Retrying in {base_delay} seconds...")
                     time.sleep(base_delay)

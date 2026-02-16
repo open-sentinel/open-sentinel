@@ -5,13 +5,13 @@ Tests for multi-judge ensemble aggregation.
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from panoptes.policy.engines.judge.ensemble import (
+from opensentinel.policy.engines.judge.ensemble import (
     JudgeEnsemble,
     AggregationStrategy,
 )
-from panoptes.policy.engines.judge.evaluator import JudgeEvaluator
-from panoptes.policy.engines.judge.client import JudgeClient
-from panoptes.policy.engines.judge.models import (
+from opensentinel.policy.engines.judge.evaluator import JudgeEvaluator
+from opensentinel.policy.engines.judge.client import JudgeClient
+from opensentinel.policy.engines.judge.models import (
     Rubric,
     RubricCriterion,
     JudgeScore,

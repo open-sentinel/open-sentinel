@@ -7,8 +7,8 @@ import sys
 mock_nemo = MagicMock()
 sys.modules["nemoguardrails"] = mock_nemo
 
-from panoptes.policy.engines.nemo.engine import NemoGuardrailsPolicyEngine
-from panoptes.policy.protocols import PolicyDecision
+from opensentinel.policy.engines.nemo.engine import NemoGuardrailsPolicyEngine
+from opensentinel.policy.protocols import PolicyDecision
 
 @pytest.fixture
 def engine():

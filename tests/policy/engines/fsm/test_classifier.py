@@ -2,9 +2,9 @@
 
 import pytest
 
-from panoptes.policy.protocols import StateClassificationResult
-from panoptes.policy.engines.fsm.classifier import StateClassifier
-from panoptes.policy.engines.fsm.workflow.schema import State, ClassificationHint
+from opensentinel.policy.protocols import StateClassificationResult
+from opensentinel.policy.engines.fsm.classifier import StateClassifier
+from opensentinel.policy.engines.fsm.workflow.schema import State, ClassificationHint
 
 
 class TestStateClassifier:

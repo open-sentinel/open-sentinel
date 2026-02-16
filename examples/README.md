@@ -1,4 +1,4 @@
-# Panoptes Examples
+# Open Sentinel Examples
 
 This directory contains examples for different policy engines.
 
@@ -9,13 +9,13 @@ Uses an LLM to evaluate responses against a rubric.
 
 ### How to run:
 
-1. Start Panoptes:
+1. Start Open Sentinel:
    ```bash
    cd examples/judge
    export OPENAI_API_KEY=sk-...
-   panoptes serve
+   osentinel serve
    ```
-   *This uses the local `panoptes.yaml` configuration.*
+   *This uses the local `osentinel.yaml` configuration.*
 
 2. Run the agent client:
    ```bash
@@ -29,11 +29,11 @@ Demonstrates deterministic workflow enforcement.
 
 ### How to run:
 
-1. Start Panoptes:
+1. Start Open Sentinel:
    ```bash
    cd examples/gemini_fsm
    export GOOGLE_API_KEY=AIza...
-   panoptes serve
+   osentinel serve
    ```
 
 2. Run the agent script:
@@ -48,11 +48,11 @@ Demonstrates NeMo Guardrails integration.
 
 ### How to run:
 
-1. Start Panoptes:
+1. Start Open Sentinel:
    ```bash
    cd examples/nemo_guardrails
    export OPENAI_API_KEY=sk-...  # or GOOGLE_API_KEY depending on config
-   panoptes serve
+   osentinel serve
    ```
 
 2. Run the agent script:
@@ -68,11 +68,11 @@ Compile natural language policies into executable workflows.
 
 1. Compile a policy:
    ```bash
-   panoptes compile "verify identity before processing refunds" -o refund_policy.yaml
+   osentinel compile "verify identity before processing refunds" -o refund_policy.yaml
    ```
 
 2. Run with generated policy:
    ```bash
-   # Create a panoptes.yaml or run with flags
-   panoptes serve --policy refund_policy.yaml --engine fsm
+   # Create a osentinel.yaml or run with flags
+   osentinel serve --policy refund_policy.yaml --engine fsm
    ```

@@ -4,7 +4,7 @@ Tests for judge reliability modes.
 
 import pytest
 
-from panoptes.policy.engines.judge.modes import (
+from opensentinel.policy.engines.judge.modes import (
     list_reliability_modes,
     get_reliability_mode,
     build_mode_config,

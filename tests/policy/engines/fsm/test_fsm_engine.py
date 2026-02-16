@@ -2,8 +2,8 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from panoptes.policy.engines.fsm.engine import FSMPolicyEngine, StateClassificationResult, TransitionResult
-from panoptes.policy.protocols import PolicyDecision
+from opensentinel.policy.engines.fsm.engine import FSMPolicyEngine, StateClassificationResult, TransitionResult
+from opensentinel.policy.protocols import PolicyDecision
 
 @pytest.fixture
 def engine():
@@ -11,10 +11,10 @@ def engine():
 
 @pytest.fixture
 def mocks():
-    with patch("panoptes.policy.engines.fsm.engine.WorkflowParser") as mock_parser, \
-         patch("panoptes.policy.engines.fsm.engine.WorkflowStateMachine") as mock_sm, \
-         patch("panoptes.policy.engines.fsm.engine.StateClassifier") as mock_classifier, \
-         patch("panoptes.policy.engines.fsm.engine.ConstraintEvaluator") as mock_constraints:
+    with patch("opensentinel.policy.engines.fsm.engine.WorkflowParser") as mock_parser, \
+         patch("opensentinel.policy.engines.fsm.engine.WorkflowStateMachine") as mock_sm, \
+         patch("opensentinel.policy.engines.fsm.engine.StateClassifier") as mock_classifier, \
+         patch("opensentinel.policy.engines.fsm.engine.ConstraintEvaluator") as mock_constraints:
         
         yield {
             "parser": mock_parser,

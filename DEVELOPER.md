@@ -1,6 +1,6 @@
 # Developer Documentation
 
-This document provides guidance for developers (humans and AI agents) working on the Panoptes codebase.
+This document provides guidance for developers (humans and AI agents) working on the Open Sentinel codebase.
 
 ## Quick Start
 
@@ -14,11 +14,11 @@ pip install -e ".[dev]"
 # Run tests
 pytest
 
-# Initialize configuration (creates panoptes.yaml and policy.yaml)
-panoptes init
+# Initialize configuration (creates osentinel.yaml and policy.yaml)
+osentinel init
 
-# Start proxy (uses panoptes.yaml)
-panoptes serve
+# Start proxy (uses osentinel.yaml)
+osentinel serve
 ```
 
 ### Alternative: Manual Configuration
@@ -27,27 +27,27 @@ You can also configure via environment variables (useful for testing different e
 
 ```bash
 # Start proxy with FSM workflow
-export PANOPTES_POLICY__ENGINE__TYPE=fsm
-export PANOPTES_POLICY__ENGINE__CONFIG_PATH=workflow.yaml
-panoptes serve --port 4000
+export OSNTL_POLICY__ENGINE__TYPE=fsm
+export OSNTL_POLICY__ENGINE__CONFIG_PATH=workflow.yaml
+osentinel serve --port 4000
 
 # Start proxy with LLM engine
-export PANOPTES_POLICY__ENGINE__TYPE=llm
-export PANOPTES_POLICY__ENGINE__CONFIG_PATH=workflow.yaml
-panoptes serve --port 4000
+export OSNTL_POLICY__ENGINE__TYPE=llm
+export OSNTL_POLICY__ENGINE__CONFIG_PATH=workflow.yaml
+osentinel serve --port 4000
 
 # Start proxy with NeMo Guardrails (requires examples/nemo_guardrails/config/)
-export PANOPTES_POLICY__ENGINE__CONFIG_PATH=examples/nemo_guardrails/config/
-panoptes serve --port 4000
+export OSNTL_POLICY__ENGINE__CONFIG_PATH=examples/nemo_guardrails/config/
+osentinel serve --port 4000
 ```
 
-### Point Your LLM Client at Panoptes
+### Point Your LLM Client at Open Sentinel
 
 ```python
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://localhost:4000/v1",  # Point to Panoptes
+    base_url="http://localhost:4000/v1",  # Point to Open Sentinel
     api_key="your-api-key"
 )
 
@@ -60,8 +60,8 @@ response = client.chat.completions.create(
 ### Enable OpenTelemetry Tracing (Optional)
 
 ```bash
-export PANOPTES_OTEL__ENDPOINT=http://localhost:4317
-export PANOPTES_OTEL__SERVICE_NAME=panoptes
+export OSNTL_OTEL__ENDPOINT=http://localhost:4317
+export OSNTL_OTEL__SERVICE_NAME=opensentinel
 # Start Jaeger for local development: docker run -d -p 4317:4317 -p 16686:16686 jaegertracing/all-in-one:latest
 ```
 
@@ -100,8 +100,8 @@ from pydantic import BaseModel
 import litellm
 
 # 3. Local imports
-from panoptes.policy.protocols import PolicyEngine
-from panoptes.config.settings import PanoptesSettings
+from opensentinel.policy.protocols import PolicyEngine
+from opensentinel.config.settings import SentinelSettings
 ```
 
 ---
@@ -113,7 +113,7 @@ from panoptes.config.settings import PanoptesSettings
 #### Creating a Workflow Programmatically
 
 ```python
-from panoptes.policy.engines.fsm import (
+from opensentinel.policy.engines.fsm import (
     WorkflowDefinition,
     State,
     Transition,
@@ -167,7 +167,7 @@ workflow = WorkflowDefinition(
 #### Loading from YAML
 
 ```python
-from panoptes.policy.engines.fsm import WorkflowParser
+from opensentinel.policy.engines.fsm import WorkflowParser
 
 # From file
 workflow = WorkflowParser.parse_file("workflow.yaml")
@@ -189,7 +189,7 @@ is_valid, message = WorkflowParser.validate_file("workflow.yaml")
 The Policy Compiler converts natural language policies to FSM workflow configuration:
 
 ```python
-from panoptes.policy.compiler import PolicyCompilerRegistry
+from opensentinel.policy.compiler import PolicyCompilerRegistry
 from pathlib import Path
 import asyncio
 
@@ -225,10 +225,10 @@ asyncio.run(compile_policy())
 **CLI Usage:**
 ```bash
 # Basic compilation
-panoptes compile "verify identity before refunds"
+osentinel compile "verify identity before refunds"
 
 # With options
-panoptes compile "never share internal info" \\
+osentinel compile "never share internal info" \\
     -o my_workflow.yaml \\
     -d "customer support" \\
     -m gpt-4o
@@ -239,7 +239,7 @@ panoptes compile "never share internal info" \\
 #### Using the Engine Registry
 
 ```python
-from panoptes.policy import PolicyEngineRegistry
+from opensentinel.policy import PolicyEngineRegistry
 
 # Create and initialize any registered engine
 engine = await PolicyEngineRegistry.create_and_initialize(
@@ -310,7 +310,7 @@ print(state["is_structurally_drifting"])
 NeMo Guardrails requires a configuration directory containing:
 - `config.yml`: Main configuration (models, rails instructions)
 - `prompts.yml`: (Optional) Custom prompts
-- `actions.py`: (Optional) Custom python actions (if not using Panoptes registration)
+- `actions.py`: (Optional) Custom python actions (if not using Open Sentinel registration)
 
 Example `config.yml`:
 ```yaml
@@ -329,7 +329,7 @@ rails:
 ```
 
 #### Registering Custom Actions
-Panoptes automatically registers bridge actions, but you can add your own by registering them with `custom_actions` in the engine config or via your application bootstrapping.
+Open Sentinel automatically registers bridge actions, but you can add your own by registering them with `custom_actions` in the engine config or via your application bootstrapping.
 
 ```python
 async def my_custom_action(context={}):
@@ -352,7 +352,7 @@ The Interceptor is the core orchestration layer. Policy engines are wrapped as `
 #### Creating a Custom Checker
 
 ```python
-from panoptes.core.interceptor import Checker, CheckPhase, CheckerMode, CheckResult, CheckDecision, CheckerContext
+from opensentinel.core.interceptor import Checker, CheckPhase, CheckerMode, CheckResult, CheckDecision, CheckerContext
 
 class MyChecker(Checker):
     @property
@@ -388,7 +388,7 @@ class MyChecker(Checker):
 #### Using the Interceptor Directly
 
 ```python
-from panoptes.core.interceptor import Interceptor
+from opensentinel.core.interceptor import Interceptor
 
 interceptor = Interceptor(checkers=[my_checker, another_checker])
 
@@ -412,7 +412,7 @@ result = await interceptor.run_post_call(
 ### Working with the State Machine (FSM Engine)
 
 ```python
-from panoptes.policy.engines.fsm import WorkflowStateMachine
+from opensentinel.policy.engines.fsm import WorkflowStateMachine
 
 machine = WorkflowStateMachine(workflow)
 
@@ -440,7 +440,7 @@ await machine.set_pending_intervention("session-123", "intervention_name")
 ### Working with the Classifier (FSM Engine)
 
 ```python
-from panoptes.policy.engines.fsm import StateClassifier
+from opensentinel.policy.engines.fsm import StateClassifier
 
 classifier = StateClassifier(workflow.states)
 
@@ -468,7 +468,7 @@ result = classifier.classify_from_tool_call("search_kb")
 ### Working with Constraints (FSM Engine)
 
 ```python
-from panoptes.policy.engines.fsm import ConstraintEvaluator
+from opensentinel.policy.engines.fsm import ConstraintEvaluator
 
 evaluator = ConstraintEvaluator(workflow.constraints)
 
@@ -489,7 +489,7 @@ for v in violations:
 ### Working with Interventions (FSM Engine)
 
 ```python
-from panoptes.policy.engines.fsm import PromptInjector
+from opensentinel.policy.engines.fsm import PromptInjector
 
 injector = PromptInjector(workflow)
 
@@ -519,9 +519,9 @@ info = injector.get_intervention_info("prompt_verify_identity")
 **Step 1**: Create the engine class:
 
 ```python
-# panoptes/policy/engines/my_engine/engine.py
-from panoptes.policy.protocols import PolicyEngine, PolicyEvaluationResult, PolicyDecision
-from panoptes.policy.registry import register_engine
+# opensentinel/policy/engines/my_engine/engine.py
+from opensentinel.policy.protocols import PolicyEngine, PolicyEvaluationResult, PolicyDecision
+from opensentinel.policy.registry import register_engine
 
 @register_engine("my_engine")
 class MyPolicyEngine(PolicyEngine):
@@ -555,7 +555,7 @@ class MyPolicyEngine(PolicyEngine):
 **Step 2**: Import in `__init__.py` to trigger registration:
 
 ```python
-# panoptes/policy/engines/my_engine/__init__.py
+# opensentinel/policy/engines/my_engine/__init__.py
 from .engine import MyPolicyEngine
 ```
 
@@ -566,8 +566,8 @@ The engine will be automatically wrapped as a `PolicyEngineChecker` by the hook 
 For custom checks that don't fit the `PolicyEngine` pattern:
 
 ```python
-# panoptes/core/interceptor/my_checker.py
-from panoptes.core.interceptor import Checker, CheckPhase, CheckerMode, CheckResult, CheckDecision, CheckerContext
+# opensentinel/core/interceptor/my_checker.py
+from opensentinel.core.interceptor import Checker, CheckPhase, CheckerMode, CheckResult, CheckDecision, CheckerContext
 
 class MyChecker(Checker):
     @property
@@ -587,11 +587,11 @@ class MyChecker(Checker):
         return CheckResult(decision=CheckDecision.PASS, checker_name=self.name)
 ```
 
-Then register it in `PanoptesCallback._get_interceptor()`.
+Then register it in `SentinelCallback._get_interceptor()`.
 
 ### Adding a New Constraint Type
 
-**Step 1**: Add to enum in `panoptes/policy/engines/fsm/workflow/schema.py`:
+**Step 1**: Add to enum in `opensentinel/policy/engines/fsm/workflow/schema.py`:
 
 ```python
 class ConstraintType(str, Enum):
@@ -612,7 +612,7 @@ def validate_constraint_params(self):
     return self
 ```
 
-**Step 3**: Implement evaluation in `panoptes/policy/engines/fsm/workflow/constraints.py`:
+**Step 3**: Implement evaluation in `opensentinel/policy/engines/fsm/workflow/constraints.py`:
 
 ```python
 def _evaluate_constraint(self, constraint, history, session):
@@ -637,7 +637,7 @@ case ConstraintType.MY_NEW_TYPE:
 
 ### Adding a New Intervention Strategy
 
-**Step 1**: Add to enum in `panoptes/core/intervention/strategies.py`:
+**Step 1**: Add to enum in `opensentinel/core/intervention/strategies.py`:
 
 ```python
 class StrategyType(Enum):
@@ -679,7 +679,7 @@ STRATEGY_REGISTRY: Dict[StrategyType, InterventionStrategy] = {
 
 ### Adding a New Classification Method (FSM Engine)
 
-Modify `StateClassifier` in `panoptes/policy/engines/fsm/classifier.py`:
+Modify `StateClassifier` in `opensentinel/policy/engines/fsm/classifier.py`:
 
 ```python
 def classify(self, response, current_state):
@@ -706,10 +706,10 @@ To add a compiler for a new policy engine:
 **Step 1**: Create a compiler class in the engine's directory:
 
 ```python
-# panoptes/policy/engines/my_engine/compiler.py
-from panoptes.policy.compiler.base import LLMPolicyCompiler
-from panoptes.policy.compiler.protocol import CompilationResult
-from panoptes.policy.compiler.registry import register_compiler
+# opensentinel/policy/engines/my_engine/compiler.py
+from opensentinel.policy.compiler.base import LLMPolicyCompiler
+from opensentinel.policy.compiler.protocol import CompilationResult
+from opensentinel.policy.compiler.registry import register_compiler
 
 @register_compiler("my_engine")
 class MyEngineCompiler(LLMPolicyCompiler):
@@ -750,7 +750,7 @@ class MyEngineCompiler(LLMPolicyCompiler):
 **Step 2**: Import the compiler in the engine's `__init__.py` to trigger registration:
 
 ```python
-# panoptes/policy/engines/my_engine/__init__.py
+# opensentinel/policy/engines/my_engine/__init__.py
 try:
     from .compiler import MyEngineCompiler
 except ImportError:
@@ -774,7 +774,7 @@ tests/
 │   │   └── test_adapters.py      # PolicyEngineChecker adapter tests
 │   └── test_intervention.py      # Strategy tests
 ├── proxy/
-│   ├── test_hooks.py         # PanoptesCallback tests
+│   ├── test_hooks.py         # Open SentinelCallback tests
 │   └── test_middleware.py    # Session extraction tests
 └── policy/
     ├── compiler/             # Compiler tests
@@ -813,7 +813,7 @@ def mock_tool_call():
 
 ```python
 import pytest
-from panoptes.policy.engines.fsm import WorkflowStateMachine, TransitionResult
+from opensentinel.policy.engines.fsm import WorkflowStateMachine, TransitionResult
 
 class TestMyFeature:
     @pytest.fixture
@@ -842,7 +842,7 @@ pytest tests/policy/engines/fsm/test_state_machine.py
 pytest tests/policy/engines/fsm/test_state_machine.py::TestWorkflowStateMachine::test_create_session
 
 # With coverage
-pytest --cov=panoptes
+pytest --cov=opensentinel
 
 # Verbose output
 pytest -v
@@ -854,7 +854,7 @@ pytest -v
 
 ### Adding a New CLI Command
 
-Edit `panoptes/cli.py`:
+Edit `opensentinel/cli.py`:
 
 ```python
 @main.command()
@@ -866,7 +866,7 @@ def mycommand(option: str, arg: str):
     Longer description with examples.
     
     Example:
-        panoptes mycommand --option value argument
+        osentinel mycommand --option value argument
     """
     # Implementation
     click.echo(f"Running with {option} and {arg}")
@@ -874,7 +874,7 @@ def mycommand(option: str, arg: str):
 
 ### Adding Configuration Options
 
-Edit `panoptes/config/settings.py`:
+Edit `opensentinel/config/settings.py`:
 
 ```python
 class MyComponentConfig(BaseModel):
@@ -884,20 +884,20 @@ class MyComponentConfig(BaseModel):
     option_b: int = 42
     option_c: bool = False
 
-class PanoptesSettings(BaseSettings):
+class SentinelSettings(BaseSettings):
     # ... existing fields ...
     
     my_component: MyComponentConfig = Field(default_factory=MyComponentConfig)
 ```
 
-Environment variables: `PANOPTES_MY_COMPONENT__OPTION_A=value`
+Environment variables: `OSNTL_MY_COMPONENT__OPTION_A=value`
 
 ### Debugging
 
 **Enable debug logging:**
 
 ```bash
-PANOPTES_DEBUG=true panoptes serve
+OSNTL_DEBUG=true osentinel serve
 ```
 
 **Or in code:**
@@ -910,15 +910,15 @@ logging.basicConfig(level=logging.DEBUG)
 **Check specific loggers:**
 
 ```python
-logging.getLogger("panoptes.policy.engines.fsm.classifier").setLevel(logging.DEBUG)
-logging.getLogger("panoptes.policy.engines.llm.engine").setLevel(logging.DEBUG)
-logging.getLogger("panoptes.core.interceptor").setLevel(logging.DEBUG)
+logging.getLogger("opensentinel.policy.engines.fsm.classifier").setLevel(logging.DEBUG)
+logging.getLogger("opensentinel.policy.engines.llm.engine").setLevel(logging.DEBUG)
+logging.getLogger("opensentinel.core.interceptor").setLevel(logging.DEBUG)
 ```
 
 **Monitor fail-open activations:**
 
 ```python
-from panoptes.proxy.hooks import get_fail_open_counts
+from opensentinel.proxy.hooks import get_fail_open_counts
 counts = get_fail_open_counts()
 # {"pre_call": 0, "post_call": 1, ...}
 ```
@@ -930,7 +930,7 @@ counts = get_fail_open_counts()
 ### Common Issues
 
 **"No workflow configured - running in pass-through mode"**
-- Set `PANOPTES_POLICY__ENGINE__CONFIG_PATH` environment variable
+- Set `OSNTL_POLICY__ENGINE__CONFIG_PATH` environment variable
 
 **"Failed to load embedding model"**
 - Ensure `sentence-transformers` is installed
@@ -946,13 +946,13 @@ counts = get_fail_open_counts()
 - Check that `trigger` and `target` in constraints match state names exactly
 
 **"Unknown policy engine type: '...'"**
-- Check `PANOPTES_POLICY__ENGINE__TYPE` is one of: `fsm`, `llm`, `nemo`, `composite`
-- Ensure the engine module is imported (check `panoptes/policy/engines/__init__.py`)
+- Check `OSNTL_POLICY__ENGINE__TYPE` is one of: `fsm`, `llm`, `nemo`, `composite`
+- Ensure the engine module is imported (check `opensentinel/policy/engines/__init__.py`)
 
 ### NeMo Guardrails Issues
 
 **"API key not valid (400)"**
-- Ensure `PANOPTES_POLICY__ENGINE__TYPE` is set to `nemo` (default)
+- Ensure `OSNTL_POLICY__ENGINE__TYPE` is set to `nemo` (default)
 - Check that your model configuration maps to a valid API key in your `.env` file
 - Verify `config.yml` refers to properly configured models
 
@@ -960,7 +960,7 @@ counts = get_fail_open_counts()
 - This is a WARN log from the FSM engine. If using the `nemo` engine, you can safely ignore it.
 
 **"TypeError: 'function' object is not subscriptable"**
-- Conflict between Pydantic V1 (used by LangChain) and V2 (used by Panoptes). Ensure compatible versions.
+- Conflict between Pydantic V1 (used by LangChain) and V2 (used by Open Sentinel). Ensure compatible versions.
 
 ### LLM Engine Issues
 
@@ -992,7 +992,7 @@ If workflows aren't being tracked properly:
 
 1. Check if session ID is being extracted correctly (add debug logging to `middleware.py`)
 2. Ensure you're sending consistent session identifiers across calls
-3. Use `x-panoptes-session-id` header for explicit control
+3. Use `x-sentinel-session-id` header for explicit control
 
 ### Classification Issues (FSM Engine)
 
@@ -1039,8 +1039,8 @@ If states aren't being classified correctly:
 
 | Class | Module | Purpose |
 |-------|--------|---------|
-| `PanoptesSettings` | `config.settings` | Configuration |
-| `PanoptesProxy` | `proxy.server` | Main proxy server |
+| `SentinelSettings` | `config.settings` | Configuration |
+| `SentinelProxy` | `proxy.server` | Main proxy server |
 | `WorkflowDefinition` | `policy.engines.fsm` | Workflow data model |
 | `State` | `policy.engines.fsm` | State definition |
 | `Transition` | `policy.engines.fsm` | Transition definition |

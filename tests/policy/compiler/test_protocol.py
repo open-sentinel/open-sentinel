@@ -4,8 +4,8 @@ import pytest
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from panoptes.policy.compiler.protocol import PolicyCompiler, CompilationResult
-from panoptes.policy.compiler.registry import PolicyCompilerRegistry, register_compiler
+from opensentinel.policy.compiler.protocol import PolicyCompiler, CompilationResult
+from opensentinel.policy.compiler.registry import PolicyCompilerRegistry, register_compiler
 
 
 class TestCompilationResult:

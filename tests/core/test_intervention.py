@@ -2,7 +2,7 @@
 
 import pytest
 
-from panoptes.core.intervention.strategies import (
+from opensentinel.core.intervention.strategies import (
     StrategyType,
     InterventionConfig,
     SystemPromptAppendStrategy,
@@ -11,7 +11,7 @@ from panoptes.core.intervention.strategies import (
     WorkflowViolationError,
     STRATEGY_REGISTRY,
 )
-from panoptes.policy.engines.fsm.intervention import InterventionHandler
+from opensentinel.policy.engines.fsm.intervention import InterventionHandler
 
 
 class TestInterventionStrategies:

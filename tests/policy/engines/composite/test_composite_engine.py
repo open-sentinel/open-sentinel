@@ -2,8 +2,8 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from panoptes.policy.engines.composite.engine import CompositePolicyEngine
-from panoptes.policy.protocols import (
+from opensentinel.policy.engines.composite.engine import CompositePolicyEngine
+from opensentinel.policy.protocols import (
     PolicyDecision,
     PolicyEvaluationResult,
     PolicyViolation,
@@ -15,7 +15,7 @@ def engine():
 
 @pytest.fixture
 def mock_registry():
-    with patch("panoptes.policy.engines.composite.engine.PolicyEngineRegistry") as mock:
+    with patch("opensentinel.policy.engines.composite.engine.PolicyEngineRegistry") as mock:
         yield mock
 
 @pytest.mark.asyncio

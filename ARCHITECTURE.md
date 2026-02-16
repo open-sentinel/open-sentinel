@@ -1,10 +1,10 @@
-# Panoptes Architecture
+# Open Sentinel Architecture
 
 > Reliability layer for AI agents - monitors workflow adherence and intervenes when agents deviate.
 
 ## Overview
 
-Panoptes is a **transparent proxy** that sits between your application and LLM providers. It intercepts all LLM calls to:
+Open Sentinel is a **transparent proxy** that sits between your application and LLM providers. It intercepts all LLM calls to:
 
 1. **Monitor** - Classify LLM responses to determine workflow state
 2. **Enforce** - Evaluate temporal constraints (LTL-lite) against execution history
@@ -13,7 +13,7 @@ Panoptes is a **transparent proxy** that sits between your application and LLM p
 
 ```
 ┌─────────────────┐      ┌──────────────────────────────────────────────┐      ┌─────────────────┐
-│                 │      │                  PANOPTES                    │      │                 │
+│                 │      │                  OPEN SENTINEL                    │      │                 │
 │  Your App       │─────▶│  ┌──────────┐  ┌─────────────┐               │─────▶│  LLM Provider   │
 │  (LLM Client)   │      │  │  Hooks   │─▶│ Interceptor │               │      │  (OpenAI, etc.) │
 │                 │◀─────│  │safe_hook │  │ ┌─────────┐ │               │◀─────│                 │
@@ -37,7 +37,7 @@ Panoptes is a **transparent proxy** that sits between your application and LLM p
 ## Design Principles
 
 ### 1. Zero Code Changes for Customers
-Customers only change `base_url` in their LLM client to point at Panoptes. No SDK integration, no code changes beyond configuration.
+Customers only change `base_url` in their LLM client to point at Open Sentinel. No SDK integration, no code changes beyond configuration.
 
 ### 2. Non-Blocking Monitoring
 State classification and constraint evaluation can run asynchronously in parallel with LLM calls (via `ASYNC` mode checkers), adding **zero latency** to the critical path.
@@ -55,24 +55,24 @@ Policy engines are registered via `@register_engine("type")` and loaded dynamica
 
 ## Core Components
 
-### 1. Proxy Layer (`panoptes/proxy/`)
+### 1. Proxy Layer (`opensentinel/proxy/`)
 
 The proxy wraps LiteLLM to intercept all LLM traffic.
 
-#### `server.py` - PanoptesProxy
-Main entry point. Wraps LiteLLM Router with Panoptes callbacks.
+#### `server.py` - SentinelProxy
+Main entry point. Wraps LiteLLM Router with Open Sentinel callbacks.
 
 ```python
 # Key class
-class PanoptesProxy:
-    def __init__(self, settings: PanoptesSettings)
+class SentinelProxy:
+    def __init__(self, settings: SentinelSettings)
     async def start(self)           # Start uvicorn server
     async def completion(self, **kwargs)  # Programmatic access
 ```
 
-**Important**: The proxy uses LiteLLM's Router for model routing and load balancing. Configuration is in `PanoptesSettings.proxy.model_list`.
+**Important**: The proxy uses LiteLLM's Router for model routing and load balancing. Configuration is in `SentinelSettings.proxy.model_list`.
 
-#### `hooks.py` - PanoptesCallback
+#### `hooks.py` - SentinelCallback
 Implements LiteLLM's `CustomLogger` interface. All hooks are wrapped with `safe_hook()` for fail-open semantics.
 
 | Hook | Timing | Purpose | Blocking? |
@@ -99,8 +99,8 @@ async def async_pre_call_hook(self, ...):
 Extracts session IDs and workflow context from requests.
 
 **Session ID Extraction Priority**:
-1. Header: `x-panoptes-session-id` or `x-session-id`
-2. Metadata: `metadata.session_id` or `metadata.panoptes_session_id`
+1. Header: `x-sentinel-session-id` or `x-session-id`
+2. Metadata: `metadata.session_id` or `metadata.sentinel_session_id`
 3. Metadata: `metadata.run_id` (LangChain)
 4. Field: `user` (OpenAI pattern)
 5. Field: `thread_id` (OpenAI Assistants)
@@ -109,7 +109,7 @@ Extracts session IDs and workflow context from requests.
 
 ---
 
-### 2. Interceptor Framework (`panoptes/core/interceptor/`)
+### 2. Interceptor Framework (`opensentinel/core/interceptor/`)
 
 The Interceptor is the orchestration layer between hooks and policy engines. It provides a general-purpose checker system for running checks at different phases with different execution modes.
 
@@ -173,9 +173,9 @@ Manages checker execution across the request lifecycle:
 
 ---
 
-### 3. Policy Layer (`panoptes/policy/`)
+### 3. Policy Layer (`opensentinel/policy/`)
 
-Panoptes supports pluggable policy engines. All engines implement the `PolicyEngine` ABC.
+Open Sentinel supports pluggable policy engines. All engines implement the `PolicyEngine` ABC.
 
 #### `protocols.py` - Engine Contracts
 
@@ -213,7 +213,7 @@ await engine.initialize(config)
 
 ---
 
-### 4. FSM Engine (`panoptes/policy/engines/fsm/`)
+### 4. FSM Engine (`opensentinel/policy/engines/fsm/`)
 
 Wraps the workflow state machine, monitor, and injector for deterministic workflow enforcement.
 
@@ -251,7 +251,7 @@ WorkflowDefinition
 
 ---
 
-### 5. LLM Engine (`panoptes/policy/engines/llm/`)
+### 5. LLM Engine (`opensentinel/policy/engines/llm/`)
 
 Uses a lightweight LLM (e.g. `gpt-4o-mini`) as a reasoning backbone for all policy evaluation tasks.
 
@@ -283,7 +283,7 @@ Uses a lightweight LLM (e.g. `gpt-4o-mini`) as a reasoning backbone for all poli
 
 ---
 
-### 6. NeMo Guardrails Engine (`panoptes/policy/engines/nemo/`)
+### 6. NeMo Guardrails Engine (`opensentinel/policy/engines/nemo/`)
 
 Integrates NVIDIA's NeMo Guardrails for comprehensive content safety and dialog management.
 
@@ -292,20 +292,20 @@ Integrates NVIDIA's NeMo Guardrails for comprehensive content safety and dialog 
 - **Output Rails**: Post-processing verification against safety policies and hallucination checks.
 - **Dialog Rails**: Programmable conversation flow using Colang.
 
-**Panoptes Bridge**:
-- Registers custom actions (`panoptes_log_violation`, `panoptes_request_intervention`) to allow Colang scripts to interact with Panoptes' tracing and intervention systems.
+**Open Sentinel Bridge**:
+- Registers custom actions (`sentinel_log_violation`, `sentinel_request_intervention`) to allow Colang scripts to interact with Open Sentinel' tracing and intervention systems.
 - Adapts NeMo's `generate_async` output to `PolicyEvaluationResult`, translating blocked responses into policy violations.
 
 ---
 
-### 7. Composite Engine (`panoptes/policy/engines/composite/`)
+### 7. Composite Engine (`opensentinel/policy/engines/composite/`)
 
 Combines multiple policy engines to run in parallel, merging their results with configurable strategies.
 
 **Configuration**:
 ```yaml
 # Environment variable approach
-PANOPTES_POLICY__ENGINE__TYPE=composite
+OSNTL_POLICY__ENGINE__TYPE=composite
 
 # Or in code
 config = {
@@ -327,7 +327,7 @@ config = {
 
 ---
 
-### 8. Policy Compiler (`panoptes/policy/compiler/`)
+### 8. Policy Compiler (`opensentinel/policy/compiler/`)
 
 Converts natural language policy descriptions into engine-specific configurations.
 
@@ -338,7 +338,7 @@ Converts natural language policy descriptions into engine-specific configuration
 
 ```python
 # Example usage
-from panoptes.policy.compiler import PolicyCompilerRegistry
+from opensentinel.policy.compiler import PolicyCompilerRegistry
 
 compiler = PolicyCompilerRegistry.create("fsm")
 result = await compiler.compile(
@@ -358,7 +358,7 @@ if result.success:
 
 ---
 
-### 9. Core Layer (`panoptes/core/`)
+### 9. Core Layer (`opensentinel/core/`)
 
 Shared components used across different policy engines.
 
@@ -373,22 +373,22 @@ Defines the base strategies for modifying LLM requests.
 | `HARD_BLOCK` | Raises `WorkflowViolationError` | Critical violations, block request |
 
 #### `interceptor/` - Checker Framework
-See [Interceptor Framework](#2-interceptor-framework-panoptescoreinterceptor) above.
+See [Interceptor Framework](#2-interceptor-framework-opensentinelcoreinterceptor) above.
 
 ---
 
-### 10. Tracing Layer (`panoptes/tracing/`)
+### 10. Tracing Layer (`opensentinel/tracing/`)
 
-#### `otel_tracer.py` - PanoptesTracer
+#### `otel_tracer.py` - SentinelTracer
 Provides session-aware tracing via OpenTelemetry with special support for **Langfuse**.
 
 **Key Components**:
-- **PanoptesTracer**: Main class for creating spans and events.
+- **SentinelTracer**: Main class for creating spans and events.
 - **SpanEventManager**: Logging handler that captures application logs as events on the active span (crucial for debugging NeMo internals).
 - **GenAI Semantics**: Uses OpenTelemetry GenAI semantic conventions (`gen_ai.request.model`, `gen_ai.usage.prompt_tokens`) for rich observability.
 
 ```python
-class PanoptesTracer:
+class SentinelTracer:
     def log_policy_evaluation(session_id, decision, violations, ...) # Tracks policy results
     def log_llm_call(session_id, model, messages, response, ...)     # Tracks LLM usage/cost
     
@@ -404,15 +404,15 @@ class PanoptesTracer:
 
 ---
 
-### 11. Configuration (`panoptes/config/`)
+### 11. Configuration (`opensentinel/config/`)
 
-#### `settings.py` - PanoptesSettings
+#### `settings.py` - SentinelSettings
 Pydantic Settings with env var support:
 
 ```python
-class PanoptesSettings(BaseSettings):
-    # Prefix: PANOPTES_
-    # Nested delimiter: __ (e.g., PANOPTES_OTEL__ENDPOINT)
+class SentinelSettings(BaseSettings):
+    # Prefix: OSNTL_
+    # Nested delimiter: __ (e.g., OSNTL_OTEL__ENDPOINT)
     
     debug: bool
     
@@ -436,12 +436,12 @@ class PolicyEngineConfig(BaseModel):
 ```
 
 **Key Configuration Options**:
-- `PANOPTES_POLICY__ENGINE__TYPE`: Engine type (fsm, llm, nemo, composite)
-- `PANOPTES_POLICY__ENGINE__CONFIG_PATH`: Path to workflow YAML or NeMo config directory
-- `PANOPTES_POLICY__FAIL_OPEN`: Enable fail-open mode (default: true)
-- `PANOPTES_POLICY__HOOK_TIMEOUT_SECONDS`: Hook timeout (default: 30s)
-- `PANOPTES_PROXY__PORT`: Server port (default 4000)
-- `PANOPTES_OTEL__ENDPOINT`: OpenTelemetry OTLP endpoint
+- `OSNTL_POLICY__ENGINE__TYPE`: Engine type (fsm, llm, nemo, composite)
+- `OSNTL_POLICY__ENGINE__CONFIG_PATH`: Path to workflow YAML or NeMo config directory
+- `OSNTL_POLICY__FAIL_OPEN`: Enable fail-open mode (default: true)
+- `OSNTL_POLICY__HOOK_TIMEOUT_SECONDS`: Hook timeout (default: 30s)
+- `OSNTL_PROXY__PORT`: Server port (default 4000)
+- `OSNTL_OTEL__ENDPOINT`: OpenTelemetry OTLP endpoint
 
 ---
 
@@ -508,12 +508,12 @@ class PolicyEngineConfig(BaseModel):
 ## File Structure
 
 ```
-panoptes/
+opensentinel/
 ├── __init__.py          # Public API exports
 ├── cli.py               # CLI commands (serve, compile, validate, info)
 │
 ├── config/
-│   └── settings.py      # PanoptesSettings (pydantic-settings)
+│   └── settings.py      # SentinelSettings (pydantic-settings)
 │
 ├── core/
 │   ├── interceptor/     # Checker orchestration framework
@@ -563,12 +563,12 @@ panoptes/
 │           └── engine.py
 │
 ├── proxy/
-│   ├── server.py        # PanoptesProxy, start_proxy()
-│   ├── hooks.py         # PanoptesCallback (LiteLLM hooks + safe_hook)
+│   ├── server.py        # SentinelProxy, start_proxy()
+│   ├── hooks.py         # Open SentinelCallback (LiteLLM hooks + safe_hook)
 │   └── middleware.py    # Session/context extraction
 │
 └── tracing/
-    └── otel_tracer.py   # PanoptesTracer (OpenTelemetry)
+    └── otel_tracer.py   # SentinelTracer (OpenTelemetry)
 ```
 
 ---
@@ -602,7 +602,7 @@ panoptes/
 
 1. Create a class extending `Checker`
 2. Implement `name`, `phase`, `mode`, and `check()` method
-3. Register by adding it to the checker list in `PanoptesCallback._get_interceptor()`
+3. Register by adding it to the checker list in `SentinelCallback._get_interceptor()`
 
 ### Adding New Constraint Types
 1. Add to `ConstraintType` enum in `workflow/schema.py`
@@ -611,12 +611,12 @@ panoptes/
 4. Add message formatting in `_format_violation_message()`
 
 ### Adding New Intervention Strategies
-1. Add to `StrategyType` enum in `panoptes/core/intervention/strategies.py`
+1. Add to `StrategyType` enum in `opensentinel/core/intervention/strategies.py`
 2. Create new strategy class extending `InterventionStrategy`
 3. Register in `STRATEGY_REGISTRY`
 
 ### Custom Classification Methods
-Extend `StateClassifier` (in `panoptes/policy/engines/fsm/classifier.py`) and override/add methods to the cascade.
+Extend `StateClassifier` (in `opensentinel/policy/engines/fsm/classifier.py`) and override/add methods to the cascade.
 
 ### Custom Session ID Extraction
-Modify `SessionExtractor.extract_session_id()` in `panoptes/proxy/middleware.py`.
+Modify `SessionExtractor.extract_session_id()` in `opensentinel/proxy/middleware.py`.

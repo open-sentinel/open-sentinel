@@ -5,9 +5,9 @@ Tests for the core judge evaluator.
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from panoptes.policy.engines.judge.evaluator import JudgeEvaluator
-from panoptes.policy.engines.judge.client import JudgeClient
-from panoptes.policy.engines.judge.models import (
+from opensentinel.policy.engines.judge.evaluator import JudgeEvaluator
+from opensentinel.policy.engines.judge.client import JudgeClient
+from opensentinel.policy.engines.judge.models import (
     VerdictAction,
     EvaluationScope,
     ScoreScale,
@@ -231,7 +231,7 @@ class TestEvaluatePairwise:
 
 class TestCompositeScoring:
     def test_weighted_composite(self, evaluator):
-        from panoptes.policy.engines.judge.models import JudgeScore
+        from opensentinel.policy.engines.judge.models import JudgeScore
 
         scores = [
             JudgeScore(criterion="a", score=5, max_score=5, reasoning="ok"),  # normalized 1.0
@@ -245,7 +245,7 @@ class TestCompositeScoring:
         assert composite == 0.5
 
     def test_weighted_composite_unequal_weights(self, evaluator):
-        from panoptes.policy.engines.judge.models import JudgeScore
+        from opensentinel.policy.engines.judge.models import JudgeScore
 
         scores = [
             JudgeScore(criterion="a", score=5, max_score=5, reasoning="ok"),  # normalized 1.0

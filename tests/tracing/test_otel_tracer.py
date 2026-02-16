@@ -3,16 +3,16 @@ import time
 import pytest
 from unittest.mock import MagicMock, patch
 
-from panoptes.tracing.otel_tracer import PanoptesTracer
-from panoptes.config.settings import OTelConfig
+from opensentinel.tracing.otel_tracer import SentinelTracer
+from opensentinel.config.settings import OTelConfig
 
 @pytest.fixture
 def mock_otel():
-    with patch("panoptes.tracing.otel_tracer.trace") as mock_trace, \
-         patch("panoptes.tracing.otel_tracer.TracerProvider") as mock_provider, \
-         patch("panoptes.tracing.otel_tracer.OTLPSpanExporter") as mock_exporter, \
-         patch("panoptes.tracing.otel_tracer.BatchSpanProcessor") as mock_processor, \
-         patch("panoptes.tracing.otel_tracer.Resource") as mock_resource:
+    with patch("opensentinel.tracing.otel_tracer.trace") as mock_trace, \
+         patch("opensentinel.tracing.otel_tracer.TracerProvider") as mock_provider, \
+         patch("opensentinel.tracing.otel_tracer.OTLPSpanExporter") as mock_exporter, \
+         patch("opensentinel.tracing.otel_tracer.BatchSpanProcessor") as mock_processor, \
+         patch("opensentinel.tracing.otel_tracer.Resource") as mock_resource:
         
         mock_tracer = MagicMock()
         mock_trace.get_tracer.return_value = mock_tracer
@@ -32,7 +32,7 @@ def test_tracer_initialization(mock_otel):
         exporter_type="otlp"
     )
     
-    tracer = PanoptesTracer(config)
+    tracer = SentinelTracer(config)
     
     assert tracer._enabled is True
     mock_otel["trace"].set_tracer_provider.assert_called_once()
@@ -41,14 +41,14 @@ def test_tracer_initialization(mock_otel):
 def test_tracer_disabled(mock_otel):
     config = OTelConfig(enabled=False)
     
-    tracer = PanoptesTracer(config)
+    tracer = SentinelTracer(config)
     
     assert tracer._enabled is False
     mock_otel["trace"].set_tracer_provider.assert_not_called()
 
 def test_log_event(mock_otel):
     config = OTelConfig(enabled=True)
-    tracer = PanoptesTracer(config)
+    tracer = SentinelTracer(config)
     
     # Mock span context manager
     mock_span = MagicMock()
@@ -63,14 +63,14 @@ def test_log_event(mock_otel):
     
     mock_otel["tracer"].start_as_current_span.assert_called()
     # Check attributes were set
-    # panoptes.session_id, panoptes.event_type, panoptes.input.k, panoptes.output.res
+    # opensentinel.session_id, opensentinel.event_type, opensentinel.input.k, opensentinel.output.res
     calls = mock_span.set_attribute.call_args_list
-    assert any(call.args[0] == "panoptes.input.k" for call in calls)
-    assert any(call.args[0] == "panoptes.output.res" for call in calls)
+    assert any(call.args[0] == "opensentinel.input.k" for call in calls)
+    assert any(call.args[0] == "opensentinel.output.res" for call in calls)
 
 def test_log_llm_call(mock_otel):
     config = OTelConfig(enabled=True)
-    tracer = PanoptesTracer(config)
+    tracer = SentinelTracer(config)
     
     mock_span = MagicMock()
     mock_otel["tracer"].start_as_current_span.return_value.__enter__.return_value = mock_span
@@ -90,7 +90,7 @@ def test_log_llm_call(mock_otel):
     
     # Check that required attributes are present (we added GenAI semantic conventions)
     attrs = call_args[1]["attributes"]
-    assert attrs["panoptes.session_id"] == "session-1"
+    assert attrs["opensentinel.session_id"] == "session-1"
     assert attrs["llm.model"] == "gpt-4"
     assert attrs["llm.requested_model"] == "gpt-4"
     assert attrs["llm.message_count"] == 1
@@ -103,7 +103,7 @@ def test_log_llm_call(mock_otel):
 
 def test_shutdown(mock_otel):
     config = OTelConfig(enabled=True)
-    tracer = PanoptesTracer(config)
+    tracer = SentinelTracer(config)
     
     tracer.shutdown()
     
@@ -123,7 +123,7 @@ class TestSessionEviction:
     def test_stale_sessions_evicted_by_ttl(self, mock_otel):
         """Sessions older than session_ttl_seconds should be ended and removed."""
         config = OTelConfig(enabled=True)
-        tracer = PanoptesTracer(config, session_ttl_seconds=2)
+        tracer = SentinelTracer(config, session_ttl_seconds=2)
 
         # Create session spans
         mock_span_a = MagicMock()
@@ -153,7 +153,7 @@ class TestSessionEviction:
     def test_active_session_refreshed_on_access(self, mock_otel):
         """Accessing an existing session should refresh its timestamp so it isn't evicted."""
         config = OTelConfig(enabled=True)
-        tracer = PanoptesTracer(config, session_ttl_seconds=10)
+        tracer = SentinelTracer(config, session_ttl_seconds=10)
 
         mock_span = MagicMock()
         mock_otel["tracer"].start_span.return_value = mock_span
@@ -171,7 +171,7 @@ class TestSessionEviction:
     def test_max_sessions_cap(self, mock_otel):
         """When max_sessions is exceeded, oldest sessions should be evicted."""
         config = OTelConfig(enabled=True)
-        tracer = PanoptesTracer(config, max_sessions=3, session_ttl_seconds=9999)
+        tracer = SentinelTracer(config, max_sessions=3, session_ttl_seconds=9999)
 
         spans = [MagicMock() for _ in range(5)]
         mock_otel["tracer"].start_span.side_effect = spans
@@ -193,7 +193,7 @@ class TestSessionEviction:
     def test_end_trace_cleans_up_timestamps(self, mock_otel):
         """end_trace should remove the session from both tracking dicts."""
         config = OTelConfig(enabled=True)
-        tracer = PanoptesTracer(config)
+        tracer = SentinelTracer(config)
 
         mock_span = MagicMock()
         mock_otel["tracer"].start_span.return_value = mock_span
@@ -209,22 +209,22 @@ class TestSessionEviction:
     def test_default_ttl_and_max_sessions(self, mock_otel):
         """Verify default values are applied when not explicitly provided."""
         config = OTelConfig(enabled=True)
-        tracer = PanoptesTracer(config)
+        tracer = SentinelTracer(config)
 
-        assert tracer._session_ttl == PanoptesTracer.DEFAULT_SESSION_TTL
-        assert tracer._max_sessions == PanoptesTracer.DEFAULT_MAX_SESSIONS
+        assert tracer._session_ttl == SentinelTracer.DEFAULT_SESSION_TTL
+        assert tracer._max_sessions == SentinelTracer.DEFAULT_MAX_SESSIONS
 
     def test_custom_ttl_zero_allowed(self, mock_otel):
         """A TTL of 0 should be allowed (immediate eviction of all prior sessions)."""
         config = OTelConfig(enabled=True)
-        tracer = PanoptesTracer(config, session_ttl_seconds=0)
+        tracer = SentinelTracer(config, session_ttl_seconds=0)
 
         assert tracer._session_ttl == 0
 
     def test_shutdown_cleans_all_sessions(self, mock_otel):
         """shutdown() should end all remaining sessions and clear tracking."""
         config = OTelConfig(enabled=True)
-        tracer = PanoptesTracer(config)
+        tracer = SentinelTracer(config)
 
         spans = [MagicMock() for _ in range(3)]
         mock_otel["tracer"].start_span.side_effect = spans

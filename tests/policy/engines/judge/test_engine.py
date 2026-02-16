@@ -5,15 +5,15 @@ Tests for JudgePolicyEngine.
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from panoptes.policy.engines.judge import JudgePolicyEngine
-from panoptes.policy.engines.judge.models import (
+from opensentinel.policy.engines.judge import JudgePolicyEngine
+from opensentinel.policy.engines.judge.models import (
     JudgeVerdict,
     VerdictAction,
     EvaluationScope,
     JudgeScore,
 )
-from panoptes.policy.protocols import PolicyDecision
-from panoptes.policy.registry import PolicyEngineRegistry
+from opensentinel.policy.protocols import PolicyDecision
+from opensentinel.policy.registry import PolicyEngineRegistry
 
 
 @pytest.fixture
@@ -305,7 +305,7 @@ class TestInlinePolicy:
         assert engine._default_rubric == "inline_policy"
 
         # Verify rubric is registered
-        from panoptes.policy.engines.judge.rubrics import RubricRegistry
+        from opensentinel.policy.engines.judge.rubrics import RubricRegistry
         rubric = RubricRegistry.get("inline_policy")
         assert rubric is not None
         assert "No financial advice" in rubric.prompt_overrides["additional_instructions"]
@@ -342,7 +342,7 @@ class TestInlinePolicy:
         await engine.initialize(config)
         assert engine._default_rubric == "my_custom"
 
-        from panoptes.policy.engines.judge.rubrics import RubricRegistry
+        from opensentinel.policy.engines.judge.rubrics import RubricRegistry
         assert RubricRegistry.get("my_custom") is not None
 
     @pytest.mark.asyncio
@@ -356,6 +356,6 @@ class TestInlinePolicy:
         # Should have the inline_policy rubric as default
         assert engine._default_rubric == "inline_policy"
         # But built-in rubrics should still be available
-        from panoptes.policy.engines.judge.rubrics import RubricRegistry
+        from opensentinel.policy.engines.judge.rubrics import RubricRegistry
         assert RubricRegistry.get("agent_behavior") is not None
 

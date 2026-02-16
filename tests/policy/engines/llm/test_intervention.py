@@ -3,15 +3,15 @@ Tests for InterventionHandler.
 """
 
 import pytest
-from panoptes.policy.engines.llm.intervention import InterventionHandler
-from panoptes.policy.engines.llm.models import (
+from opensentinel.policy.engines.llm.intervention import InterventionHandler
+from opensentinel.policy.engines.llm.models import (
     SessionContext,
     ConstraintEvaluation,
     DriftScores,
     DriftLevel,
 )
-from panoptes.core.intervention.strategies import StrategyType
-from panoptes.policy.engines.fsm.workflow.schema import WorkflowDefinition
+from opensentinel.core.intervention.strategies import StrategyType
+from opensentinel.policy.engines.fsm.workflow.schema import WorkflowDefinition
 
 
 @pytest.fixture

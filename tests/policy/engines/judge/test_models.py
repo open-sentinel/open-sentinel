@@ -3,7 +3,7 @@ Tests for judge engine data models.
 """
 
 import pytest
-from panoptes.policy.engines.judge.models import (
+from opensentinel.policy.engines.judge.models import (
     EvaluationType,
     EvaluationScope,
     ScoreScale,

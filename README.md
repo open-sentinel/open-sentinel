@@ -1,11 +1,11 @@
-# Panoptes
+# Open Sentinel
 
 **Your AI agent just went off-script. Again.**
 
-Panoptes is a transparent proxy that monitors LLM calls and intervenes when your agent deviates from policy. Change one line (`base_url`), write your rules in plain English, and it handles the rest.
+Open Sentinel is a transparent proxy that monitors LLM calls and intervenes when your agent deviates from policy. Change one line (`base_url`), write your rules in plain English, and it handles the rest.
 
 ```
-Your App  ──▶  Panoptes  ──▶  LLM Provider
+Your App  ──▶  Open Sentinel  ──▶  LLM Provider
                   │
            monitors every call
            enforces your rules
@@ -15,11 +15,11 @@ Your App  ──▶  Panoptes  ──▶  LLM Provider
 ## Quickstart
 
 ```bash
-pip install panoptes
-panoptes init
+pip install open-sentinel
+osentinel init
 ```
 
-Write your rules in `panoptes.yaml`:
+Write your rules in `osentinel.yaml`:
 
 ```yaml
 engine: judge
@@ -34,7 +34,7 @@ policy:
 Start the proxy:
 
 ```bash
-panoptes serve
+osentinel serve
 ```
 
 Point your existing client at it — one line change:
@@ -80,15 +80,15 @@ Define states like `greeting → identify_issue → identity_verification → ac
 
 ## Design
 
-- **Fail-open** — Panoptes crashes? Your app keeps working. All hooks have timeout and exception handling.
+- **Fail-open** — Open Sentinel crashes? Your app keeps working. All hooks have timeout and exception handling.
 - **Zero lock-in** — Works with any OpenAI-compatible client. No SDK. No wrapper. One URL change.
 - **Async by default** — Policy violations are corrected on the next turn, not blocking the current response.
 - **Observable** — OpenTelemetry tracing with Langfuse integration out of the box.
-- **Model auto-detection** — Set an API key (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, or `ANTHROPIC_API_KEY`) and Panoptes picks the right model. Or specify it explicitly.
+- **Model auto-detection** — Set an API key (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, or `ANTHROPIC_API_KEY`) and Open Sentinel picks the right model. Or specify it explicitly.
 
 ## Configuration
 
-Everything lives in `panoptes.yaml`:
+Everything lives in `osentinel.yaml`:
 
 ```yaml
 engine: judge              # judge | fsm | nemo | composite
@@ -105,15 +105,15 @@ tracing:
   type: none                # none | console | otlp | langfuse
 ```
 
-Environment variables override any setting with the `PANOPTES_` prefix.
+Environment variables override any setting with the `OSNTL_` prefix.
 
 ## CLI
 
 ```
-panoptes init              # interactive setup
-panoptes serve             # start proxy
-panoptes compile "..."     # natural language → policy YAML
-panoptes validate file.yaml
+osentinel init              # interactive setup
+osentinel serve             # start proxy
+osentinel compile "..."     # natural language → policy YAML
+osentinel validate file.yaml
 ```
 
 ## Status

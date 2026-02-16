@@ -5,9 +5,9 @@ Tests for confidence scoring and uncertainty estimation.
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from panoptes.policy.engines.judge.evaluator import JudgeEvaluator
-from panoptes.policy.engines.judge.client import JudgeClient
-from panoptes.policy.engines.judge.models import (
+from opensentinel.policy.engines.judge.evaluator import JudgeEvaluator
+from opensentinel.policy.engines.judge.client import JudgeClient
+from opensentinel.policy.engines.judge.models import (
     Rubric,
     RubricCriterion,
     JudgeScore,
@@ -184,7 +184,7 @@ class TestConfidenceInVerdict:
 class TestConfidenceInEngine:
     @pytest.mark.asyncio
     async def test_low_confidence_in_metadata(self):
-        from panoptes.policy.engines.judge.engine import JudgePolicyEngine
+        from opensentinel.policy.engines.judge.engine import JudgePolicyEngine
 
         engine = JudgePolicyEngine()
         await engine.initialize({

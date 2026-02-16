@@ -3,9 +3,9 @@ Tests for DriftDetector.
 """
 
 import pytest
-from panoptes.policy.engines.llm.drift_detector import DriftDetector
-from panoptes.policy.engines.llm.models import SessionContext, DriftLevel
-from panoptes.policy.engines.fsm.workflow.schema import WorkflowDefinition
+from opensentinel.policy.engines.llm.drift_detector import DriftDetector
+from opensentinel.policy.engines.llm.models import SessionContext, DriftLevel
+from opensentinel.policy.engines.fsm.workflow.schema import WorkflowDefinition
 
 
 @pytest.fixture
@@ -173,7 +173,7 @@ class TestDriftLevels:
 
     def test_drift_level_from_scores(self):
         """Test drift level determination from composite score."""
-        from panoptes.policy.engines.llm.models import DriftScores
+        from opensentinel.policy.engines.llm.models import DriftScores
         
         # Nominal
         d1 = DriftScores.from_scores(0.1, 0.2)

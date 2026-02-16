@@ -4,8 +4,8 @@ Tests for LLMPolicyEngine.
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from panoptes.policy.engines.llm import LLMPolicyEngine
-from panoptes.policy.protocols import PolicyDecision
+from opensentinel.policy.engines.llm import LLMPolicyEngine
+from opensentinel.policy.protocols import PolicyDecision
 
 
 @pytest.fixture

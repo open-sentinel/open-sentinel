@@ -4,7 +4,7 @@ Tests for LLMClient.
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from panoptes.policy.engines.llm.llm_client import LLMClient, LLMClientError
+from opensentinel.policy.engines.llm.llm_client import LLMClient, LLMClientError
 
 
 @pytest.fixture
@@ -15,7 +15,7 @@ def client():
 
 def test_default_model_selection():
     """Test that LLMClient picks up system default if no model is provided."""
-    with patch("panoptes.config.settings.get_default_model", return_value="custom-default-model"):
+    with patch("opensentinel.config.settings.get_default_model", return_value="custom-default-model"):
         client = LLMClient()
         assert client.model == "custom-default-model"
 

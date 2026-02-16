@@ -5,10 +5,10 @@ Tests for LLMConstraintEvaluator.
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from panoptes.policy.engines.llm.constraint_evaluator import LLMConstraintEvaluator
-from panoptes.policy.engines.llm.llm_client import LLMClient, LLMClientError
-from panoptes.policy.engines.llm.models import SessionContext, ConstraintEvaluation
-from panoptes.policy.engines.fsm.workflow.schema import WorkflowDefinition
+from opensentinel.policy.engines.llm.constraint_evaluator import LLMConstraintEvaluator
+from opensentinel.policy.engines.llm.llm_client import LLMClient, LLMClientError
+from opensentinel.policy.engines.llm.models import SessionContext, ConstraintEvaluation
+from opensentinel.policy.engines.fsm.workflow.schema import WorkflowDefinition
 
 
 @pytest.fixture

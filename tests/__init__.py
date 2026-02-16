@@ -1,1 +1,1 @@
-"""Panoptes tests."""
+"""Open Sentinel tests."""

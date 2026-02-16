@@ -14,7 +14,7 @@ import asyncio
 import pytest
 from typing import Optional, Dict, Any
 
-from panoptes.core.interceptor import (
+from opensentinel.core.interceptor import (
     Interceptor,
     Checker,
     CheckPhase,

@@ -1,19 +1,19 @@
-# Panoptes Setup Guide
+# Open Sentinel Setup Guide
 
 ## Quick Start (3 commands)
 
 ```bash
-panoptes init --non-interactive
+osentinel init --non-interactive
 export OPENAI_API_KEY=sk-...
-panoptes serve
+osentinel serve
 ```
 
-This creates `panoptes.yaml` and `policy.yaml` with sensible defaults (judge engine, balanced mode, gpt-4o-mini). Point your LLM client to `http://localhost:4000/v1`.
+This creates `osentinel.yaml` and `policy.yaml` with sensible defaults (judge engine, balanced mode, gpt-4o-mini). Point your LLM client to `http://localhost:4000/v1`.
 
 ## Interactive Setup
 
 ```bash
-panoptes init
+osentinel init
 ```
 
 You'll be prompted for:
@@ -24,9 +24,9 @@ You'll be prompted for:
 
 ## Manual Setup
 
-If you prefer to configure manually instead of using `panoptes init`:
+If you prefer to configure manually instead of using `osentinel init`:
 
-1. Create `panoptes.yaml` in your project root:
+1. Create `osentinel.yaml` in your project root:
 
 ```yaml
 engine: judge
@@ -67,7 +67,7 @@ rubrics:
 
 ```bash
 export OPENAI_API_KEY=sk-...
-panoptes serve
+osentinel serve
 ```
 
 ## Compile Policies from Natural Language
@@ -76,18 +76,18 @@ Instead of writing rubric YAML by hand, compile from a description:
 
 ```bash
 # Auto-detects engine type
-panoptes compile "be professional, never leak PII, always cite sources"
+osentinel compile "be professional, never leak PII, always cite sources"
 
 # Explicit judge engine
-panoptes compile "never share internal info" --engine judge -o policy.yaml
+osentinel compile "never share internal info" --engine judge -o policy.yaml
 
 # FSM workflow
-panoptes compile "verify identity before processing refunds" --engine fsm
+osentinel compile "verify identity before processing refunds" --engine fsm
 ```
 
 ## Config Reference
 
-### panoptes.yaml keys
+### osentinel.yaml keys
 
 - `engine` - Policy engine type: `judge`, `fsm`, `nemo`, `composite`
 - `policy` - Path to policy file (rubric YAML for judge, workflow YAML for fsm)
@@ -100,13 +100,13 @@ panoptes compile "verify identity before processing refunds" --engine fsm
 
 ### Environment variables
 
-All settings can also be set via environment variables with `PANOPTES_` prefix. `panoptes.yaml` takes priority over env vars.
+All settings can also be set via environment variables with `OSNTL_` prefix. `osentinel.yaml` takes priority over env vars.
 
-- `PANOPTES_POLICY__ENGINE__TYPE` - Engine type
-- `PANOPTES_POLICY__ENGINE__CONFIG_PATH` - Policy file path
-- `PANOPTES_PROXY__PORT` - Proxy port
-- `PANOPTES_OTEL__EXPORTER_TYPE` - Tracing exporter
-- `PANOPTES_CONFIG` - Path to panoptes.yaml (if not in current directory)
+- `OSNTL_POLICY__ENGINE__TYPE` - Engine type
+- `OSNTL_POLICY__ENGINE__CONFIG_PATH` - Policy file path
+- `OSNTL_PROXY__PORT` - Proxy port
+- `OSNTL_OTEL__EXPORTER_TYPE` - Tracing exporter
+- `OSNTL_CONFIG` - Path to osentinel.yaml (if not in current directory)
 
 Only API keys need to be env vars:
 - `OPENAI_API_KEY` - Required for OpenAI models
@@ -138,34 +138,34 @@ Combines multiple engines. For example, FSM for workflow + judge for quality.
 - **balanced** (default): Moderate thresholds, post-call evaluation only. Good balance of safety and latency.
 - **aggressive**: Looser thresholds, fewer interventions. Best for low-risk applications where you want minimal overhead.
 
-## For LLM Agents Setting Up Panoptes
+## For LLM Agents Setting Up Open Sentinel
 
-Copy-paste these commands to set up Panoptes programmatically:
+Copy-paste these commands to set up Open Sentinel programmatically:
 
 ```bash
 # Install
-pip install panoptes
+pip install open-sentinel
 
 # Initialize with defaults (no prompts)
-panoptes init --non-interactive
+osentinel init --non-interactive
 
 # Set your API key
 export OPENAI_API_KEY=sk-...
 
 # Start the proxy
-panoptes serve
+osentinel serve
 ```
 
 To compile a custom policy from a description:
 
 ```bash
-panoptes compile "your policy description here" -o policy.yaml
+osentinel compile "your policy description here" -o policy.yaml
 ```
 
 To use a custom config file path:
 
 ```bash
-panoptes serve --config /path/to/panoptes.yaml
+osentinel serve --config /path/to/osentinel.yaml
 ```
 
 The proxy listens on `http://localhost:4000/v1`. Set your LLM client's `base_url` to this address.

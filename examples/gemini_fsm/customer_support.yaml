@@ -5,7 +5,7 @@
 # before performing any account actions.
 #
 # Usage:
-#   cd examples/gemini_fsm && panoptes serve
+#   cd examples/gemini_fsm && osentinel serve
 
 name: customer-support-agent
 version: "1.0"

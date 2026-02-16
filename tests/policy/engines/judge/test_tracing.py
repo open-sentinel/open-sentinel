@@ -5,14 +5,14 @@ Tests for judge engine OTEL tracing integration.
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from panoptes.policy.engines.judge.engine import JudgePolicyEngine
-from panoptes.policy.engines.judge.models import (
+from opensentinel.policy.engines.judge.engine import JudgePolicyEngine
+from opensentinel.policy.engines.judge.models import (
     JudgeVerdict,
     JudgeScore,
     VerdictAction,
     EvaluationScope,
 )
-from panoptes.policy.protocols import PolicyDecision
+from opensentinel.policy.protocols import PolicyDecision
 
 
 @pytest.fixture

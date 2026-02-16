@@ -1,5 +1,5 @@
 """
-Tests for panoptes.proxy.middleware — session extraction, workflow context,
+Tests for opensentinel.proxy.middleware — session extraction, workflow context,
 and response transformation.
 
 Covers the critical scenario where HTTP headers arrive embedded inside
@@ -10,7 +10,7 @@ import uuid
 
 import pytest
 
-from panoptes.proxy.middleware import (
+from opensentinel.proxy.middleware import (
     SessionExtractor,
     WorkflowContextExtractor,
     ResponseTransformer,
@@ -75,31 +75,31 @@ class TestGetHeader:
 # ===========================================================================
 class TestResolveHeaders:
     def test_explicit_headers_take_priority(self):
-        explicit = {"x-panoptes-session-id": "explicit"}
-        data = _litellm_proxy_data(headers={"x-panoptes-session-id": "embedded"})
+        explicit = {"x-sentinel-session-id": "explicit"}
+        data = _litellm_proxy_data(headers={"x-sentinel-session-id": "embedded"})
         resolved = SessionExtractor._resolve_headers(data, explicit)
         assert resolved is explicit
 
     def test_proxy_server_request_headers(self):
-        data = _litellm_proxy_data(headers={"x-panoptes-session-id": "from-proxy"})
+        data = _litellm_proxy_data(headers={"x-sentinel-session-id": "from-proxy"})
         resolved = SessionExtractor._resolve_headers(data, None)
-        assert resolved == {"x-panoptes-session-id": "from-proxy"}
+        assert resolved == {"x-sentinel-session-id": "from-proxy"}
 
     def test_metadata_headers_fallback(self):
-        data = {"metadata": {"headers": {"x-panoptes-session-id": "from-meta"}}}
+        data = {"metadata": {"headers": {"x-sentinel-session-id": "from-meta"}}}
         resolved = SessionExtractor._resolve_headers(data, None)
-        assert resolved == {"x-panoptes-session-id": "from-meta"}
+        assert resolved == {"x-sentinel-session-id": "from-meta"}
 
     def test_litellm_params_metadata_headers(self):
         data = {
             "litellm_params": {
                 "metadata": {
-                    "headers": {"x-panoptes-session-id": "from-lp"}
+                    "headers": {"x-sentinel-session-id": "from-lp"}
                 }
             }
         }
         resolved = SessionExtractor._resolve_headers(data, None)
-        assert resolved == {"x-panoptes-session-id": "from-lp"}
+        assert resolved == {"x-sentinel-session-id": "from-lp"}
 
     def test_no_headers_returns_none(self):
         data = {"messages": [{"role": "user", "content": "hi"}]}
@@ -120,7 +120,7 @@ class TestResolveHeaders:
 class TestExtractSessionIdFromHeaders:
     def test_explicit_header(self):
         data = {"messages": []}
-        headers = {"x-panoptes-session-id": "sess-123"}
+        headers = {"x-sentinel-session-id": "sess-123"}
         assert SessionExtractor.extract_session_id(data, headers) == "sess-123"
 
     def test_x_session_id_header(self):
@@ -128,23 +128,23 @@ class TestExtractSessionIdFromHeaders:
         headers = {"x-session-id": "sess-456"}
         assert SessionExtractor.extract_session_id(data, headers) == "sess-456"
 
-    def test_panoptes_header_takes_priority_over_x_session_id(self):
+    def test_sentinel_header_takes_priority_over_x_session_id(self):
         data = {"messages": []}
         headers = {
-            "x-panoptes-session-id": "panoptes",
+            "x-sentinel-session-id": "sentinel",
             "x-session-id": "generic",
         }
-        assert SessionExtractor.extract_session_id(data, headers) == "panoptes"
+        assert SessionExtractor.extract_session_id(data, headers) == "sentinel"
 
     def test_case_insensitive_header(self):
         data = {"messages": []}
-        headers = {"X-Panoptes-Session-Id": "mixed-case"}
+        headers = {"X-Sentinel-Session-Id": "mixed-case"}
         assert SessionExtractor.extract_session_id(data, headers) == "mixed-case"
 
     def test_litellm_embedded_headers(self):
         """Core OpenClaw scenario: headers embedded by LiteLLM proxy."""
         data = _litellm_proxy_data(
-            headers={"x-panoptes-session-id": "openclaw-session-42"}
+            headers={"x-sentinel-session-id": "openclaw-session-42"}
         )
         # No explicit headers param — must pick from data dict
         assert SessionExtractor.extract_session_id(data) == "openclaw-session-42"
@@ -163,8 +163,8 @@ class TestExtractSessionIdFromMetadata:
         data = {"metadata": {"session_id": "meta-123"}}
         assert SessionExtractor.extract_session_id(data) == "meta-123"
 
-    def test_panoptes_session_id_in_metadata(self):
-        data = {"metadata": {"panoptes_session_id": "pan-456"}}
+    def test_sentinel_session_id_in_metadata(self):
+        data = {"metadata": {"sentinel_session_id": "pan-456"}}
         assert SessionExtractor.extract_session_id(data) == "pan-456"
 
     def test_run_id_in_metadata(self):
@@ -177,7 +177,7 @@ class TestExtractSessionIdFromMetadata:
 
     def test_header_takes_priority_over_metadata(self):
         data = _litellm_proxy_data(
-            headers={"x-panoptes-session-id": "from-header"},
+            headers={"x-sentinel-session-id": "from-header"},
             metadata={"session_id": "from-meta"},
         )
         assert SessionExtractor.extract_session_id(data) == "from-header"
@@ -225,10 +225,10 @@ class TestExtractSessionIdFallback:
         import logging
 
         data = {"messages": []}
-        with caplog.at_level(logging.WARNING, logger="panoptes.proxy.middleware"):
+        with caplog.at_level(logging.WARNING, logger="opensentinel.proxy.middleware"):
             SessionExtractor.extract_session_id(data)
         assert "No session ID found" in caplog.text
-        assert "x-panoptes-session-id" in caplog.text
+        assert "x-sentinel-session-id" in caplog.text
 
 
 # ===========================================================================
@@ -242,11 +242,11 @@ class TestMultiAgentIsolation:
 
     def test_different_headers_produce_different_sessions(self):
         agent_a = _litellm_proxy_data(
-            headers={"x-panoptes-session-id": "agent-A-session"},
+            headers={"x-sentinel-session-id": "agent-A-session"},
             messages=[{"role": "user", "content": "Hello from A"}],
         )
         agent_b = _litellm_proxy_data(
-            headers={"x-panoptes-session-id": "agent-B-session"},
+            headers={"x-sentinel-session-id": "agent-B-session"},
             messages=[{"role": "user", "content": "Hello from B"}],
         )
         assert SessionExtractor.extract_session_id(agent_a) == "agent-A-session"
@@ -261,7 +261,7 @@ class TestMultiAgentIsolation:
     def test_mixed_sources_still_isolate(self):
         """Agent A uses header, Agent B uses metadata."""
         agent_a = _litellm_proxy_data(
-            headers={"x-panoptes-session-id": "header-sess"},
+            headers={"x-sentinel-session-id": "header-sess"},
         )
         agent_b = {"metadata": {"session_id": "meta-sess"}}
         assert SessionExtractor.extract_session_id(agent_a) == "header-sess"
@@ -275,9 +275,9 @@ class TestWorkflowContextExtractor:
     def test_extract_from_explicit_headers(self):
         data = {"messages": []}
         headers = {
-            "x-panoptes-workflow": "customer-support",
-            "x-panoptes-expected-state": "greeting",
-            "x-panoptes-disable-intervention": "true",
+            "x-sentinel-workflow": "customer-support",
+            "x-sentinel-expected-state": "greeting",
+            "x-sentinel-disable-intervention": "true",
         }
         context = WorkflowContextExtractor.extract_context(data, headers)
         assert context["workflow_name"] == "customer-support"
@@ -288,8 +288,8 @@ class TestWorkflowContextExtractor:
         """LiteLLM proxy mode: headers in data dict."""
         data = _litellm_proxy_data(
             headers={
-                "x-panoptes-workflow": "order-flow",
-                "x-panoptes-expected-state": "cart",
+                "x-sentinel-workflow": "order-flow",
+                "x-sentinel-expected-state": "cart",
             }
         )
         context = WorkflowContextExtractor.extract_context(data)
@@ -299,9 +299,9 @@ class TestWorkflowContextExtractor:
     def test_extract_from_metadata(self):
         data = {
             "metadata": {
-                "panoptes_workflow": "onboarding",
-                "panoptes_expected_state": "verify_email",
-                "panoptes_disable_intervention": True,
+                "sentinel_workflow": "onboarding",
+                "sentinel_expected_state": "verify_email",
+                "sentinel_disable_intervention": True,
             }
         }
         context = WorkflowContextExtractor.extract_context(data)
@@ -312,8 +312,8 @@ class TestWorkflowContextExtractor:
     def test_custom_metadata_collected(self):
         data = {
             "metadata": {
-                "panoptes_custom_key": "custom_value",
-                "panoptes_another": 42,
+                "sentinel_custom_key": "custom_value",
+                "sentinel_another": 42,
             }
         }
         context = WorkflowContextExtractor.extract_context(data)
@@ -324,7 +324,7 @@ class TestWorkflowContextExtractor:
 
     def test_case_insensitive_headers(self):
         data = {}
-        headers = {"X-Panoptes-Workflow": "test-workflow"}
+        headers = {"X-Sentinel-Workflow": "test-workflow"}
         context = WorkflowContextExtractor.extract_context(data, headers)
         assert context["workflow_name"] == "test-workflow"
 
@@ -334,33 +334,33 @@ class TestWorkflowContextExtractor:
 # ===========================================================================
 class TestResponseTransformer:
     def test_add_workflow_state(self):
-        result = ResponseTransformer.add_panoptes_headers(
+        result = ResponseTransformer.add_sentinel_headers(
             {}, workflow_state="verification"
         )
-        assert result["x-panoptes-workflow-state"] == "verification"
+        assert result["x-sentinel-workflow-state"] == "verification"
 
     def test_add_intervention(self):
-        result = ResponseTransformer.add_panoptes_headers(
+        result = ResponseTransformer.add_sentinel_headers(
             {}, intervention_applied="redirect_to_verification"
         )
-        assert result["x-panoptes-intervention"] == "redirect_to_verification"
+        assert result["x-sentinel-intervention"] == "redirect_to_verification"
 
     def test_add_violations(self):
-        result = ResponseTransformer.add_panoptes_headers(
+        result = ResponseTransformer.add_sentinel_headers(
             {}, violations=["skip_auth", "missing_context"]
         )
-        assert result["x-panoptes-violations"] == "skip_auth,missing_context"
+        assert result["x-sentinel-violations"] == "skip_auth,missing_context"
 
     def test_preserves_existing_headers(self):
         existing = {"content-type": "application/json"}
-        result = ResponseTransformer.add_panoptes_headers(
+        result = ResponseTransformer.add_sentinel_headers(
             existing, workflow_state="done"
         )
         assert result["content-type"] == "application/json"
-        assert result["x-panoptes-workflow-state"] == "done"
+        assert result["x-sentinel-workflow-state"] == "done"
 
-    def test_no_panoptes_headers_when_none(self):
-        result = ResponseTransformer.add_panoptes_headers({})
-        assert "x-panoptes-workflow-state" not in result
-        assert "x-panoptes-intervention" not in result
-        assert "x-panoptes-violations" not in result
+    def test_no_sentinel_headers_when_none(self):
+        result = ResponseTransformer.add_sentinel_headers({})
+        assert "x-sentinel-workflow-state" not in result
+        assert "x-sentinel-intervention" not in result
+        assert "x-sentinel-violations" not in result

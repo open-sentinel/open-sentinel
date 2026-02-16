@@ -1,12 +1,12 @@
-"""Tests for fail-open hardening of Panoptes proxy hooks."""
+"""Tests for fail-open hardening of Open Sentinel proxy hooks."""
 
 import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime
 
-from panoptes.core.intervention.strategies import WorkflowViolationError
-from panoptes.proxy.hooks import safe_hook, _fail_open_counter, get_fail_open_counts
+from opensentinel.core.intervention.strategies import WorkflowViolationError
+from opensentinel.proxy.hooks import safe_hook, _fail_open_counter, get_fail_open_counts
 
 
 # ---------------------------------------------------------------------------
@@ -105,13 +105,13 @@ async def test_safe_hook_passes_kwargs():
 
 
 # ---------------------------------------------------------------------------
-# Integration tests: PanoptesCallback hooks with fail-open
+# Integration tests: SentinelCallback hooks with fail-open
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
 def mock_settings():
-    """Create mock PanoptesSettings for testing."""
+    """Create mock SentinelSettings for testing."""
     settings = MagicMock()
     settings.policy.fail_open = True
     settings.policy.hook_timeout_seconds = 0.1  # Aggressive timeout for tests
@@ -122,11 +122,11 @@ def mock_settings():
 
 @pytest.fixture
 def callback(mock_settings):
-    """Create PanoptesCallback with mocked settings."""
-    with patch("panoptes.proxy.hooks.PanoptesSettings", return_value=mock_settings):
-        from panoptes.proxy.hooks import PanoptesCallback
+    """Create SentinelCallback with mocked settings."""
+    with patch("opensentinel.proxy.hooks.SentinelSettings", return_value=mock_settings):
+        from opensentinel.proxy.hooks import SentinelCallback
 
-        cb = PanoptesCallback(settings=mock_settings)
+        cb = SentinelCallback(settings=mock_settings)
         # Ensure tracer is None
         cb._tracer = None
         return cb

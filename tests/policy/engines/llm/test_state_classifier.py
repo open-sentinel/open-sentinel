@@ -5,13 +5,13 @@ Tests for LLMStateClassifier.
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from panoptes.policy.engines.llm.state_classifier import LLMStateClassifier
-from panoptes.policy.engines.llm.llm_client import LLMClient, LLMClientError
-from panoptes.policy.engines.llm.models import (
+from opensentinel.policy.engines.llm.state_classifier import LLMStateClassifier
+from opensentinel.policy.engines.llm.llm_client import LLMClient, LLMClientError
+from opensentinel.policy.engines.llm.models import (
     SessionContext,
     ConfidenceTier,
 )
-from panoptes.policy.engines.fsm.workflow.schema import WorkflowDefinition
+from opensentinel.policy.engines.fsm.workflow.schema import WorkflowDefinition
 
 
 @pytest.fixture
