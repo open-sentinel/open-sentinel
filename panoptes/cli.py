@@ -2,7 +2,9 @@
 Panoptes CLI entry point.
 
 Commands:
+- panoptes init: Initialize a new Panoptes project
 - panoptes serve: Start the proxy server
+- panoptes compile: Compile natural language policy to engine config
 - panoptes validate: Validate a workflow file
 - panoptes info: Show workflow information
 """
@@ -38,31 +40,39 @@ def main():
 
 @main.command()
 @click.option(
-    "--port", "-p",
+    "--port",
+    "-p",
     type=int,
     default=4000,
     help="Proxy server port (default: 4000)",
 )
 @click.option(
-    "--host", "-h",
+    "--host",
+    "-h",
     type=str,
     default="0.0.0.0",
     help="Proxy server host (default: 0.0.0.0)",
+)
+@click.option(
+    "--config",
+    "-c",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Path to panoptes.yaml config file",
 )
 @click.option(
     "--debug/--no-debug",
     default=False,
     help="Enable debug logging",
 )
-def serve(port: int, host: str, debug: bool):
+def serve(port: int, host: str, config: Path, debug: bool):
     """Start the Panoptes proxy server.
 
     The proxy intercepts LLM calls and monitors workflow adherence.
     Point your LLM client's base_url to http://HOST:PORT/v1
 
-    Configure the policy engine via environment variables:
-        export PANOPTES_POLICY__ENGINE__TYPE=fsm
-        export PANOPTES_POLICY__ENGINE__CONFIG_PATH=workflow.yaml
+    Configure via panoptes.yaml or environment variables:
+        panoptes serve -c panoptes.yaml
         panoptes serve --port 4000
     """
     setup_logging(debug)
@@ -73,6 +83,7 @@ def serve(port: int, host: str, debug: bool):
     click.echo(f"Starting Panoptes proxy on {host}:{port}")
 
     settings = PanoptesSettings(
+        _config_path=str(config) if config else None,
         debug=debug,
     )
     settings.proxy.host = host
@@ -85,6 +96,44 @@ def serve(port: int, host: str, debug: bool):
     except Exception as e:
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
+
+
+@main.command()
+@click.option(
+    "--engine",
+    "-e",
+    type=click.Choice(["judge", "fsm"]),
+    default=None,
+    help="Policy engine type (default: judge)",
+)
+@click.option(
+    "--non-interactive",
+    "-y",
+    is_flag=True,
+    default=False,
+    help="Use all defaults without prompting (good for automation)",
+)
+def init(engine: str, non_interactive: bool):
+    """Initialize a new Panoptes project.
+
+    Creates panoptes.yaml and a starter policy file in the current directory.
+
+    Examples:
+
+        # Interactive setup
+        panoptes init
+
+        # Non-interactive with defaults (for LLM agents / CI)
+        panoptes init --non-interactive
+
+        # Specify engine type
+        panoptes init --engine fsm
+    """
+    from panoptes.cli_init import run_init
+
+    click.echo(click.style("Panoptes Init", bold=True))
+    click.echo("")
+    run_init(engine=engine, non_interactive=non_interactive)
 
 
 @main.command()
@@ -127,7 +176,8 @@ def validate(config_path: Path):
     type=click.Path(exists=True, path_type=Path),
 )
 @click.option(
-    "--verbose", "-v",
+    "--verbose",
+    "-v",
     is_flag=True,
     help="Show detailed information",
 )
@@ -176,13 +226,17 @@ def info(config_path: Path, verbose: bool):
 
         # Transitions
         if workflow.transitions:
-            click.echo(f"\n{click.style('Transitions:', bold=True)} ({len(workflow.transitions)})")
+            click.echo(
+                f"\n{click.style('Transitions:', bold=True)} ({len(workflow.transitions)})"
+            )
             for t in workflow.transitions:
                 click.echo(f"  • {t.from_state} → {t.to_state}")
 
         # Constraints
         if workflow.constraints:
-            click.echo(f"\n{click.style('Constraints:', bold=True)} ({len(workflow.constraints)})")
+            click.echo(
+                f"\n{click.style('Constraints:', bold=True)} ({len(workflow.constraints)})"
+            )
             for c in workflow.constraints:
                 severity_color = {
                     "warning": "yellow",
@@ -200,7 +254,9 @@ def info(config_path: Path, verbose: bool):
 
         # Interventions
         if workflow.interventions:
-            click.echo(f"\n{click.style('Interventions:', bold=True)} ({len(workflow.interventions)})")
+            click.echo(
+                f"\n{click.style('Interventions:', bold=True)} ({len(workflow.interventions)})"
+            )
             for name, template in workflow.interventions.items():
                 click.echo(f"  • {name}")
                 if verbose:
@@ -221,42 +277,105 @@ def version():
     click.echo(f"Panoptes v{__version__}")
 
 
+def _detect_engine_type(policy_text: str) -> str:
+    """Auto-detect the best engine type from the policy text.
+
+    Uses keyword heuristics:
+    - Temporal/workflow keywords -> fsm
+    - Quality/behavioral keywords -> judge
+    - Default to judge if ambiguous
+    """
+    text_lower = policy_text.lower()
+
+    fsm_keywords = {
+        "before",
+        "after",
+        "first",
+        "then",
+        "state",
+        "step",
+        "workflow",
+        "sequence",
+        "transition",
+        "phase",
+        "stage",
+        "proceed",
+        "next",
+        "previous",
+        "order",
+    }
+    judge_keywords = {
+        "ensure",
+        "always",
+        "never",
+        "professional",
+        "safe",
+        "appropriate",
+        "tone",
+        "quality",
+        "helpful",
+        "accurate",
+        "polite",
+        "respectful",
+        "pii",
+        "harmful",
+        "block",
+        "warn",
+        "evaluate",
+        "score",
+        "rubric",
+    }
+
+    fsm_score = sum(1 for kw in fsm_keywords if kw in text_lower)
+    judge_score = sum(1 for kw in judge_keywords if kw in text_lower)
+
+    if fsm_score > judge_score:
+        return "fsm"
+    return "judge"
+
+
 @main.command()
 @click.argument("policy", type=str)
 @click.option(
-    "--engine", "-e",
-    type=click.Choice(["fsm", "auto"]),
-    default="fsm",
-    help="Target engine type (default: fsm)",
+    "--engine",
+    "-e",
+    type=click.Choice(["fsm", "judge", "auto"]),
+    default="auto",
+    help="Target engine type (default: auto)",
 )
 @click.option(
-    "--output", "-o",
+    "--output",
+    "-o",
     type=click.Path(path_type=Path),
-    help="Output file path (default: workflow.yaml)",
+    help="Output file path (default: auto-selected based on engine)",
 )
 @click.option(
-    "--model", "-m",
+    "--model",
+    "-m",
     type=str,
     default="gpt-4o-mini",
     help="LLM model for compilation (default: gpt-4o-mini)",
 )
 @click.option(
-    "--domain", "-d",
+    "--domain",
+    "-d",
     type=str,
     help="Application domain hint (e.g., 'customer support')",
 )
 @click.option(
     "--validate/--no-validate",
     default=True,
-    help="Validate generated workflow (default: True)",
+    help="Validate generated output (default: True)",
 )
 @click.option(
-    "--base-url", "-b",
+    "--base-url",
+    "-b",
     type=str,
     help="Base URL for LLM API (e.g., http://localhost:4000/v1 for Panoptes proxy)",
 )
 @click.option(
-    "--api-key", "-k",
+    "--api-key",
+    "-k",
     type=str,
     help="API key for LLM provider (uses OPENAI_API_KEY or GOOGLE_API_KEY env var if not set)",
 )
@@ -282,11 +401,14 @@ def compile(
 
     Examples:
 
-        # Basic compilation
-        panoptes compile "verify identity before refunds"
+        # Auto-detect engine type
+        panoptes compile "be professional, never leak PII"
 
-        # With output file
-        panoptes compile "never share internal info" -o my_workflow.yaml
+        # Explicit judge engine
+        panoptes compile "never share internal info" --engine judge
+
+        # FSM workflow
+        panoptes compile "verify identity before refunds" --engine fsm
 
         # With domain hint
         panoptes compile "verify before refunds" -d "customer support"
@@ -298,14 +420,14 @@ def compile(
 
     setup_logging(debug)
 
-    # Determine output path
-    if output is None:
-        output = Path("workflow.yaml")
-
-    # Handle 'auto' engine selection (currently just defaults to fsm)
+    # Handle 'auto' engine selection
     if engine == "auto":
-        engine = "fsm"
-        click.echo("Auto-detected engine: fsm")
+        engine = _detect_engine_type(policy)
+        click.echo(f"Auto-detected engine: {engine}")
+
+    # Determine output path based on engine type
+    if output is None:
+        output = Path("policy.yaml") if engine == "judge" else Path("workflow.yaml")
 
     # Build context
     context = {}
@@ -321,18 +443,20 @@ def compile(
             compiler = PolicyCompilerRegistry.create(engine)
 
             # Override model if specified
-            if hasattr(compiler, 'model'):
+            if hasattr(compiler, "model"):
                 compiler.model = model
 
             # Set base_url if specified
-            if base_url and hasattr(compiler, '_base_url'):
+            if base_url and hasattr(compiler, "_base_url"):
                 compiler._base_url = base_url
 
             # Set api_key - auto-detect from env if using Gemini
             resolved_api_key = api_key
             if not resolved_api_key and model.startswith("gemini"):
-                resolved_api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
-            if resolved_api_key and hasattr(compiler, '_api_key'):
+                resolved_api_key = os.getenv("GOOGLE_API_KEY") or os.getenv(
+                    "GEMINI_API_KEY"
+                )
+            if resolved_api_key and hasattr(compiler, "_api_key"):
                 compiler._api_key = resolved_api_key
 
             click.echo(f"Compiling policy with {engine} compiler...")
@@ -374,11 +498,24 @@ def compile(
                     click.echo(f"  States: {result.metadata['state_count']}")
                 if "constraint_count" in result.metadata:
                     click.echo(f"  Constraints: {result.metadata['constraint_count']}")
+                if "rubric_count" in result.metadata:
+                    click.echo(f"  Rubrics: {result.metadata['rubric_count']}")
+                if "criteria_count" in result.metadata:
+                    click.echo(f"  Criteria: {result.metadata['criteria_count']}")
 
-            # Suggest next step
+            # Suggest next steps based on engine type
             click.echo(f"\nNext steps:")
-            click.echo(f"  panoptes validate {output}")
-            click.echo(f"  panoptes serve --workflow {output}")
+            if engine == "judge":
+                click.echo(f"  1. Review the generated rubric: {output}")
+                click.echo(f"  2. Set policy path in panoptes.yaml or env var:")
+                click.echo(f"     export PANOPTES_POLICY__ENGINE__TYPE=judge")
+                click.echo(f"     export PANOPTES_POLICY__ENGINE__CONFIG_PATH={output}")
+                click.echo(f"  3. Start the proxy: panoptes serve")
+            else:
+                click.echo(f"  panoptes validate {output}")
+                click.echo(f"  export PANOPTES_POLICY__ENGINE__TYPE=fsm")
+                click.echo(f"  export PANOPTES_POLICY__ENGINE__CONFIG_PATH={output}")
+                click.echo(f"  panoptes serve")
 
         except ValueError as e:
             click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
