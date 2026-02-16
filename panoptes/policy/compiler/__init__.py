@@ -57,6 +57,11 @@ try:
 except ImportError:
     FSMCompiler = None  # type: ignore
 
+try:
+    from panoptes.policy.engines.judge.compiler import JudgeCompiler
+except ImportError:
+    JudgeCompiler = None  # type: ignore
+
 __all__ = [
     # Protocol
     "PolicyCompiler",
@@ -69,4 +74,5 @@ __all__ = [
     "DEFAULT_COMPILER_SYSTEM_PROMPT",
     # Compilers (may be None if engine not available)
     "FSMCompiler",
+    "JudgeCompiler",
 ]
