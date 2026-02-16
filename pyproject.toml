@@ -7,7 +7,7 @@ name = "panoptes"
 version = "0.1.0"
 description = "Reliability layer for AI agents - monitors workflow adherence and intervenes when agents deviate"
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 requires-python = ">=3.10"
 authors = [
     { name = "Panoptes Team" }
@@ -16,7 +16,7 @@ keywords = ["ai", "agents", "reliability", "workflow", "monitoring", "llm", "pro
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
