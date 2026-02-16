@@ -97,7 +97,7 @@ await engine.initialize({
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `models` | `list` | *Required* | List of model configs. Must have at least one. |
+| `models` | `list` | auto-detected | List of model configs. If omitted, a `primary` model is created using the system default (auto-detected from API keys). |
 | `default_rubric` | `str` | `agent_behavior` | Rubric to use if none specified in request. |
 | `custom_rubrics_path` | `str` | `None` | Path to directory containing custom rubric YAMLs. |
 | `checker_mode` | `str` | `async` | `async` (evaluate after response) or `sync` (block response until evaluated). |

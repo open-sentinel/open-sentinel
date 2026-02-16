@@ -11,11 +11,13 @@ Priority (highest wins): panoptes.yaml > env vars > defaults
 
 The simplified panoptes.yaml format:
     engine: judge
-    policy: ./policy.yaml
     port: 4000
     judge:
-      model: gpt-4o-mini
+      model: gpt-4o-mini   # optional — auto-detected from API keys
       mode: balanced
+    policy:
+      - "Must NOT provide financial advice"
+      - "Be professional and helpful"
     tracing:
       type: none
 
