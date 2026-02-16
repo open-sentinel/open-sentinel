@@ -65,6 +65,14 @@ def detect_available_model() -> Tuple[str, str, str]:
     return ("gpt-4o-mini", "OpenAI", "OPENAI_API_KEY")
 
 
+def get_default_model() -> str:
+    """Helper for Pydantic default_factory to get a detected model.
+    This ensures that the settings' idea of 'default_model' is consistent
+    with the autodetect logic.
+    """
+    return detect_available_model()[0]
+
+
 class OTelConfig(BaseModel):
     """OpenTelemetry tracing configuration.
 
@@ -98,7 +106,7 @@ class ProxyConfig(BaseModel):
     timeout: int = 600
     master_key: Optional[str] = None
     # Model routing
-    default_model: str = "gpt-4"
+    default_model: str = Field(default_factory=get_default_model)
     model_list: List[dict] = Field(default_factory=list)
 
 
@@ -432,6 +440,11 @@ class PanoptesSettings(BaseSettings):
             Configuration dict ready for PolicyEngineRegistry.create_and_initialize()
         """
         engine_config = self.policy.engine.model_dump()
+
+        # Inject default model if not explicitly set in engine config.
+        # This allows engines to use the same 'autodetect' model as the proxy.
+        if "default_model" not in engine_config["config"]:
+            engine_config["config"]["default_model"] = self.proxy.default_model
 
         # Handle composite engine
         if engine_config["type"] == "composite":

@@ -101,9 +101,14 @@ class JudgePolicyEngine(PolicyEngine):
         
         if not models:
             # Fall back to the same model the proxy uses
-            from panoptes.config.settings import detect_available_model
-            auto_model, provider, _ = detect_available_model()
-            logger.info(f"No judge models configured, using {provider} model: {auto_model}")
+            auto_model = config.get("default_model")
+            if auto_model:
+                logger.info(f"No judge models configured, using default from settings: {auto_model}")
+            else:
+                from panoptes.config.settings import detect_available_model
+                auto_model, provider, _ = detect_available_model()
+                logger.info(f"No judge models or default configured, using detected model: {auto_model}")
+            
             models = [{
                 "name": "primary",
                 "model": auto_model,
