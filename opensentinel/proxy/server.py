@@ -15,7 +15,7 @@ The proxy intercepts all LLM calls, enabling:
 import asyncio
 import atexit
 import logging
-import os
+
 import sys
 import tempfile
 from pathlib import Path
@@ -258,18 +258,15 @@ def start_proxy(settings: Optional[SentinelSettings] = None) -> None:
         settings: Optional SentinelSettings. If not provided, will be loaded
                  from environment variables.
     """
-    # Debug: Check for API keys
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-    google_key = os.environ.get("GOOGLE_API_KEY")
-    
-    if gemini_key:
-        logger.info(f"Found GEMINI_API_KEY: {gemini_key[:4]}...{gemini_key[-4:]}")
-    elif google_key:
-        logger.info(f"Found GOOGLE_API_KEY: {google_key[:4]}...{google_key[-4:]}")
-    else:
-        logger.warning("No GEMINI_API_KEY or GOOGLE_API_KEY found in environment variables. Gemini models may fail.")
+    # Log resolved configuration
+    resolved_settings = settings or SentinelSettings()
+    logger.info(f"Default model: {resolved_settings.proxy.default_model}")
+    logger.info(
+        f"Policy engine: {resolved_settings.policy.engine.type}"
+        f" (config_path={resolved_settings.policy.engine.config_path})"
+    )
 
-    proxy = SentinelProxy(settings)
+    proxy = SentinelProxy(settings or resolved_settings)
     asyncio.run(proxy.start())
 
 

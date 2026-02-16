@@ -1,3 +1,6 @@
 engine: nemo
 policy: ./config/
 port: 4000
+
+# nemo:
+#   fail_closed: false  # uncomment to deny on NeMo errors instead of warn

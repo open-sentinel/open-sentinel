@@ -1,3 +1,4 @@
 engine: fsm
+model: gemini/gemini-2.5-flash
 policy: ./customer_support.yaml
 port: 4000

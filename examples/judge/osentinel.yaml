@@ -1,9 +1,10 @@
 engine: judge
+model: gemini/gemini-2.5-flash
 port: 4000
 
 judge:
-  model: gemini/gemini-2.5-flash
   mode: balanced
+  # model: gpt-4o-mini  # uncomment to override global model for judge
 
 policy:
   - "Must NOT provide personalized financial advice or investment strategies"
