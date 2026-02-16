@@ -2,18 +2,19 @@
 Open Sentinel configuration management using Pydantic Settings.
 
 Configuration can be provided via:
-1. osentinel.yaml config file
-2. Environment variables (prefixed with OSNTL_)
-3. .env file
-4. Direct instantiation
+1. osentinel.yaml config file (primary — see config/schema.yaml for full reference)
+2. Environment variables (ONLY for API keys like OPENAI_API_KEY, GEMINI_API_KEY, etc.)
+3. OSNTL_* env vars (for overrides, but prefer YAML)
+4. .env file
+5. Direct instantiation
 
 Priority (highest wins): osentinel.yaml > env vars > defaults
 
 The simplified osentinel.yaml format:
     engine: judge
+    model: gemini/gemini-2.5-flash   # optional — auto-detected from API keys
     port: 4000
     judge:
-      model: gpt-4o-mini   # optional — auto-detected from API keys
       mode: balanced
     policy:
       - "Must NOT provide financial advice"
@@ -21,18 +22,8 @@ The simplified osentinel.yaml format:
     tracing:
       type: none
 
-Environment variable examples:
-    OSNTL_DEBUG=true
-    OSNTL_OTEL__ENDPOINT=http://localhost:4317
-    OSNTL_OTEL__SERVICE_NAME=opensentinel
-    OSNTL_PROXY__PORT=4000
-
-Policy engine examples:
-    OSNTL_POLICY__ENGINE__TYPE=nemo
-    OSNTL_POLICY__ENGINE__CONFIG_PATH=/path/to/nemo_config/
-    OSNTL_POLICY__ENGINE__TYPE=fsm
-    OSNTL_POLICY__ENGINE__CONFIG_PATH=/path/to/workflow.yaml
-    OSNTL_POLICY__ENGINE__TYPE=composite
+For the complete YAML schema reference, see:
+    opensentinel/config/schema.yaml
 """
 
 import logging
@@ -275,8 +266,27 @@ class YamlConfigSource(PydanticBaseSettingsSource):
             logger.warning(f"Failed to load config from {path}: {e}")
             self._yaml_data = {}
 
+    # Keys that are handled specially and should NOT be passed through
+    # to engine config as generic keys.
+    _RESERVED_TOPLEVEL_KEYS = frozenset({
+        "engine", "policy", "port", "host", "debug", "log_level",
+        "model", "tracing",
+        # Engine-specific sections are handled below
+        "judge", "llm", "fsm", "nemo", "composite",
+    })
+
+    # Keys within judge: that receive special handling
+    _JUDGE_SPECIAL_KEYS = frozenset({"model", "mode"})
+
+    # Keys within llm: that need renaming for the engine config
+    _LLM_KEY_RENAMES = {"model": "llm_model"}
+
     def _map_to_settings(self) -> Dict[str, Any]:
-        """Map simplified YAML keys to nested SentinelSettings structure."""
+        """Map simplified YAML keys to nested SentinelSettings structure.
+
+        See opensentinel/config/schema.yaml for the full reference of
+        supported keys and their mapping behavior.
+        """
         if not self._yaml_data:
             return {}
 
@@ -288,6 +298,10 @@ class YamlConfigSource(PydanticBaseSettingsSource):
             result.setdefault("policy", {}).setdefault("engine", {})["type"] = data[
                 "engine"
             ]
+
+        # model -> proxy.default_model
+        if "model" in data:
+            result.setdefault("proxy", {})["default_model"] = data["model"]
 
         # policy -> config_path (string) or inline_policy (list/dict)
         if "policy" in data:
@@ -320,6 +334,13 @@ class YamlConfigSource(PydanticBaseSettingsSource):
         if "log_level" in data:
             result["log_level"] = data["log_level"]
 
+        # -----------------------------------------------------------------
+        # Engine-specific sections -> policy.engine.config.*
+        # Each engine's YAML section passes all keys into the config dict
+        # that the engine's initialize() receives.
+        # -----------------------------------------------------------------
+        engine_type = data.get("engine", "nemo")
+
         # judge.* -> policy.engine.config.*
         judge_cfg = data.get("judge", {})
         if isinstance(judge_cfg, dict) and judge_cfg:
@@ -329,11 +350,13 @@ class YamlConfigSource(PydanticBaseSettingsSource):
                 .setdefault("config", {})
             )
 
+            # Special: judge.model -> models list entry
             if "model" in judge_cfg:
                 engine_config["models"] = [
                     {"name": "primary", "model": judge_cfg["model"]}
                 ]
 
+            # Special: judge.mode -> apply reliability preset defaults
             if "mode" in judge_cfg:
                 try:
                     from opensentinel.policy.engines.judge.modes import build_mode_config
@@ -345,6 +368,61 @@ class YamlConfigSource(PydanticBaseSettingsSource):
                     logger.warning(
                         f"Failed to apply judge mode '{judge_cfg['mode']}': {e}"
                     )
+
+            # Pass through all remaining keys directly
+            for k, v in judge_cfg.items():
+                if k not in self._JUDGE_SPECIAL_KEYS:
+                    engine_config[k] = v
+
+        # llm.* -> policy.engine.config.*
+        llm_cfg = data.get("llm", {})
+        if isinstance(llm_cfg, dict) and llm_cfg:
+            engine_config = (
+                result.setdefault("policy", {})
+                .setdefault("engine", {})
+                .setdefault("config", {})
+            )
+            for k, v in llm_cfg.items():
+                # Rename 'model' -> 'llm_model' to match what LLMPolicyEngine expects
+                mapped_key = self._LLM_KEY_RENAMES.get(k, k)
+                engine_config[mapped_key] = v
+
+        # nemo.* -> policy.engine.config.*
+        nemo_cfg = data.get("nemo", {})
+        if isinstance(nemo_cfg, dict) and nemo_cfg:
+            engine_config = (
+                result.setdefault("policy", {})
+                .setdefault("engine", {})
+                .setdefault("config", {})
+            )
+            for k, v in nemo_cfg.items():
+                engine_config[k] = v
+
+        # composite.* -> policy config
+        composite_cfg = data.get("composite", {})
+        if isinstance(composite_cfg, dict) and composite_cfg:
+            engine_config = (
+                result.setdefault("policy", {})
+                .setdefault("engine", {})
+                .setdefault("config", {})
+            )
+            for k, v in composite_cfg.items():
+                engine_config[k] = v
+
+        # fsm.* -> policy.engine.config.* (future extensibility)
+        fsm_cfg = data.get("fsm", {})
+        if isinstance(fsm_cfg, dict) and fsm_cfg:
+            engine_config = (
+                result.setdefault("policy", {})
+                .setdefault("engine", {})
+                .setdefault("config", {})
+            )
+            for k, v in fsm_cfg.items():
+                engine_config[k] = v
+
+        # -----------------------------------------------------------------
+        # Tracing / observability
+        # -----------------------------------------------------------------
 
         # tracing.* -> otel.*
         tracing_cfg = data.get("tracing", {})
