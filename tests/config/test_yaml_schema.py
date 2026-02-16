@@ -301,6 +301,76 @@ class TestTracingMapping:
         assert result["otel"]["exporter_type"] == "console"
         assert result["otel"]["enabled"] is True
 
+    def test_tracing_insecure(self):
+        result = _build_source({
+            "tracing": {"type": "otlp", "insecure": False},
+        })._map_to_settings()
+        assert result["otel"]["insecure"] is False
+
+    def test_tracing_langfuse_complete(self):
+        result = _build_source({
+            "tracing": {
+                "type": "langfuse",
+                "endpoint": "http://localhost:4317",
+                "service_name": "test-svc",
+                "langfuse_public_key": "pk-test-123",
+                "langfuse_secret_key": "sk-test-456",
+                "langfuse_host": "https://us.cloud.langfuse.com",
+            },
+        })._map_to_settings()
+        otel = result["otel"]
+        assert otel["exporter_type"] == "langfuse"
+        assert otel["enabled"] is True
+        assert otel["endpoint"] == "http://localhost:4317"
+        assert otel["service_name"] == "test-svc"
+        assert otel["langfuse_public_key"] == "pk-test-123"
+        assert otel["langfuse_secret_key"] == "sk-test-456"
+        assert otel["langfuse_host"] == "https://us.cloud.langfuse.com"
+
+
+# =========================================================================
+# Intervention section
+# =========================================================================
+
+
+class TestInterventionMapping:
+    def test_intervention_settings(self):
+        result = _build_source({
+            "intervention": {
+                "default_strategy": "hard_block",
+                "max_intervention_attempts": 5,
+                "include_headers": False,
+            },
+        })._map_to_settings()
+        intervention = result["intervention"]
+        assert intervention["default_strategy"] == "hard_block"
+        assert intervention["max_intervention_attempts"] == 5
+        assert intervention["include_headers"] is False
+
+
+# =========================================================================
+# Classifier section
+# =========================================================================
+
+
+class TestClassifierMapping:
+    def test_classifier_settings(self):
+        result = _build_source({
+            "classifier": {
+                "model_name": "all-MiniLM-L12-v2",
+                "backend": "onnx",
+                "similarity_threshold": 0.85,
+                "cache_embeddings": False,
+                "device": "cuda",
+            },
+        })._map_to_settings()
+        classifier = result["classifier"]
+        assert classifier["model_name"] == "all-MiniLM-L12-v2"
+        assert classifier["backend"] == "onnx"
+        assert classifier["similarity_threshold"] == 0.85
+        assert classifier["cache_embeddings"] is False
+        assert classifier["device"] == "cuda"
+
 
 # =========================================================================
 # Combined / integration-style tests
