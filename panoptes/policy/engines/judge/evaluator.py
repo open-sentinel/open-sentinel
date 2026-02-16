@@ -105,7 +105,7 @@ class JudgeEvaluator:
             rubric.prompt_overrides.get("system")
             or TURN_POINTWISE_SYSTEM.format(
                 criteria_block=criteria_block,
-                additional_instructions="",
+                additional_instructions=rubric.prompt_overrides.get("additional_instructions", ""),
             )
         )
         user_prompt = (
@@ -175,7 +175,7 @@ class JudgeEvaluator:
             rubric.prompt_overrides.get("system")
             or CONVERSATION_SYSTEM.format(
                 criteria_block=criteria_block,
-                additional_instructions="",
+                additional_instructions=rubric.prompt_overrides.get("additional_instructions", ""),
             )
         )
         user_prompt = (
@@ -310,7 +310,7 @@ class JudgeEvaluator:
             or TURN_REFERENCE_SYSTEM.format(
                 criteria_block=criteria_block,
                 ref_scale="1-5",
-                additional_instructions="",
+                additional_instructions=rubric.prompt_overrides.get("additional_instructions", ""),
             )
         )
         user_prompt = (

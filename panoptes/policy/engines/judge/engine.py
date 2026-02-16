@@ -27,7 +27,11 @@ from panoptes.policy.engines.judge.models import (
 )
 from panoptes.policy.engines.judge.client import JudgeClient
 from panoptes.policy.engines.judge.evaluator import JudgeEvaluator
-from panoptes.policy.engines.judge.rubrics import RubricRegistry
+from panoptes.policy.engines.judge.rubrics import (
+    RubricRegistry,
+    create_rules_rubric,
+    _parse_rubric_dict,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +142,11 @@ class JudgePolicyEngine(PolicyEngine):
         custom_path = config.get("custom_rubrics_path")
         if custom_path:
             RubricRegistry.load_from_yaml(custom_path)
+
+        # Load inline policy if provided
+        inline_policy = config.get("inline_policy")
+        if inline_policy is not None:
+            self._load_inline_policy(inline_policy)
 
         self._initialized = True
         logger.info(f"JudgePolicyEngine initialized: {self.name}")
@@ -348,6 +357,76 @@ class JudgePolicyEngine(PolicyEngine):
     # =========================================================================
     # Private helpers
     # =========================================================================
+
+    def _load_inline_policy(self, policy_data: Any) -> None:
+        """Load inline policy definitions from config.
+
+        Handles several shapes:
+        - List of strings: plain-text rules → auto-generated binary rubric
+        - Multiline string: split into rules
+        - Dict with 'rules' key: extract rules list
+        - Dict with 'rubrics' key: parse each as formal rubric
+        - List of dicts: parse each as formal rubric
+        """
+        if isinstance(policy_data, str):
+            # Multiline string → split into rules
+            rules = [line.strip() for line in policy_data.strip().splitlines() if line.strip()]
+            if rules:
+                rubric = create_rules_rubric(rules)
+                RubricRegistry.register(rubric)
+                self._default_rubric = rubric.name
+                logger.info(f"Loaded {len(rules)} inline policy rules as '{rubric.name}'")
+            return
+
+        if isinstance(policy_data, list):
+            if not policy_data:
+                return
+            # List of strings → plain-text rules
+            if all(isinstance(item, str) for item in policy_data):
+                rubric = create_rules_rubric(policy_data)
+                RubricRegistry.register(rubric)
+                self._default_rubric = rubric.name
+                logger.info(f"Loaded {len(policy_data)} inline policy rules as '{rubric.name}'")
+                return
+            # List of dicts → formal rubric definitions
+            for item in policy_data:
+                if isinstance(item, dict):
+                    try:
+                        rubric = _parse_rubric_dict(item)
+                        RubricRegistry.register(rubric)
+                        # First rubric becomes default
+                        if policy_data.index(item) == 0:
+                            self._default_rubric = rubric.name
+                        logger.info(f"Loaded inline rubric '{rubric.name}'")
+                    except Exception as e:
+                        logger.error(f"Failed to parse inline rubric: {e}")
+            return
+
+        if isinstance(policy_data, dict):
+            if "rules" in policy_data:
+                rules = policy_data["rules"]
+                if isinstance(rules, list):
+                    rubric = create_rules_rubric(rules)
+                    RubricRegistry.register(rubric)
+                    self._default_rubric = rubric.name
+                    logger.info(f"Loaded {len(rules)} inline policy rules as '{rubric.name}'")
+                return
+            if "rubrics" in policy_data:
+                for rubric_def in policy_data["rubrics"]:
+                    try:
+                        rubric = _parse_rubric_dict(rubric_def)
+                        RubricRegistry.register(rubric)
+                        logger.info(f"Loaded inline rubric '{rubric.name}'")
+                    except Exception as e:
+                        logger.error(f"Failed to parse inline rubric: {e}")
+                # Set first rubric as default
+                if policy_data["rubrics"]:
+                    first = policy_data["rubrics"][0]
+                    if isinstance(first, dict) and "name" in first:
+                        self._default_rubric = first["name"]
+                return
+
+        logger.warning(f"Unrecognized inline_policy format: {type(policy_data)}")
 
     def _trace_verdict(
         self,

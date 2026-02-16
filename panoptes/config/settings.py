@@ -262,11 +262,20 @@ class YamlConfigSource(PydanticBaseSettingsSource):
                 "engine"
             ]
 
-        # policy -> policy.engine.config_path
-        if "policy" in data and isinstance(data["policy"], str):
-            result.setdefault("policy", {}).setdefault("engine", {})["config_path"] = (
-                data["policy"]
-            )
+        # policy -> config_path (string) or inline_policy (list/dict)
+        if "policy" in data:
+            policy_val = data["policy"]
+            if isinstance(policy_val, str):
+                result.setdefault("policy", {}).setdefault("engine", {})[
+                    "config_path"
+                ] = policy_val
+            elif isinstance(policy_val, (list, dict)):
+                engine_config = (
+                    result.setdefault("policy", {})
+                    .setdefault("engine", {})
+                    .setdefault("config", {})
+                )
+                engine_config["inline_policy"] = policy_val
 
         # port -> proxy.port
         if "port" in data:
