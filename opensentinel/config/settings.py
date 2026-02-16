@@ -273,6 +273,8 @@ class YamlConfigSource(PydanticBaseSettingsSource):
         "model", "tracing",
         # Engine-specific sections are handled below
         "judge", "llm", "fsm", "nemo", "composite",
+        # Component sections mapped directly
+        "intervention", "classifier",
     })
 
     # Keys within judge: that receive special handling
@@ -439,6 +441,33 @@ class YamlConfigSource(PydanticBaseSettingsSource):
                 otel["endpoint"] = tracing_cfg["endpoint"]
             if "service_name" in tracing_cfg:
                 otel["service_name"] = tracing_cfg["service_name"]
+            if "insecure" in tracing_cfg:
+                otel["insecure"] = tracing_cfg["insecure"]
+            # Langfuse-specific settings
+            if "langfuse_public_key" in tracing_cfg:
+                otel["langfuse_public_key"] = tracing_cfg["langfuse_public_key"]
+            if "langfuse_secret_key" in tracing_cfg:
+                otel["langfuse_secret_key"] = tracing_cfg["langfuse_secret_key"]
+            if "langfuse_host" in tracing_cfg:
+                otel["langfuse_host"] = tracing_cfg["langfuse_host"]
+
+        # -----------------------------------------------------------------
+        # Intervention and Classifier sections
+        # -----------------------------------------------------------------
+
+        # intervention.* -> intervention.*
+        intervention_cfg = data.get("intervention", {})
+        if isinstance(intervention_cfg, dict) and intervention_cfg:
+            intervention = result.setdefault("intervention", {})
+            for k, v in intervention_cfg.items():
+                intervention[k] = v
+
+        # classifier.* -> classifier.*
+        classifier_cfg = data.get("classifier", {})
+        if isinstance(classifier_cfg, dict) and classifier_cfg:
+            classifier = result.setdefault("classifier", {})
+            for k, v in classifier_cfg.items():
+                classifier[k] = v
 
         return result
 
