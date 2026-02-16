@@ -159,7 +159,7 @@ class PanoptesProxy:
             set_verbose=self.settings.debug,
         )
 
-        logger.info(f"Created LiteLLM router with {len(model_list)} models and PanoptesCallback")
+        logger.info(f"Created LiteLLM router with {len(model_list)} provider(s) and PanoptesCallback")
         return router
 
     def generate_litellm_config(self) -> str:

@@ -444,83 +444,34 @@ class PanoptesSettings(BaseSettings):
         return engine_config
 
     def get_model_list(self) -> List[dict]:
-        """Get model list for LiteLLM router."""
+        """Get model list for LiteLLM router using wildcard routing.
+        
+        Returns wildcard entries for providers whose API keys are present,
+        allowing LiteLLM to dynamically route any model from those providers.
+        """
+        # If explicitly configured, use that
         if self.proxy.model_list:
             return self.proxy.model_list
 
-        # Default model configuration
-        return [
-            # OpenAI
-            {
-                "model_name": "openai-gpt-5.2",
-                "litellm_params": {"model": "gpt-5.2"},
-            },
-            {
-                "model_name": "openai-gpt-5-pro",
-                "litellm_params": {"model": "gpt-5-pro"},
-            },
-            {
-                "model_name": "openai-gpt-4o",
-                "litellm_params": {"model": "gpt-4o"},
-            },
-            {
-                "model_name": "openai-gpt-3.5-turbo",
-                "litellm_params": {"model": "gpt-3.5-turbo"},
-            },
-            # Anthropic Claude
-            {
-                "model_name": "anthropic-claude-opus-4.1",
-                "litellm_params": {"model": "anthropic/claude-opus-4-1"},
-            },
-            {
-                "model_name": "anthropic-claude-sonnet-4.5",
-                "litellm_params": {"model": "anthropic/claude-sonnet-4-5"},
-            },
-            {
-                "model_name": "anthropic-claude-3.7",
-                "litellm_params": {"model": "anthropic/claude-3-7-sonnet"},
-            },
-            {
-                "model_name": "anthropic-claude-instant-1.2",
-                "litellm_params": {"model": "anthropic/claude-instant-1.2"},
-            },
-            # Google Gemini (text/chat)
-            {
-                "model_name": "gemini-1.5-pro",
-                "litellm_params": {"model": "gemini/1.5-pro"},
-            },
-            {
-                "model_name": "gemini-1.5-flash",
-                "litellm_params": {"model": "gemini/1.5-flash"},
-            },
-            # TogetherAI (LLaMA & Falcon via Together)
-            {
-                "model_name": "together-llama-2-70b-chat",
-                "litellm_params": {
-                    "model": "together_ai/togethercomputer/llama-2-70b-chat"
-                },
-            },
-            {
-                "model_name": "together-falcon-40b-instruct",
-                "litellm_params": {
-                    "model": "together_ai/togethercomputer/falcon-40b-instruct"
-                },
-            },
-            # Replicate / HuggingFace Example (if you have keys)
-            {
-                "model_name": "huggingface-llama-3-13b",
-                "litellm_params": {"model": "huggingface/llama-3-13b"},
-            },
-            {
-                "model_name": "replicate-mistral-7b",
-                "litellm_params": {"model": "replicate/mistral-7b"},
-            },
-            {
-                "model_name": "openrouter/openai/gpt-3.5-turbo",
-                "litellm_params": {"model": "openrouter/openai/gpt-3.5-turbo"},
-            },
-            {
-                "model_name": "gemini/gemini-2.5-flash",
-                "litellm_params": {"model": "gemini/gemini-2.5-flash"},
-            },
+        # Provider wildcard configurations: (model_name, litellm_model, required_env_vars)
+        # required_env_vars can be a string or list of strings (any match = enabled)
+        providers = [
+            ("openai/*", "openai/*", "OPENAI_API_KEY"),
+            ("anthropic/*", "anthropic/*", "ANTHROPIC_API_KEY"),
+            ("gemini/*", "gemini/*", ["GEMINI_API_KEY", "GOOGLE_API_KEY"]),
+            ("groq/*", "groq/*", "GROQ_API_KEY"),
+            ("together_ai/*", "together_ai/*", "TOGETHERAI_API_KEY"),
+            ("openrouter/*", "openrouter/*", "OPENROUTER_API_KEY"),
         ]
+
+        model_list = []
+        for model_name, litellm_model, env_vars in providers:
+            # Check if any required env var is set
+            env_var_list = env_vars if isinstance(env_vars, list) else [env_vars]
+            if any(os.environ.get(var) for var in env_var_list):
+                model_list.append({
+                    "model_name": model_name,
+                    "litellm_params": {"model": litellm_model},
+                })
+
+        return model_list
