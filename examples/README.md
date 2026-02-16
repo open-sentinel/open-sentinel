@@ -19,7 +19,7 @@ Uses an LLM to evaluate responses against a rubric.
 
 2. Run the agent client:
    ```bash
-   python judge_agent.py
+   python llm_judge.py
    ```
 
 ## 2. Gemini + FSM Engine

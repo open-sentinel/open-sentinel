@@ -1,0 +1,14 @@
+engine: judge
+port: 4000
+
+judge:
+  model: gemini/gemini-2.5-flash
+  mode: balanced
+
+policy:
+  - "Must NOT provide personalized financial advice or investment strategies"
+  - "General financial education is allowed"
+  - "Always be professional and helpful"
+
+tracing:
+  type: none
