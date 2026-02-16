@@ -1,56 +1,68 @@
 # Panoptes Examples
 
-This directory contains examples of how to use Panoptes with different policy engines.
+This directory contains examples for different policy engines.
 
-## 1. Gemini + FSM Engine
+## 1. Judge Engine (Recommended)
+Located in `examples/judge/`.
+
+Uses an LLM to evaluate responses against a rubric.
+
+### How to run:
+
+1. Start Panoptes:
+   ```bash
+   cd examples/judge
+   export OPENAI_API_KEY=sk-...
+   panoptes serve
+   ```
+   *This uses the local `panoptes.yaml` configuration.*
+
+2. Run the agent client:
+   ```bash
+   python judge_agent.py
+   ```
+
+## 2. Gemini + FSM Engine
 Located in `examples/gemini_fsm/`.
 
-This example demonstrates using the Finite State Machine (FSM) engine to enforce a specific workflow for a customer support agent.
+Demonstrates deterministic workflow enforcement.
 
 ### How to run:
 
-1. Start Panoptes with FSM engine (default if not specified, but good to be explicit):
+1. Start Panoptes:
    ```bash
-   export PANOPTES_POLICY__ENGINE__TYPE=fsm
-   export PANOPTES_POLICY__ENGINE__CONFIG_PATH=./examples/gemini_fsm/customer_support.yaml
-   export GOOGLE_API_KEY=your_key_here
+   cd examples/gemini_fsm
+   export GOOGLE_API_KEY=AIza...
    panoptes serve
    ```
-   
+
 2. Run the agent script:
    ```bash
-   python examples/gemini_fsm/gemini_agent.py
+   python gemini_agent.py
    ```
 
-## 2. NeMo Guardrails
+## 3. NeMo Guardrails
 Located in `examples/nemo_guardrails/`.
 
-This example demonstrates using NVIDIA NeMo Guardrails to filter input/output, specifically blocking financial advice.
-
-### File Structure:
-- `config/config.yml`: NeMo configuration defining the model and rails.
-- `config/rails.co`: Colang definitions for the guardrails.
-- `nemo_agent.py`: Client script.
+Demonstrates NeMo Guardrails integration.
 
 ### How to run:
 
-1. Start Panoptes with NeMo engine:
+1. Start Panoptes:
    ```bash
-   export PANOPTES_POLICY__ENGINE__TYPE=nemo
-   export PANOPTES_POLICY__ENGINE__CONFIG_PATH=./examples/nemo_guardrails/config/
-   export GOOGLE_API_KEY=your_key_here
+   cd examples/nemo_guardrails
+   export OPENAI_API_KEY=sk-...  # or GOOGLE_API_KEY depending on config
    panoptes serve
    ```
-   *Note: Ensure you run this from the project root.*
 
 2. Run the agent script:
    ```bash
-   python examples/nemo_guardrails/nemo_agent.py
+   python nemo_agent.py
    ```
 
-## 3. NLP Policy Compiler (Experimental)
+## 4. NLP Policy Compiler (Experimental)
 
-You can compile natural language policies into executable workflows using the CLI.
+Compile natural language policies into executable workflows.
 
 ### How to use:
 
@@ -59,9 +71,8 @@ You can compile natural language policies into executable workflows using the CL
    panoptes compile "verify identity before processing refunds" -o refund_policy.yaml
    ```
 
-2. Run the compiled workflow:
+2. Run with generated policy:
    ```bash
-   export PANOPTES_POLICY__ENGINE__TYPE=fsm
-   export PANOPTES_POLICY__ENGINE__CONFIG_PATH=refund_policy.yaml
-   panoptes serve
+   # Create a panoptes.yaml or run with flags
+   panoptes serve --policy refund_policy.yaml --engine fsm
    ```

@@ -40,81 +40,44 @@ pip install -e ".[dev]"
 
 ## Quick Start
 
-### Option 1: Compile from Natural Language (Recommended)
+### 1. Initialize Configuration
 
-Use the `compile` command to generate workflow config from plain English:
+Generates `panoptes.yaml` and `policy.yaml` with sensible defaults.
 
 ```bash
-panoptes compile "Agent must verify identity before processing refunds. Never share internal system information."
+panoptes init
+# or non-interactive:
+# panoptes init --non-interactive
 ```
 
-This generates a `workflow.yaml` file with states, transitions, constraints, and interventions.
+### 2. Configure Your Policy
 
-### Option 2: Define Workflow Manually in YAML
+Edit `policy.yaml` to define your guardrails. For the Judge engine (default), this means defining rubrics:
 
 ```yaml
-name: customer_support
-version: "1.0"
-
-states:
-  - name: greeting
-    is_initial: true
-    classification:
-      patterns: ["hello", "hi", "welcome"]
-  
-  - name: identify_issue
-    classification:
-      patterns: ["how can I help", "what.*issue"]
-  
-  - name: resolution
-    is_terminal: true
-    classification:
-      patterns: ["resolved", "fixed", "solved"]
-
-transitions:
-  - from_state: greeting
-    to_state: identify_issue
-  - from_state: identify_issue
-    to_state: resolution
-
-constraints:
-  - type: eventually
-    target: resolution
-    severity: warning
+rubrics:
+  - name: safety_policy
+    criteria:
+      - name: no_pii
+        description: "Response must not contain PII"
+        scale: binary
+        fail_threshold: 0.5
 ```
 
-### Start the Panoptes proxy
-
-For the FSM engine (workflow-based), specify the engine type explicitly:
+### 3. Start the Proxy
 
 ```bash
-export PANOPTES_POLICY__ENGINE__TYPE=fsm
-export PANOPTES_POLICY__ENGINE__CONFIG_PATH=./workflow.yaml
+export OPENAI_API_KEY=sk-...
 panoptes serve
 ```
 
-For the LLM engine (LLM-as-judge classification + drift detection):
-
-```bash
-export PANOPTES_POLICY__ENGINE__TYPE=llm
-export PANOPTES_POLICY__ENGINE__CONFIG_PATH=./workflow.yaml
-panoptes serve
-```
-
-For NeMo Guardrails (default):
-
-```bash
-export PANOPTES_POLICY__ENGINE__CONFIG_PATH=./nemo_config/
-panoptes serve
-```
-
-### Point your LLM client at Panoptes
+### 4. Point Your Client
 
 ```python
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://localhost:4000",  # Panoptes proxy
+    base_url="http://localhost:4000/v1",  # Panoptes proxy
     api_key="your-api-key"
 )
 
@@ -126,153 +89,63 @@ response = client.chat.completions.create(
 
 ## Policy Engines
 
-Panoptes supports **pluggable policy engines** that can be used individually or combined:
+Panoptes supports **pluggable policy engines**:
 
 | Engine | Type | Best For |
 |--------|------|----------|
+| **Judge**| `judge` | **Recommended**. Soft constraint evaluation using LLM-as-judge reasoning |
 | **FSM** | `fsm` | Deterministic workflow enforcement via state machines |
-| **LLM** | `llm` | Soft constraint evaluation using LLM-as-judge reasoning |
-| **NeMo** | `nemo` | Content safety, jailbreak detection, dialog rails (NVIDIA NeMo Guardrails) |
-| **Composite** | `composite` | Running multiple engines in parallel, merging results |
-
-### FSM Engine
-Finite State Machine with deterministic classification (tool calls, regex patterns, embeddings), LTL-lite constraint evaluation, and prompt injection interventions.
-
-### LLM Engine
-Uses a lightweight LLM (e.g. `gpt-4o-mini`) as a reasoning backbone for state classification with confidence tiers, temporal + semantic drift detection, and soft constraint evaluation with evidence memory.
-
-### NeMo Guardrails Engine
-Native integration with NVIDIA NeMo Guardrails for input/output rails, jailbreak detection, PII filtering, toxicity checks, and Colang-scripted dialog flows.
-
-### Composite Engine
-Runs multiple engines in parallel and merges results. The most restrictive decision wins (DENY > MODIFY > WARN > ALLOW). All violations are collected.
+| **NeMo** | `nemo` | Content safety, jailbreak detection (NVIDIA NeMo Guardrails) |
+| **Composite** | `composite` | Running multiple engines in parallel |
 
 ## Key Features
 
 ### Zero Code Changes
 Customers only change `base_url` in their LLM client to point at Panoptes. No SDK integration required.
 
-### Non-Blocking Monitoring
-State classification and constraint evaluation run in parallel with LLM calls, adding **zero latency** to the critical path.
-
-### Interceptor Framework
-A general-purpose checker system that orchestrates policy evaluation. Checkers can run synchronously (blocking) or asynchronously (results applied on next request). Policy engines are automatically wrapped as checkers via the `PolicyEngineChecker` adapter.
-
 ### Fail-Open Hardening
-All hooks are wrapped with timeout and exception handling via `safe_hook`. If a hook fails or times out:
-- `WorkflowViolationError` (intentional blocks) still propagates
-- All other errors result in pass-through, preventing Panoptes from blocking your app
-
-### LTL-Lite Constraints
-Simplified temporal logic for practical workflow constraints (FSM + LLM engines):
-
-| Type | Meaning | Example |
-|------|---------|---------| 
-| `eventually` | Must eventually reach target | "Must reach resolution" |
-| `always` | Condition always holds | "Always maintain session" |
-| `never` | Target must never occur | "Never share credentials" |
-| `precedence` | B cannot occur before A | "Verify identity before account actions" |
-| `response` | If A occurs, B must follow | "If escalate, must resolve" |
-
-### NeMo Guardrails Integration
-Native support for NVIDIA NeMo Guardrails to enforce:
-- **Input Rails**: Check for jailbreaks, PII, and toxicity before processing inputs.
-- **Output Rails**: Validate LLM responses against safety policies and fact-checking.
-- **Dialog Rails**: Control conversation flow using Colang scripts.
-
-### Multiple Intervention Strategies
-
-| Strategy | Use Case |
-|----------|----------|
-| `SYSTEM_PROMPT_APPEND` | Gentle guidance |
-| `USER_MESSAGE_INJECT` | Important corrections |
-| `CONTEXT_REMINDER` | Complex multi-step workflows |
-| `HARD_BLOCK` | Critical violations |
+All hooks are wrapped with timeout and exception handling. Issues in Panoptes won't block your application unless explicitly configured to.
 
 ## Configuration
 
-Environment variables (prefix: `PANOPTES_`):
+The primary configuration is `panoptes.yaml`.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PANOPTES_POLICY__ENGINE__TYPE` | Engine: `nemo`, `fsm`, `llm`, `composite` | nemo |
-| `PANOPTES_POLICY__ENGINE__CONFIG_PATH` | Path to config (workflow YAML, NeMo dir) | - |
-| `PANOPTES_POLICY__FAIL_OPEN` | Pass-through on hook failures | true |
-| `PANOPTES_POLICY__HOOK_TIMEOUT_SECONDS` | Max hook execution time | 30.0 |
-| `PANOPTES_PROXY__PORT` | Server port | 4000 |
-| `PANOPTES_OTEL__EXPORTER_TYPE` | Exporter: `otlp`, `langfuse`, `console`, `none` | otlp |
-| `PANOPTES_OTEL__ENDPOINT` | OTLP endpoint (for `otlp` exporter) | http://localhost:4317 |
-| `PANOPTES_OTEL__LANGFUSE_PUBLIC_KEY` | Langfuse public key | - |
-| `PANOPTES_OTEL__LANGFUSE_SECRET_KEY` | Langfuse secret key | - |
-| `PANOPTES_OTEL__LANGFUSE_HOST` | Langfuse host (e.g. US region) | https://cloud.langfuse.com |
+```yaml
+engine: judge
+policy: ./policy.yaml
+port: 4000
 
-### OpenTelemetry Setup (Optional)
+judge:
+  model: gpt-4o-mini
+  mode: balanced  # safe, balanced, aggressive
 
-**Option 1: Export to Langfuse (via OTLP)**
-
-Panoptes uses OpenTelemetry GenAI semantic conventions to provide rich traces in Langfuse, including model usage, costs, and policy evaluation events.
-
-```bash
-export PANOPTES_OTEL__EXPORTER_TYPE=langfuse
-export PANOPTES_OTEL__LANGFUSE_PUBLIC_KEY=pk-lf-...
-export PANOPTES_OTEL__LANGFUSE_SECRET_KEY=sk-lf-...
-# For US region: export PANOPTES_OTEL__LANGFUSE_HOST=https://us.cloud.langfuse.com
+tracing:
+  type: none      # none, console, otlp, langfuse
 ```
 
-**Option 2: Export to Standard OTLP Backend (Jaeger, Zipkin, etc.)**
+### Environment Variables
 
-```bash
-export PANOPTES_OTEL__EXPORTER_TYPE=otlp
-export PANOPTES_OTEL__ENDPOINT=http://localhost:4317
-export PANOPTES_OTEL__SERVICE_NAME=panoptes
+Environment variables can override `panoptes.yaml` settings (prefix `PANOPTES_`):
 
-# Start Jaeger for local development
-docker run -d -p 4317:4317 -p 16686:16686 jaegertracing/all-in-one:latest
-```
-
-Traces will appear in your tracing backend's UI grouped by session.
+- `PANOPTES_POLICY__ENGINE__TYPE` -> `engine`
+- `PANOPTES_POLICY__ENGINE__CONFIG_PATH` -> `policy`
+- `PANOPTES_PROXY__PORT` -> `port`
+- `PANOPTES_OTEL__EXPORTER_TYPE` -> `tracing.type`
 
 ## CLI Commands
 
 | Command | Description |
 |---------|-------------|
+| `panoptes init` | Initialize configuration files |
 | `panoptes serve` | Start the proxy server |
-| `panoptes compile` | Compile natural language to workflow YAML |
-| `panoptes validate` | Validate a workflow definition file |
-| `panoptes info` | Show detailed workflow information |
-| `panoptes version` | Show version information |
-
-### Compile Command
-
-Convert natural language policies to FSM workflow configuration:
-
-```bash
-# Basic compilation
-panoptes compile "verify identity before processing refunds"
-
-# With output file and domain hint
-panoptes compile "never share internal info" -o my_workflow.yaml -d "customer support"
-
-# Use a different model
-panoptes compile "verify identity before refunds" -m gpt-4o
-
-# With custom API endpoint
-panoptes compile "..." -b http://localhost:4000/v1 -k $API_KEY
-```
-
-**Options:**
-- `-e, --engine`: Target engine type (`fsm`, `auto`) - default: fsm
-- `-o, --output`: Output file path - default: workflow.yaml
-- `-m, --model`: LLM model for compilation - default: gpt-4o-mini
-- `-d, --domain`: Application domain hint
-- `-b, --base-url`: Custom LLM API base URL
-- `-k, --api-key`: API key (uses env vars if not set)
-- `--validate/--no-validate`: Validate generated workflow - default: True
+| `panoptes compile` | Compile natural language to policy |
+| `panoptes validate` | Validate policy files |
 
 ## Documentation
 
-- [Architecture Guide](ARCHITECTURE.md) - Detailed system design
-- [Developer Guide](DEVELOPER.md) - Contributing and development setup
+- [Architecture Guide](ARCHITECTURE.md)
+- [Developer Guide](DEVELOPER.md)
+- [Examples](examples/)
 
 ## License
 

@@ -14,9 +14,18 @@ pip install -e ".[dev]"
 # Run tests
 pytest
 
-# Compile workflow from natural language
-panoptes compile "verify identity before refunds. Never share internal info."
+# Initialize configuration (creates panoptes.yaml and policy.yaml)
+panoptes init
 
+# Start proxy (uses panoptes.yaml)
+panoptes serve
+```
+
+### Alternative: Manual Configuration
+
+You can also configure via environment variables (useful for testing different engines quickly):
+
+```bash
 # Start proxy with FSM workflow
 export PANOPTES_POLICY__ENGINE__TYPE=fsm
 export PANOPTES_POLICY__ENGINE__CONFIG_PATH=workflow.yaml
