@@ -12,7 +12,7 @@ import logging
 import ast
 from typing import Optional, Dict, Any, Set, Tuple
 from dataclasses import dataclass, field
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from enum import Enum
 
 from panoptes.policy.engines.fsm.workflow.schema import WorkflowDefinition, State, Transition
@@ -60,8 +60,8 @@ class SessionState:
     history: list[StateHistoryEntry] = field(default_factory=list)
     pending_intervention: Optional[str] = None
     constraint_violations: list[str] = field(default_factory=list)
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    last_updated: datetime = field(default_factory=lambda: datetime.now(UTC))
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def get_state_sequence(self) -> list[str]:
         """Get the sequence of states visited."""
@@ -72,7 +72,7 @@ class SessionState:
         if not self.history:
             return 0.0
         current_entry = self.history[-1]
-        return (datetime.now(UTC) - current_entry.entered_at).total_seconds()
+        return (datetime.now(timezone.utc) - current_entry.entered_at).total_seconds()
 
 
 class WorkflowStateMachine:
@@ -150,7 +150,7 @@ class WorkflowStateMachine:
                     history=[
                         StateHistoryEntry(
                             state_name=self._initial_state,
-                            entered_at=datetime.now(UTC),
+                            entered_at=datetime.now(timezone.utc),
                         )
                     ],
                 )
@@ -223,20 +223,20 @@ class WorkflowStateMachine:
         async with self._lock:
             # Close current history entry
             if session.history:
-                session.history[-1].exited_at = datetime.now(UTC)
+                session.history[-1].exited_at = datetime.now(timezone.utc)
 
             # Add new entry
             session.history.append(
                 StateHistoryEntry(
                     state_name=target_state,
-                    entered_at=datetime.now(UTC),
+                    entered_at=datetime.now(timezone.utc),
                     metadata=context or {},
                     classification_confidence=confidence,
                     classification_method=method,
                 )
             )
             session.current_state = target_state
-            session.last_updated = datetime.now(UTC)
+            session.last_updated = datetime.now(timezone.utc)
 
         logger.debug(
             f"Session {session_id}: '{current}' -> '{target_state}' "

@@ -201,6 +201,8 @@ class PanoptesProxy:
             logger.info(f"Running with FSM engine: {engine_conf.get('workflow_path')}")
         elif engine_type == "composite" and engine_conf.get("engines"):
             logger.info("Running with Composite policy engine")
+        elif engine_type == "judge":
+            logger.info("Running with Judge policy engine")
         else:
             logger.warning("No policy engine configured - running in pass-through mode")
 
@@ -256,6 +258,17 @@ def start_proxy(settings: Optional[PanoptesSettings] = None) -> None:
         settings: Optional PanoptesSettings. If not provided, will be loaded
                  from environment variables.
     """
+    # Debug: Check for API keys
+    gemini_key = os.environ.get("GEMINI_API_KEY")
+    google_key = os.environ.get("GOOGLE_API_KEY")
+    
+    if gemini_key:
+        logger.info(f"Found GEMINI_API_KEY: {gemini_key[:4]}...{gemini_key[-4:]}")
+    elif google_key:
+        logger.info(f"Found GOOGLE_API_KEY: {google_key[:4]}...{google_key[-4:]}")
+    else:
+        logger.warning("No GEMINI_API_KEY or GOOGLE_API_KEY found in environment variables. Gemini models may fail.")
+
     proxy = PanoptesProxy(settings)
     asyncio.run(proxy.start())
 

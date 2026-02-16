@@ -76,6 +76,11 @@ try:
 except ImportError:
     CompositePolicyEngine = None  # type: ignore
 
+try:
+    from panoptes.policy.engines.judge import JudgePolicyEngine
+except ImportError:
+    JudgePolicyEngine = None  # type: ignore
+
 __all__ = [
     # Core protocols
     "PolicyEngine",
@@ -93,6 +98,7 @@ __all__ = [
     "FSMPolicyEngine",
     "NemoGuardrailsPolicyEngine",
     "CompositePolicyEngine",
+    "JudgePolicyEngine",
     # Compiler protocol
     "PolicyCompiler",
     "CompilationResult",
