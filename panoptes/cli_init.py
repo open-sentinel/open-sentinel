@@ -5,10 +5,13 @@ Generates panoptes.yaml and optionally a starter policy.yaml so users
 can get running with minimal configuration.
 """
 
+import os
 from pathlib import Path
 from typing import Optional
 
 import click
+
+from panoptes.config.settings import detect_available_model
 
 # ---------------------------------------------------------------------------
 # Templates
@@ -184,14 +187,17 @@ def run_init(
         )
 
     # Collect judge-specific options
-    model = "gpt-4o-mini"
+    detected_model, detected_provider, detected_env_var = detect_available_model()
+    key_already_set = bool(os.environ.get(detected_env_var))
+
+    model = detected_model
     mode = "balanced"
     tracing = "none"
     policy_style = "simple"
 
     if engine_type == "judge":
         if not non_interactive:
-            model = click.prompt("Judge model", default="gpt-4o-mini")
+            model = click.prompt("Judge model", default=detected_model)
             mode = click.prompt(
                 "Reliability mode",
                 type=click.Choice(["safe", "balanced", "aggressive"]),
@@ -265,13 +271,22 @@ def run_init(
     click.echo(click.style("Setup complete!", bold=True))
     click.echo("")
     click.echo("Next steps:")
-    click.echo(f"  1. Export your API key:")
-    click.echo(f"     export OPENAI_API_KEY=sk-...")
-    if policy_path:
-        click.echo(f"  2. Review and customize {policy_path}")
+
+    step = 1
+    if key_already_set:
+        click.echo(f"  {step}. {detected_provider} API key detected ({detected_env_var})")
     else:
-        click.echo(f"  2. Edit policy rules in panoptes.yaml")
-    click.echo(f"  3. Start the proxy:")
+        click.echo(f"  {step}. Export your API key:")
+        click.echo(f"     export {detected_env_var}=<your-key>")
+    step += 1
+
+    if policy_path:
+        click.echo(f"  {step}. Review and customize {policy_path}")
+    else:
+        click.echo(f"  {step}. Edit policy rules in panoptes.yaml")
+    step += 1
+
+    click.echo(f"  {step}. Start the proxy:")
     click.echo(f"     panoptes serve")
     click.echo("")
     click.echo(f"Your LLM client should point to: http://localhost:4000/v1")
