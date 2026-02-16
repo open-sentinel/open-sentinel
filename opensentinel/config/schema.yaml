@@ -1,0 +1,186 @@
+# =============================================================================
+# Open Sentinel Configuration Schema Reference
+# =============================================================================
+#
+# This file documents all valid keys for osentinel.yaml.
+# It serves as:
+#   1. A reference for users writing config files
+#   2. A contract for engine developers — new engines must update this schema
+#
+# Configuration priority (highest wins):
+#   osentinel.yaml > OSNTL_* env vars > defaults
+#
+# API keys are ALWAYS read from environment variables (never put keys in YAML):
+#   OPENAI_API_KEY, GOOGLE_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY, etc.
+#
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Global Settings
+# ---------------------------------------------------------------------------
+
+# REQUIRED. Policy engine type.
+# Built-in: judge | llm | fsm | nemo | composite
+engine: judge
+
+# Optional. Global default LLM model for engines that need one.
+# If omitted, auto-detected from whichever API key is present.
+# Engines can override this in their own section.
+model: gemini/gemini-2.5-flash
+
+# Optional. Proxy server settings.
+port: 4000            # default: 4000
+host: 0.0.0.0         # default: 0.0.0.0
+
+# Optional. Debugging.
+debug: false           # default: false
+log_level: INFO        # default: INFO
+
+# ---------------------------------------------------------------------------
+# Policy — engine-agnostic policy reference
+# ---------------------------------------------------------------------------
+#
+# Three forms:
+#
+# 1. File/directory path (string) — passed as config_path to the engine:
+#    policy: ./customer_support.yaml
+#    policy: ./nemo_config/
+#
+# 2. Inline rules (list) — judge engine only:
+#    policy:
+#      - "No financial advice"
+#      - "Be professional"
+#
+# 3. Inline rubrics (dict) — judge engine only:
+#    policy:
+#      rules: ["No financial advice"]
+#      rubrics:
+#        - name: my_rubric
+#          description: Custom rubric
+#          criteria:
+#            - name: tone
+#              description: Professional tone
+#              scale: binary
+
+# ---------------------------------------------------------------------------
+# Judge Engine — engine: judge
+# ---------------------------------------------------------------------------
+judge:
+  # LLM model for the judge (overrides global `model`).
+  model: gpt-4o-mini
+
+  # Reliability preset: safe | balanced | aggressive
+  # Sets sensible defaults for thresholds and behavior.
+  # Individual keys below override the preset.
+  mode: balanced
+
+  # Score thresholds (0.0–1.0)
+  pass_threshold: 0.6          # default: 0.6
+  warn_threshold: 0.4          # default: 0.4
+  block_threshold: 0.2         # default: 0.2
+  confidence_threshold: 0.5    # default: 0.5
+
+  # Pre-call evaluation (evaluate requests BEFORE the LLM call)
+  pre_call_enabled: false      # default: false
+  pre_call_rubric: safety      # default: safety
+
+  # Rubrics
+  default_rubric: agent_behavior          # default: agent_behavior
+  conversation_rubric: conversation_policy # default: conversation_policy
+  custom_rubrics_path: ./rubrics/          # path to custom rubric YAML files
+
+  # Conversation evaluation
+  conversation_eval_interval: 5  # run conversation eval every N turns
+
+  # Ensemble (multi-model judging)
+  ensemble_enabled: false        # default: false
+  aggregation_strategy: mean_score  # mean_score | conservative
+  min_agreement: 0.6             # default: 0.6
+
+  # Advanced: explicit multi-model config (overrides `model` above)
+  # models:
+  #   - name: primary
+  #     model: gpt-4o-mini
+  #     temperature: 0.0
+  #     max_tokens: 2048
+  #     timeout: 15.0
+  #   - name: secondary
+  #     model: anthropic/claude-sonnet-4-5
+  #     temperature: 0.0
+
+# ---------------------------------------------------------------------------
+# LLM Engine — engine: llm
+# ---------------------------------------------------------------------------
+# Requires `policy:` pointing to a workflow YAML file.
+llm:
+  # LLM model for state classification (overrides global `model`).
+  model: gemini/gemini-2.5-flash
+
+  # LLM parameters
+  temperature: 0.0               # default: 0.0
+  max_tokens: 1024               # default: 1024
+  timeout: 10.0                  # default: 10.0 (seconds)
+
+  # State classification
+  confident_threshold: 0.8       # default: 0.8
+  uncertain_threshold: 0.5       # default: 0.5
+
+  # Drift detection
+  temporal_weight: 0.55          # default: 0.55
+
+  # Interventions
+  cooldown_turns: 2              # default: 2
+  max_constraints_per_batch: 5   # default: 5
+
+# ---------------------------------------------------------------------------
+# FSM Engine — engine: fsm
+# ---------------------------------------------------------------------------
+# Requires `policy:` pointing to a workflow YAML file.
+# No additional config keys — the workflow file defines everything.
+# fsm:
+#   (reserved for future extension)
+
+# ---------------------------------------------------------------------------
+# NeMo Guardrails Engine — engine: nemo
+# ---------------------------------------------------------------------------
+# Requires `policy:` pointing to a NeMo config directory.
+nemo:
+  # Failure behavior when NeMo evaluation errors
+  fail_closed: false             # default: false (fail open = warn on error)
+
+  # Which rails to enable (omit to use all configured in NeMo config)
+  # rails:
+  #   - input
+  #   - output
+
+# ---------------------------------------------------------------------------
+# Composite Engine — engine: composite
+# ---------------------------------------------------------------------------
+# Combines multiple engines. Requires sub-engine definitions.
+composite:
+  strategy: all                  # all | first_deny (default: all)
+  parallel: true                 # run engines concurrently (default: true)
+  engines:
+    - type: judge
+      config:
+        models:
+          - name: primary
+            model: gpt-4o-mini
+        inline_policy:
+          - "No financial advice"
+    - type: fsm
+      config:
+        config_path: ./workflow.yaml
+
+# ---------------------------------------------------------------------------
+# Tracing / Observability
+# ---------------------------------------------------------------------------
+tracing:
+  type: otlp                    # otlp | langfuse | console | none
+  endpoint: http://localhost:4317
+  service_name: opensentinel
+
+  # Langfuse-specific (when type: langfuse)
+  # langfuse_public_key: pk-...
+  # langfuse_secret_key: sk-...
+  # langfuse_host: https://cloud.langfuse.com
