@@ -71,6 +71,7 @@ class JudgeEvaluator:
         conversation: List[Dict[str, Any]],
         reference: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
     ) -> JudgeVerdict:
         """Evaluate a single turn (latest assistant response).
 
@@ -94,7 +95,7 @@ class JudgeEvaluator:
         ):
             return await self._evaluate_with_reference(
                 model_name, rubric, response_content, conversation,
-                reference, metadata,
+                reference, metadata, session_id=session_id,
             )
 
         criteria_block = format_criteria_block(rubric.criteria)
@@ -118,7 +119,7 @@ class JudgeEvaluator:
         )
 
         start = time.monotonic()
-        raw = await self._client.call_judge(model_name, system_prompt, user_prompt)
+        raw = await self._client.call_judge(model_name, system_prompt, user_prompt, session_id=session_id)
         latency_ms = (time.monotonic() - start) * 1000
 
         scores = self._parse_pointwise_scores(raw, rubric.criteria)
@@ -147,6 +148,7 @@ class JudgeEvaluator:
         rubric: Rubric,
         full_conversation: List[Dict[str, Any]],
         metadata: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
     ) -> JudgeVerdict:
         """Evaluate the entire conversation trajectory.
 
@@ -188,7 +190,7 @@ class JudgeEvaluator:
         )
 
         start = time.monotonic()
-        raw = await self._client.call_judge(model_name, system_prompt, user_prompt)
+        raw = await self._client.call_judge(model_name, system_prompt, user_prompt, session_id=session_id)
         latency_ms = (time.monotonic() - start) * 1000
 
         scores = self._parse_pointwise_scores(raw, rubric.criteria)
@@ -219,6 +221,7 @@ class JudgeEvaluator:
         response_b: str,
         conversation: List[Dict[str, Any]],
         metadata: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
     ) -> JudgeVerdict:
         """Compare two responses using pairwise evaluation.
 
@@ -258,7 +261,7 @@ class JudgeEvaluator:
         )
 
         start = time.monotonic()
-        raw = await self._client.call_judge(model_name, system_prompt, user_prompt)
+        raw = await self._client.call_judge(model_name, system_prompt, user_prompt, session_id=session_id)
         latency_ms = (time.monotonic() - start) * 1000
 
         # De-map positions back to original a/b
@@ -299,6 +302,7 @@ class JudgeEvaluator:
         conversation: List[Dict[str, Any]],
         reference: str,
         metadata: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
     ) -> JudgeVerdict:
         """Evaluate a response against a reference answer."""
         criteria_block = format_criteria_block(rubric.criteria)
@@ -324,7 +328,7 @@ class JudgeEvaluator:
         )
 
         start = time.monotonic()
-        raw = await self._client.call_judge(model_name, system_prompt, user_prompt)
+        raw = await self._client.call_judge(model_name, system_prompt, user_prompt, session_id=session_id)
         latency_ms = (time.monotonic() - start) * 1000
 
         scores = self._parse_pointwise_scores(raw, rubric.criteria)

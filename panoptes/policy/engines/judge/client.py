@@ -73,6 +73,7 @@ class JudgeClient:
         model_name: str,
         system_prompt: str,
         user_prompt: str,
+        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Call a single judge model.
 
@@ -80,6 +81,7 @@ class JudgeClient:
             model_name: Name of the registered judge model.
             system_prompt: System prompt for the judge.
             user_prompt: User prompt with content to evaluate.
+            session_id: Optional session ID for tracing/logging.
 
         Returns:
             Parsed JSON response from the judge.
@@ -92,12 +94,15 @@ class JudgeClient:
             raise ValueError(f"Unknown judge model: {model_name}")
 
         client = self._clients[model_name]
-        return await client.complete_json(system_prompt, user_prompt)
+        return await client.complete_json(
+            system_prompt, user_prompt, session_id=session_id
+        )
 
     async def call_all_judges(
         self,
         system_prompt: str,
         user_prompt: str,
+        session_id: Optional[str] = None,
     ) -> Dict[str, Dict[str, Any]]:
         """Call all registered judge models in parallel.
 
@@ -106,6 +111,7 @@ class JudgeClient:
         Args:
             system_prompt: System prompt for all judges.
             user_prompt: User prompt with content to evaluate.
+            session_id: Optional session ID for tracing/logging.
 
         Returns:
             Dict mapping model name to parsed JSON response.
@@ -115,7 +121,9 @@ class JudgeClient:
             return {}
 
         tasks = {
-            name: client.complete_json(system_prompt, user_prompt)
+            name: client.complete_json(
+                system_prompt, user_prompt, session_id=session_id
+            )
             for name, client in self._clients.items()
         }
 

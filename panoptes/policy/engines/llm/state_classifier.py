@@ -105,7 +105,11 @@ class LLMStateClassifier:
             )
             
             # Call LLM
-            response = await self.llm_client.complete_json(system_prompt, user_prompt)
+            response = await self.llm_client.complete_json(
+                system_prompt, 
+                user_prompt,
+                session_id=session.session_id
+            )
             
             # Parse candidates
             candidates = self._parse_candidates(response)

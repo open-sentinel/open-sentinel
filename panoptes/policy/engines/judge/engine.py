@@ -255,6 +255,7 @@ class JudgePolicyEngine(PolicyEngine):
                         response_content=response_content,
                         conversation=conversation,
                         metadata=metadata,
+                        session_id=session_id,
                     )
                     # Use ensemble's final verdict as a JudgeVerdict
                     turn_verdict = JudgeVerdict(
@@ -282,6 +283,7 @@ class JudgePolicyEngine(PolicyEngine):
                         response_content=response_content,
                         conversation=conversation,
                         metadata=metadata,
+                        session_id=session_id,
                     )
                     self._trace_verdict(session_id, turn_verdict, turn_rubric.name)
                 verdicts.append(turn_verdict)
@@ -302,6 +304,7 @@ class JudgePolicyEngine(PolicyEngine):
                             rubric=conv_rubric,
                             full_conversation=conversation,
                             metadata=metadata,
+                            session_id=session_id,
                         )
                         conv_verdict = JudgeVerdict(
                             scores=ensemble_verdict.final_scores,
@@ -325,6 +328,7 @@ class JudgePolicyEngine(PolicyEngine):
                             rubric=conv_rubric,
                             full_conversation=conversation,
                             metadata=metadata,
+                            session_id=session_id,
                         )
                         self._trace_verdict(session_id, conv_verdict, conv_rubric.name)
                     verdicts.append(conv_verdict)
@@ -527,6 +531,7 @@ class JudgePolicyEngine(PolicyEngine):
                 response_content=user_message,
                 conversation=messages,
                 metadata=(context or {}).get("metadata", {}),
+                session_id=session_id,
             )
             return self._build_result([verdict], self._get_or_create_session(session_id))
         except Exception as e:

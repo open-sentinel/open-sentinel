@@ -76,6 +76,7 @@ class JudgeEnsemble:
         conversation: List[Dict[str, Any]],
         reference: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
     ) -> EnsembleVerdict:
         """Run turn evaluation across multiple judges and aggregate.
 
@@ -99,6 +100,7 @@ class JudgeEnsemble:
                 conversation=conversation,
                 reference=reference,
                 metadata=metadata,
+                session_id=session_id,
             ),
         )
         return self._aggregate(verdicts, rubric)
@@ -109,6 +111,7 @@ class JudgeEnsemble:
         rubric: Rubric,
         full_conversation: List[Dict[str, Any]],
         metadata: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None,
     ) -> EnsembleVerdict:
         """Run conversation evaluation across multiple judges and aggregate."""
         verdicts = await self._run_judges(
@@ -118,6 +121,7 @@ class JudgeEnsemble:
                 rubric=rubric,
                 full_conversation=full_conversation,
                 metadata=metadata,
+                session_id=session_id,
             ),
         )
         return self._aggregate(verdicts, rubric)

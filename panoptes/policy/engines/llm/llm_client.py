@@ -61,6 +61,7 @@ class LLMClient:
         system_prompt: str,
         user_prompt: str,
         additional_messages: Optional[list] = None,
+        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Make an LLM call expecting a JSON response.
         
@@ -68,6 +69,7 @@ class LLMClient:
             system_prompt: System message for the LLM
             user_prompt: User message/query
             additional_messages: Optional additional messages to include
+            session_id: Optional session ID for tracing/logging
             
         Returns:
             Parsed JSON response as dict
@@ -87,6 +89,11 @@ class LLMClient:
             
         messages.append({"role": "user", "content": user_prompt})
         
+        # Prepare headers
+        extra_headers = {}
+        if session_id:
+            extra_headers["x-panoptes-session-id"] = session_id
+        
         last_error = None
         
         for attempt in range(self.max_retries + 1):
@@ -97,6 +104,7 @@ class LLMClient:
                     temperature=self.temperature,
                     max_tokens=self.max_tokens,
                     timeout=self.timeout,
+                    extra_headers=extra_headers,
                 )
                 
                 # Track token usage

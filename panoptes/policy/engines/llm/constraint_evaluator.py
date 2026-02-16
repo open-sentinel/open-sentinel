@@ -203,7 +203,11 @@ class LLMConstraintEvaluator:
         )
         
         # Call LLM
-        response = await self.llm_client.complete_json(system_prompt, user_prompt)
+        response = await self.llm_client.complete_json(
+            system_prompt, 
+            user_prompt,
+            session_id=session.session_id
+        )
         
         # Parse evaluations
         return self._parse_evaluations(response, constraints)
