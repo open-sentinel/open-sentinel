@@ -100,7 +100,7 @@ panoptes compile "verify identity before processing refunds" --engine fsm
 
 ### Environment variables
 
-All settings can also be set via environment variables with `PANOPTES_` prefix. Env vars take priority over `panoptes.yaml`.
+All settings can also be set via environment variables with `PANOPTES_` prefix. `panoptes.yaml` takes priority over env vars.
 
 - `PANOPTES_POLICY__ENGINE__TYPE` - Engine type
 - `PANOPTES_POLICY__ENGINE__CONFIG_PATH` - Policy file path

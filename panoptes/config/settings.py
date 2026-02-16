@@ -2,12 +2,12 @@
 Panoptes configuration management using Pydantic Settings.
 
 Configuration can be provided via:
-1. Environment variables (prefixed with PANOPTES_)
-2. panoptes.yaml config file
+1. panoptes.yaml config file
+2. Environment variables (prefixed with PANOPTES_)
 3. .env file
 4. Direct instantiation
 
-Priority (highest wins): env vars > panoptes.yaml > defaults
+Priority (highest wins): panoptes.yaml > env vars > defaults
 
 The simplified panoptes.yaml format:
     engine: judge
@@ -344,7 +344,7 @@ class PanoptesSettings(BaseSettings):
     All settings can be overridden via environment variables with PANOPTES_ prefix.
     Nested settings use double underscore: PANOPTES_OTEL__ENDPOINT
 
-    A panoptes.yaml config file is also supported (env vars take priority).
+    A panoptes.yaml config file is also supported (config takes priority).
     Pass _config_path to override the config file location.
     """
 
@@ -385,16 +385,16 @@ class PanoptesSettings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> Tuple[PydanticBaseSettingsSource, ...]:
-        """Insert YAML config source between env vars and defaults.
+        """Insert YAML config source before env vars.
 
-        Priority (highest first): init > env > dotenv > yaml > file_secret
+        Priority (highest first): init > yaml > env > dotenv > file_secret
         """
         yaml_source = YamlConfigSource(settings_cls, config_path=cls._config_path)
         return (
             init_settings,
+            yaml_source,
             env_settings,
             dotenv_settings,
-            yaml_source,
             file_secret_settings,
         )
 
