@@ -57,3 +57,25 @@ class TestRubricRegistry:
     def test_comparison_rubric(self):
         rubric = RubricRegistry.get("comparison")
         assert rubric.evaluation_type == EvaluationType.PAIRWISE
+
+
+class TestCreateRulesRubric:
+    def test_creates_binary_rubric(self):
+        from panoptes.policy.engines.judge.rubrics import create_rules_rubric
+        rules = ["No financial advice", "Be professional"]
+        rubric = create_rules_rubric(rules)
+
+        assert rubric.name == "inline_policy"
+        assert len(rubric.criteria) == 1
+        assert rubric.criteria[0].name == "policy_compliance"
+        assert rubric.criteria[0].scale == ScoreScale.BINARY
+        assert rubric.fail_action == VerdictAction.BLOCK
+        assert "additional_instructions" in rubric.prompt_overrides
+        assert "No financial advice" in rubric.prompt_overrides["additional_instructions"]
+        assert "Be professional" in rubric.prompt_overrides["additional_instructions"]
+
+    def test_custom_name(self):
+        from panoptes.policy.engines.judge.rubrics import create_rules_rubric
+        rubric = create_rules_rubric(["rule1"], name="my_policy")
+        assert rubric.name == "my_policy"
+

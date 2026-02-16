@@ -276,3 +276,75 @@ class TestConversationEvalTrigger:
         await engine.evaluate_response("s1", sample_response, sample_request)
         # Should have at least 2 calls (turn eval + possibly conversation eval)
         assert engine._client.call_judge.call_count >= 2
+
+
+class TestInlinePolicy:
+    @pytest.mark.asyncio
+    async def test_initialize_with_inline_rules(self, engine):
+        """Engine should load inline rules and set default rubric."""
+        config = {
+            "models": [{"name": "primary", "model": "gpt-4o-mini"}],
+            "inline_policy": [
+                "No financial advice",
+                "Be professional",
+            ],
+        }
+        await engine.initialize(config)
+        assert engine._initialized
+        assert engine._default_rubric == "inline_policy"
+
+        # Verify rubric is registered
+        from panoptes.policy.engines.judge.rubrics import RubricRegistry
+        rubric = RubricRegistry.get("inline_policy")
+        assert rubric is not None
+        assert "No financial advice" in rubric.prompt_overrides["additional_instructions"]
+
+    @pytest.mark.asyncio
+    async def test_initialize_with_inline_dict_rules(self, engine):
+        """Engine should load dict-style inline rules."""
+        config = {
+            "models": [{"name": "primary", "model": "gpt-4o-mini"}],
+            "inline_policy": {
+                "rules": ["Never lie", "Stay on topic"],
+            },
+        }
+        await engine.initialize(config)
+        assert engine._default_rubric == "inline_policy"
+
+    @pytest.mark.asyncio
+    async def test_initialize_with_inline_rubrics(self, engine):
+        """Engine should load formal inline rubric definitions."""
+        config = {
+            "models": [{"name": "primary", "model": "gpt-4o-mini"}],
+            "inline_policy": {
+                "rubrics": [{
+                    "name": "my_custom",
+                    "description": "Test rubric",
+                    "criteria": [{
+                        "name": "tone",
+                        "description": "Professional tone",
+                        "scale": "binary",
+                    }],
+                }],
+            },
+        }
+        await engine.initialize(config)
+        assert engine._default_rubric == "my_custom"
+
+        from panoptes.policy.engines.judge.rubrics import RubricRegistry
+        assert RubricRegistry.get("my_custom") is not None
+
+    @pytest.mark.asyncio
+    async def test_inline_policy_does_not_break_custom_rubrics_path(self, engine):
+        """custom_rubrics_path and inline_policy should coexist."""
+        config = {
+            "models": [{"name": "primary", "model": "gpt-4o-mini"}],
+            "inline_policy": ["Be kind"],
+        }
+        await engine.initialize(config)
+        # Should have the inline_policy rubric as default
+        assert engine._default_rubric == "inline_policy"
+        # But built-in rubrics should still be available
+        from panoptes.policy.engines.judge.rubrics import RubricRegistry
+        assert RubricRegistry.get("agent_behavior") is not None
+
