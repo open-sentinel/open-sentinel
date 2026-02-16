@@ -119,8 +119,14 @@ class LLMPolicyEngine(StatefulPolicyEngine):
         self._workflow = WorkflowDefinition(**workflow_dict)
         
         # Create LLM client
+        # Priority: explicit config > proxy's detect_available_model()
+        model = config.get("llm_model")
+        if not model:
+            from panoptes.config.settings import detect_available_model
+            model, provider, _ = detect_available_model()
+            logger.info(f"No llm_model configured, using {provider} model: {model}")
         self._llm_client = LLMClient(
-            model=config.get("llm_model", "gpt-4o-mini"),
+            model=model,
             temperature=config.get("temperature", 0.0),
             max_tokens=config.get("max_tokens", 1024),
             timeout=config.get("timeout", 10.0),

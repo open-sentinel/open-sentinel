@@ -116,14 +116,25 @@ class TestInitialization:
         assert engine._conversation_eval_interval == 5
 
     @pytest.mark.asyncio
-    async def test_initialize_no_models_fails(self, engine):
-        with pytest.raises(ValueError, match="at least one model"):
-            await engine.initialize({"models": []})
+    async def test_initialize_uses_proxy_model_when_no_models_configured(self, engine):
+        """Test that engine uses detect_available_model when none configured but API key exists."""
+        import os
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True):
+            await engine.initialize({})
+            assert engine._initialized
+            # Should have used proxy's detect_available_model and created a primary model
+            assert engine._client.primary_model == "primary"
+            assert engine._client.get_model_id("primary") == "gpt-4o-mini"
 
     @pytest.mark.asyncio
-    async def test_initialize_empty_models_fails(self, engine):
-        with pytest.raises(ValueError, match="at least one model"):
+    async def test_initialize_falls_back_to_default_without_api_keys(self, engine):
+        """Test that engine falls back to default model when no API keys available."""
+        import os
+        with patch.dict(os.environ, {}, clear=True):
+            # settings.detect_available_model() always returns a model (defaults to gpt-4o-mini)
             await engine.initialize({})
+            assert engine._initialized
+            assert engine._client.primary_model == "primary"
 
 
 class TestEvaluateRequest:

@@ -98,8 +98,17 @@ class JudgePolicyEngine(PolicyEngine):
         # Build client with judge models
         self._client = JudgeClient()
         models = config.get("models", [])
+        
         if not models:
-            raise ValueError("Judge engine requires at least one model in 'models' list")
+            # Fall back to the same model the proxy uses
+            from panoptes.config.settings import detect_available_model
+            auto_model, provider, _ = detect_available_model()
+            logger.info(f"No judge models configured, using {provider} model: {auto_model}")
+            models = [{
+                "name": "primary",
+                "model": auto_model,
+                "temperature": 0.0,
+            }]
 
         for model_config in models:
             self._client.add_model(

@@ -99,7 +99,7 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_retry_on_failure(self, client):
         """Test retries on transient failures."""
-        client = LLMClient(max_retries=2)
+        client = LLMClient(model="gpt-4o-mini", max_retries=2)
         
         # First two calls fail, third succeeds
         mock_response = MagicMock()
@@ -125,7 +125,7 @@ class TestErrorHandling:
     @pytest.mark.asyncio
     async def test_exhausted_retries(self, client):
         """Test error after exhausting retries."""
-        client = LLMClient(max_retries=1)
+        client = LLMClient(model="gpt-4o-mini", max_retries=1)
         
         with patch(
             "litellm.acompletion",
