@@ -83,7 +83,7 @@ await engine.initialize({
     "models": [
         {
             "name": "primary",
-            "model": "gpt-4o-mini",
+            "model": "anthropic/claude-sonnet-4-5",
             "temperature": 0.0
         }
     ],

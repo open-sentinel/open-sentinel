@@ -243,7 +243,7 @@ await engine.initialize({
     "engines": [
         {"type": "llm", "config": {
             "config_path": "workflow.yaml",
-            "llm_model": "gpt-4o-mini",
+            "llm_model": "anthropic/claude-sonnet-4-5",
         }},
         {"type": "nemo", "config": {"config_path": "nemo_config/"}},
     ]

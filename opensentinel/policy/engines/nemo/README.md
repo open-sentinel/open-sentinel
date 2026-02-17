@@ -69,7 +69,7 @@ await engine.initialize({
 # Option 2: From dict
 await engine.initialize({
     "config": {
-        "models": [{"type": "main", "engine": "openai", "model": "gpt-4o-mini"}],
+        "models": [{"type": "main", "engine": "anthropic", "model": "claude-sonnet-4-5"}],
         "rails": {"input": {"flows": ["self check input"]}}
     }
 })

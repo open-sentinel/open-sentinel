@@ -4,7 +4,7 @@
 
 ## Overview
 
-The LLM engine is Open Sentinel' **intelligence-based** policy engine. Instead of relying on deterministic pattern matching, it uses a lightweight LLM (e.g., `gpt-4o-mini`) as a reasoning backbone to classify states, detect behavioral drift, and evaluate soft constraints that are difficult to express as regex or tool-call matches.
+The LLM engine is Open Sentinel' **intelligence-based** policy engine. Instead of relying on deterministic pattern matching, it uses a lightweight LLM (e.g., `anthropic/claude-sonnet-4-5`) as a reasoning backbone to classify states, detect behavioral drift, and evaluate soft constraints that are difficult to express as regex or tool-call matches.
 
 **Key characteristics:**
 - **LLM-powered** — Uses a sidecar LLM for nuanced classification and evaluation
@@ -67,7 +67,7 @@ from opensentinel.policy.engines.llm import LLMPolicyEngine
 engine = LLMPolicyEngine()
 await engine.initialize({
     "config_path": "workflow.yaml",       # Same YAML as FSM engine
-    "llm_model": "gpt-4o-mini",           # Sidecar LLM (default)
+    "llm_model": "anthropic/claude-sonnet-4-5",           # Sidecar LLM (default)
     "temperature": 0.0,                    # Deterministic outputs (default)
     "max_tokens": 1024,                    # Max response tokens (default)
     "timeout": 10.0,                       # LLM call timeout in seconds (default)
@@ -85,7 +85,7 @@ await engine.initialize({
 |-----------|------|---------|-------------|
 | `config_path` | `str` | — | Path to workflow YAML/JSON (same schema as FSM) |
 | `workflow` | `dict` | — | Alternative: workflow definition as dict |
-| `llm_model` | `str` | `"gpt-4o-mini"` | Model for classification and constraint evaluation |
+| `llm_model` | `str` | `"anthropic/claude-sonnet-4-5"` | Model for classification and constraint evaluation |
 | `temperature` | `float` | `0.0` | LLM temperature (0.0 = deterministic) |
 | `max_tokens` | `int` | `1024` | Max tokens per LLM response |
 | `timeout` | `float` | `10.0` | LLM call timeout (seconds) |
@@ -261,7 +261,7 @@ The `LLMClient` wraps `litellm.acompletion` with:
 ```python
 from opensentinel.policy.engines.llm import LLMClient
 
-client = LLMClient(model="gpt-4o-mini", temperature=0.0)
+client = LLMClient(model="anthropic/claude-sonnet-4-5", temperature=0.0)
 result = await client.complete_json(
     system_prompt="Classify this response...",
     user_prompt="The agent said: 'Hello!'"
