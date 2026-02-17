@@ -3,7 +3,7 @@
 import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime
+from datetime import datetime, timezone
 
 from opensentinel.core.intervention.strategies import WorkflowViolationError
 from opensentinel.proxy.hooks import safe_hook, _fail_open_counter, get_fail_open_counts
@@ -257,7 +257,7 @@ async def test_log_success_event_exception_is_swallowed(callback):
         raise RuntimeError("log hook crashed")
 
     callback._log_success_impl = crashing_impl
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     # Should NOT raise
     result = await callback.async_log_success_event(
@@ -274,7 +274,7 @@ async def test_log_failure_event_exception_is_swallowed(callback):
         raise RuntimeError("log failure hook crashed")
 
     callback._log_failure_impl = crashing_impl
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
 
     # Should NOT raise
     result = await callback.async_log_failure_event(

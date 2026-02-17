@@ -1,7 +1,7 @@
 """Tests for constraint evaluation."""
 
 import pytest
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
 from opensentinel.policy.engines.fsm.workflow.constraints import (
     ConstraintEvaluator,
@@ -15,7 +15,7 @@ from opensentinel.policy.engines.fsm.workflow.state_machine import SessionState,
 def make_session(states: list[str]) -> SessionState:
     """Helper to create a session with given state history."""
     history = [
-        StateHistoryEntry(state_name=s, entered_at=datetime.now(UTC)) for s in states
+        StateHistoryEntry(state_name=s, entered_at=datetime.now(timezone.utc)) for s in states
     ]
     return SessionState(
         session_id="test",
