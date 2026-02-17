@@ -273,8 +273,6 @@ class YamlConfigSource(PydanticBaseSettingsSource):
         "model", "tracing",
         # Engine-specific sections are handled below
         "judge", "llm", "fsm", "nemo", "composite",
-        # Component sections mapped directly
-        "intervention", "classifier",
     })
 
     # Keys within judge: that receive special handling
@@ -452,22 +450,23 @@ class YamlConfigSource(PydanticBaseSettingsSource):
                 otel["langfuse_host"] = tracing_cfg["langfuse_host"]
 
         # -----------------------------------------------------------------
-        # Intervention and Classifier sections
+        # Backward-compat: top-level classifier/intervention -> engine config
+        # These are deprecated; users should nest under engine sections.
         # -----------------------------------------------------------------
-
-        # intervention.* -> intervention.*
-        intervention_cfg = data.get("intervention", {})
-        if isinstance(intervention_cfg, dict) and intervention_cfg:
-            intervention = result.setdefault("intervention", {})
-            for k, v in intervention_cfg.items():
-                intervention[k] = v
-
-        # classifier.* -> classifier.*
-        classifier_cfg = data.get("classifier", {})
-        if isinstance(classifier_cfg, dict) and classifier_cfg:
-            classifier = result.setdefault("classifier", {})
-            for k, v in classifier_cfg.items():
-                classifier[k] = v
+        for section in ("classifier", "intervention"):
+            section_cfg = data.get(section, {})
+            if isinstance(section_cfg, dict) and section_cfg:
+                logger.warning(
+                    f"Top-level '{section}:' is deprecated. "
+                    f"Move it under the engine section (e.g., "
+                    f"'{engine_type}: {section}: ...')"
+                )
+                engine_config = (
+                    result.setdefault("policy", {})
+                    .setdefault("engine", {})
+                    .setdefault("config", {})
+                )
+                engine_config.setdefault(section, {}).update(section_cfg)
 
         return result
 
@@ -509,8 +508,6 @@ class SentinelSettings(BaseSettings):
     # Component configurations
     otel: OTelConfig = Field(default_factory=OTelConfig)
     proxy: ProxyConfig = Field(default_factory=ProxyConfig)
-    classifier: ClassifierConfig = Field(default_factory=ClassifierConfig)
-    intervention: InterventionConfig = Field(default_factory=InterventionConfig)
 
     # Policy engine configuration
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
