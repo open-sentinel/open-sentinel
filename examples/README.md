@@ -12,10 +12,10 @@ Uses an LLM to evaluate responses against a rubric.
 1. Start Open Sentinel:
    ```bash
    cd examples/judge
-   export OPENAI_API_KEY=sk-...
+   export GOOGLE_API_KEY=AIza...
    osentinel serve
    ```
-   *This uses the local `osentinel.yaml` configuration.*
+   *This uses the local `osentinel.yaml` configuration (Gemini model). If you switch to an OpenAI model in the config, use `OPENAI_API_KEY` instead.*
 
 2. Run the agent client:
    ```bash

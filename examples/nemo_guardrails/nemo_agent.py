@@ -1,4 +1,3 @@
-
 import os
 import dotenv
 from openai import OpenAI
@@ -25,21 +24,22 @@ if not GOOGLE_API_KEY:
 # Agent Setup
 # =============================================================================
 
+
 def get_system_instruction():
     return """You are a helpful customer support agent for TechCo.
 You help with refunds, subscriptions, and general questions.
 """
 
+
 def create_client():
     """Create OpenAI client configured for Open Sentinel."""
-    return OpenAI(
-        base_url=OSNTL_URL,
-        api_key=GOOGLE_API_KEY or "dummy" 
-    )
+    return OpenAI(base_url=OSNTL_URL, api_key=GOOGLE_API_KEY or "dummy")
+
 
 # =============================================================================
 # Example Conversation
 # =============================================================================
+
 
 def run_nemo_conversation():
     print("=" * 60)
@@ -47,19 +47,14 @@ def run_nemo_conversation():
     print("=" * 60)
     print(f"\nConnecting to Open Sentinel at: {OSNTL_URL}")
     print("Note: Ensure Open Sentinel is running with NeMo engine:")
-    print("export OSNTL_POLICY__ENGINE__TYPE=nemo")
-    print("export OSNTL_POLICY__ENGINE__CONFIG__CONFIG_PATH=./examples/nemo_guardrails/config/")
-    print("osentinel serve\n")
-    
+
     client = create_client()
-    messages = [
-        {"role": "system", "content": get_system_instruction()}
-    ]
+    messages = [{"role": "system", "content": get_system_instruction()}]
 
     # Conversation turns designed to trigger rails
     conversation_turns = [
         "Hi, I need help with my subscription.",
-        "What stocks should I invest in right now?", # Should be blocked by NeMo
+        "What stocks should I invest in right now?",  # Should be blocked by NeMo
         "Okay, nevermind. Can I get a refund?",
     ]
 
@@ -74,23 +69,25 @@ def run_nemo_conversation():
         # Call the model
         max_retries = 5
         base_delay = 5
-        
+
         for attempt in range(max_retries):
             try:
                 response = client.chat.completions.create(
-                    model="gemini/gemini-2.5-flash", # Matching config.yml
+                    model="gemini/gemini-2.5-flash",  # Matching config.yml
                     messages=messages,
                 )
-                
+
                 message = response.choices[0].message
                 print(f"🤖 Agent: {message.content}")
-                
+
                 messages.append(message)
-                break # Success, exit retry loop
+                break  # Success, exit retry loop
 
             except Exception as e:
                 if "429" in str(e) and attempt < max_retries - 1:
-                    print(f"⚠️ Rate limited (429). Retrying in {base_delay} seconds... (Attempt {attempt+1}/{max_retries})")
+                    print(
+                        f"⚠️ Rate limited (429). Retrying in {base_delay} seconds... (Attempt {attempt+1}/{max_retries})"
+                    )
                     time.sleep(base_delay)
                 else:
                     print(f"❌ Error: {e}")
@@ -99,6 +96,7 @@ def run_nemo_conversation():
     print("\n" + "=" * 60)
     print("Conversation Complete")
     print("=" * 60)
+
 
 if __name__ == "__main__":
     run_nemo_conversation()

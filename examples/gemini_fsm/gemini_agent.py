@@ -1,4 +1,3 @@
-
 import os
 import json
 import dotenv
@@ -36,7 +35,10 @@ CUSTOMER_DB = {
     }
 }
 
-def verify_identity(customer_id: str, verification_method: str, verification_value: str) -> str:
+
+def verify_identity(
+    customer_id: str, verification_method: str, verification_value: str
+) -> str:
     """Verify customer identity before performing account actions."""
     customer = CUSTOMER_DB.get(customer_id)
     if not customer:
@@ -56,6 +58,7 @@ def verify_identity(customer_id: str, verification_method: str, verification_val
 
     return f"Unknown verification method: {verification_method}"
 
+
 def search_knowledge_base(query: str) -> str:
     """Search the knowledge base for information to help customers."""
     kb_articles = {
@@ -72,6 +75,7 @@ def search_knowledge_base(query: str) -> str:
         return "\n".join(results)
     return "No relevant articles found. Consider escalating to a specialist."
 
+
 def process_refund(customer_id: str, amount: float, reason: str) -> str:
     """Process a refund for a customer. REQUIRES identity verification first."""
     customer = CUSTOMER_DB.get(customer_id)
@@ -80,6 +84,7 @@ def process_refund(customer_id: str, amount: float, reason: str) -> str:
     if not customer.get("verified"):
         return "ERROR: Identity not verified. Please verify customer identity before processing refund."
     return f"Refund of ${amount:.2f} processed successfully for {customer['name']}. Reason: {reason}. Funds will be returned in 5-7 business days."
+
 
 def update_subscription(customer_id: str, new_plan: str) -> str:
     """Update customer subscription plan. REQUIRES identity verification first."""
@@ -92,9 +97,11 @@ def update_subscription(customer_id: str, new_plan: str) -> str:
     customer["subscription"] = new_plan
     return f"Subscription updated from {old_plan} to {new_plan} for {customer['name']}. Changes take effect next billing cycle."
 
+
 def escalate_to_human(reason: str, priority: str = "normal") -> str:
     """Escalate the conversation to a human support agent."""
     return f"Escalation created with {priority} priority. Reason: {reason}. A human agent will join the conversation shortly."
+
 
 FUNCTION_HANDLERS = {
     "verify_identity": verify_identity,
@@ -114,13 +121,26 @@ tools = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "customer_id": {"type": "string", "description": "The customer's unique identifier"},
-                    "verification_method": {"type": "string", "description": "One of 'email', 'payment_last_four', or 'security_question'"},
-                    "verification_value": {"type": "string", "description": "The value to verify against"}
+                    "customer_id": {
+                        "type": "string",
+                        "description": "The customer's unique identifier",
+                    },
+                    "verification_method": {
+                        "type": "string",
+                        "description": "One of 'email', 'payment_last_four', or 'security_question'",
+                    },
+                    "verification_value": {
+                        "type": "string",
+                        "description": "The value to verify against",
+                    },
                 },
-                "required": ["customer_id", "verification_method", "verification_value"]
-            }
-        }
+                "required": [
+                    "customer_id",
+                    "verification_method",
+                    "verification_value",
+                ],
+            },
+        },
     },
     {
         "type": "function",
@@ -132,9 +152,9 @@ tools = [
                 "properties": {
                     "query": {"type": "string", "description": "The search query"}
                 },
-                "required": ["query"]
-            }
-        }
+                "required": ["query"],
+            },
+        },
     },
     {
         "type": "function",
@@ -144,13 +164,22 @@ tools = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "customer_id": {"type": "string", "description": "The customer's unique identifier"},
-                    "amount": {"type": "number", "description": "Refund amount in dollars"},
-                    "reason": {"type": "string", "description": "Reason for the refund"}
+                    "customer_id": {
+                        "type": "string",
+                        "description": "The customer's unique identifier",
+                    },
+                    "amount": {
+                        "type": "number",
+                        "description": "Refund amount in dollars",
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "Reason for the refund",
+                    },
                 },
-                "required": ["customer_id", "amount", "reason"]
-            }
-        }
+                "required": ["customer_id", "amount", "reason"],
+            },
+        },
     },
     {
         "type": "function",
@@ -160,12 +189,18 @@ tools = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "customer_id": {"type": "string", "description": "The customer's unique identifier"},
-                    "new_plan": {"type": "string", "description": "New subscription plan (basic, premium, enterprise)"}
+                    "customer_id": {
+                        "type": "string",
+                        "description": "The customer's unique identifier",
+                    },
+                    "new_plan": {
+                        "type": "string",
+                        "description": "New subscription plan (basic, premium, enterprise)",
+                    },
                 },
-                "required": ["customer_id", "new_plan"]
-            }
-        }
+                "required": ["customer_id", "new_plan"],
+            },
+        },
     },
     {
         "type": "function",
@@ -175,18 +210,26 @@ tools = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "reason": {"type": "string", "description": "Reason for escalation"},
-                    "priority": {"type": "string", "description": "Escalation priority (low, normal, high, urgent)", "enum": ["low", "normal", "high", "urgent"]}
+                    "reason": {
+                        "type": "string",
+                        "description": "Reason for escalation",
+                    },
+                    "priority": {
+                        "type": "string",
+                        "description": "Escalation priority (low, normal, high, urgent)",
+                        "enum": ["low", "normal", "high", "urgent"],
+                    },
                 },
-                "required": ["reason"]
-            }
-        }
-    }
+                "required": ["reason"],
+            },
+        },
+    },
 ]
 
 # =============================================================================
 # Agent Setup
 # =============================================================================
+
 
 def get_system_instruction():
     return """You are a helpful customer support agent for TechCo.
@@ -209,16 +252,19 @@ Current customer context:
 - This is a support conversation in progress
 """
 
+
 def create_client():
     """Create OpenAI client configured for Open Sentinel."""
     return OpenAI(
         base_url=OSNTL_URL,
-        api_key=GOOGLE_API_KEY # OpenAI client requires a key, even if using proxy
+        api_key=GOOGLE_API_KEY,  # OpenAI client requires a key, even if using proxy
     )
+
 
 # =============================================================================
 # Example Conversation
 # =============================================================================
+
 
 def run_support_conversation():
     print("=" * 60)
@@ -228,9 +274,7 @@ def run_support_conversation():
     print(f"Session ID: {SESSION_ID}\n")
 
     client = create_client()
-    messages = [
-        {"role": "system", "content": get_system_instruction()}
-    ]
+    messages = [{"role": "system", "content": get_system_instruction()}]
 
     conversation_turns = [
         "Hi, I need help with my account.",
@@ -252,62 +296,67 @@ def run_support_conversation():
         try:
             # We must use "stream=False" (default) for simplicity in demo
             response = client.chat.completions.create(
-                model="gemini/gemini-2.5-flash", # Open Sentinel maps this to Google
+                model="gemini/gemini-2.5-flash",  # Open Sentinel maps this to Google
                 messages=messages,
                 tools=tools,
-                tool_choice="auto"
+                tool_choice="auto",
             )
 
             message = response.choices[0].message
-            messages.append(message) # Add assistant message to history
+            messages.append(message)  # Add assistant message to history
 
-            # Handle tool calls
-            if message.tool_calls:
+            # Handle tool calls (loop for multiple rounds)
+            while message.tool_calls:
                 for tool_call in message.tool_calls:
                     function_name = tool_call.function.name
                     function_args = json.loads(tool_call.function.arguments)
-                    
-                    print(f"🔧 Tool Call: {function_name}({json.dumps(function_args, indent=2)})")
+
+                    print(
+                        f"🔧 Tool Call: {function_name}({json.dumps(function_args, indent=2)})"
+                    )
 
                     if function_name in FUNCTION_HANDLERS:
-                        function_result = FUNCTION_HANDLERS[function_name](**function_args)
+                        function_result = FUNCTION_HANDLERS[function_name](
+                            **function_args
+                        )
                         print(f"📊 Tool Result: {function_result}\n")
-                        
-                        # Add tool output to messages
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": str(function_result)
-                        })
+
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "content": str(function_result),
+                            }
+                        )
                     else:
                         print(f"❌ Unknown function: {function_name}")
-                
-                # Get final response after tool outputs
+
+                # Get next response (must pass tools when history has tool messages)
                 response = client.chat.completions.create(
                     model="gemini/gemini-2.5-flash",
                     messages=messages,
-                    tool_choice="none" # Wait, actually tool_choice="auto" is fine, but usually we want text now?
-                    # The model might decide to call another tool or give final answer.
+                    tools=tools,
+                    tool_choice="auto",
                 )
-                final_message = response.choices[0].message
-                messages.append(final_message)
-                print(f"🤖 Agent: {final_message.content}")
-            
-            else:
-                print(f"🤖 Agent: {message.content}")
+                message = response.choices[0].message
+                messages.append(message)
+
+            print(f"🤖 Agent: {message.content}")
 
         except Exception as e:
             print(f"❌ Error: {e}")
             import traceback
+
             traceback.print_exc()
 
     print("\n" + "=" * 60)
     print("Conversation Complete")
     print("=" * 60)
 
+
 if __name__ == "__main__":
     if not GOOGLE_API_KEY:
         print("Error: GOOGLE_API_KEY environment variable not set")
         exit(1)
-    
+
     run_support_conversation()
