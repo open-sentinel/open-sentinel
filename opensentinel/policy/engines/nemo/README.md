@@ -7,11 +7,11 @@
 The NeMo engine wraps NVIDIA's [NeMo Guardrails](https://github.com/NVIDIA/NeMo-Guardrails) as a Open Sentinel `PolicyEngine`. It provides comprehensive content safety through NeMo's rail system — running each request and response through configurable input/output rails for jailbreak detection, PII filtering, toxicity checks, and hallucination detection.
 
 **Key characteristics:**
-- 🛡️ **Content safety** — Jailbreak detection, toxicity filtering, PII masking
-- 🔄 **Input + Output rails** — Bi-directional filtering (pre-call and post-call)
-- 🔌 **Colang integration** — Programmable dialog flows via NeMo's Colang language
-- 🌉 **Open Sentinel bridge** — Custom NeMo actions for logging violations and requesting interventions
-- ⚖️ **Fail-open/closed** — Configurable behavior on evaluation errors
+- **Content safety** — Jailbreak detection, toxicity filtering, PII masking
+- **Input + Output rails** — Bi-directional filtering (pre-call and post-call)
+- **Colang integration** — Programmable dialog flows via NeMo's Colang language
+- **Open Sentinel bridge** — Custom NeMo actions for logging violations and requesting interventions
+- **Fail-open/closed** — Configurable behavior on evaluation errors
 
 ```
 Request ──► evaluate_request() ──► NeMo Input Rails ──► ALLOW / DENY / MODIFY
