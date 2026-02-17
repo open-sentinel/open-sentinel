@@ -87,7 +87,7 @@ def _parse_rubric_dict(data: dict) -> Rubric:
             scale=ScoreScale(c.get("scale", "likert_5")),
             weight=c.get("weight", 1.0),
             fail_threshold=c.get("fail_threshold"),
-            score_descriptions=c.get("score_descriptions"),
+        score_descriptions=c.get("score_descriptions") or {},
         ))
 
     return Rubric(
@@ -98,7 +98,7 @@ def _parse_rubric_dict(data: dict) -> Rubric:
         scope=EvaluationScope(data.get("scope", "turn")),
         pass_threshold=data.get("pass_threshold", 0.6),
         fail_action=VerdictAction(data.get("fail_action", "warn")),
-        prompt_overrides=data.get("prompt_overrides"),
+        prompt_overrides=data.get("prompt_overrides") or {},
     )
 
 
