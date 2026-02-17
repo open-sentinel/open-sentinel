@@ -7,11 +7,11 @@
 The Composite engine is Open Sentinel' **orchestration** policy engine. It doesn't evaluate policies itself — instead, it runs multiple child engines in parallel (or sequentially), collects their results, and merges them using a **most-restrictive-wins** strategy. This enables layered policy enforcement where different engines handle different concerns.
 
 **Key characteristics:**
-- 🔗 **Multi-engine** — Combine any registered engines (FSM + NeMo, LLM + NeMo, etc.)
-- ⚡ **Parallel execution** — Engines run concurrently by default via `asyncio.gather`
-- 🏆 **Most restrictive wins** — `DENY > MODIFY > WARN > ALLOW`
-- 🛡️ **Fault tolerant** — Engine failures are captured as warnings, not propagated
-- 🧩 **Recursive** — Composite engines can contain other composite engines
+- **Multi-engine** — Combine any registered engines (FSM + NeMo, LLM + NeMo, etc.)
+- **Parallel execution** — Engines run concurrently by default via `asyncio.gather`
+- **Most restrictive wins** — `DENY > MODIFY > WARN > ALLOW`
+- **Fault tolerant** — Engine failures are captured as warnings, not propagated
+- **Recursive** — Composite engines can contain other composite engines
 
 ```
                     CompositePolicyEngine
