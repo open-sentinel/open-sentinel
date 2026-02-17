@@ -85,4 +85,6 @@ Thumbs.db
 *.log
 .panoptes/
 .claude/
+CLAUDE.md
+.cursor/
 
