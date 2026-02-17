@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "open-sentinel"
-version = "0.1.0"
+name = "opensentinel"
+dynamic = ["version"]
 description = "Reliability layer for AI agents - monitors workflow adherence and intervenes when agents deviate"
 readme = "README.md"
 license = "Apache-2.0"
@@ -47,6 +47,8 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.6.0",
     "httpx>=0.25.0",
+    "build>=1.0.0",
+    "twine>=4.0.0",
 ]
 examples = [
     "langchain>=0.3.0",
@@ -73,6 +75,11 @@ Repository = "https://github.com/open-sentinel/open-sentinel"
 
 [tool.hatch.build.targets.wheel]
 packages = ["opensentinel"]
+
+[tool.hatch.version]
+path = "opensentinel/__init__.py"
+
+
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

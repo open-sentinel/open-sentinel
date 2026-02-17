@@ -216,7 +216,7 @@ Wraps NVIDIA's [NeMo Guardrails](https://github.com/NVIDIA/NeMo-Guardrails) as a
 ### Prerequisites
 
 ```bash
-pip install 'open-sentinel[nemo]'
+pip install 'opensentinel[nemo]'
 ```
 
 ### Fail-open vs fail-closed

@@ -13,7 +13,7 @@ Your App  ──▶  Open Sentinel  ──▶  LLM Provider
 ## Quickstart
 
 ```bash
-pip install open-sentinel
+pip install opensentinel
 osentinel init
 ```
 

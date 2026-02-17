@@ -49,7 +49,7 @@ The NeMo engine is intentionally compact — most of the heavy lifting is done b
 ### Prerequisites
 
 ```bash
-pip install 'open-sentinel[nemo]'
+pip install 'opensentinel[nemo]'
 # or
 pip install nemoguardrails
 ```

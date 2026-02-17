@@ -109,7 +109,7 @@ class NemoGuardrailsPolicyEngine(PolicyEngine):
         except ImportError:
             raise ImportError(
                 "NeMo Guardrails not installed. "
-                "Install with: pip install 'open-sentinel[nemo]' "
+                "Install with: pip install 'opensentinel[nemo]' "
                 "or: pip install nemoguardrails"
             )
         except TypeError as e:
