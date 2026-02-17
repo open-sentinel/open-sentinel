@@ -68,18 +68,22 @@ class TestGlobalKeys:
 
 class TestJudgeMapping:
     def test_judge_model_creates_models_list(self):
-        result = _build_source({
-            "engine": "judge",
-            "judge": {"model": "gpt-4o-mini"},
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "judge",
+                "judge": {"model": "gpt-4o-mini"},
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
         assert cfg["models"] == [{"name": "primary", "model": "gpt-4o-mini"}]
 
     def test_judge_mode_applies_preset(self):
-        result = _build_source({
-            "engine": "judge",
-            "judge": {"mode": "safe"},
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "judge",
+                "judge": {"mode": "safe"},
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
         # Safe mode sets stricter thresholds
         assert cfg["warn_threshold"] == 0.7
@@ -88,24 +92,26 @@ class TestJudgeMapping:
 
     def test_judge_passthrough_keys(self):
         """Keys beyond model/mode should pass through directly."""
-        result = _build_source({
-            "engine": "judge",
-            "judge": {
-                "pass_threshold": 0.8,
-                "warn_threshold": 0.5,
-                "block_threshold": 0.3,
-                "confidence_threshold": 0.6,
-                "pre_call_enabled": True,
-                "pre_call_rubric": "safety",
-                "default_rubric": "custom_rubric",
-                "conversation_rubric": "convo_rubric",
-                "conversation_eval_interval": 3,
-                "custom_rubrics_path": "./rubrics/",
-                "ensemble_enabled": True,
-                "aggregation_strategy": "conservative",
-                "min_agreement": 0.75,
-            },
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "judge",
+                "judge": {
+                    "pass_threshold": 0.8,
+                    "warn_threshold": 0.5,
+                    "block_threshold": 0.3,
+                    "confidence_threshold": 0.6,
+                    "pre_call_enabled": True,
+                    "pre_call_rubric": "safety",
+                    "default_rubric": "custom_rubric",
+                    "conversation_rubric": "convo_rubric",
+                    "conversation_eval_interval": 3,
+                    "custom_rubrics_path": "./rubrics/",
+                    "ensemble_enabled": True,
+                    "aggregation_strategy": "conservative",
+                    "min_agreement": 0.75,
+                },
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
 
         assert cfg["pass_threshold"] == 0.8
@@ -124,13 +130,15 @@ class TestJudgeMapping:
 
     def test_judge_mode_with_explicit_overrides(self):
         """Explicit keys should override mode preset defaults."""
-        result = _build_source({
-            "engine": "judge",
-            "judge": {
-                "mode": "safe",
-                "warn_threshold": 0.99,  # Override the safe preset (0.7)
-            },
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "judge",
+                "judge": {
+                    "mode": "safe",
+                    "warn_threshold": 0.99,  # Override the safe preset (0.7)
+                },
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
         # Explicit value wins over mode preset
         assert cfg["warn_threshold"] == 0.99
@@ -143,10 +151,12 @@ class TestJudgeMapping:
             {"name": "primary", "model": "gpt-4o-mini", "temperature": 0.0},
             {"name": "secondary", "model": "anthropic/claude-sonnet-4-5"},
         ]
-        result = _build_source({
-            "engine": "judge",
-            "judge": {"models": models},
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "judge",
+                "judge": {"models": models},
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
         assert cfg["models"] == models
 
@@ -159,28 +169,32 @@ class TestJudgeMapping:
 class TestLLMMapping:
     def test_llm_model_renames_to_llm_model(self):
         """llm.model -> llm_model (what LLMPolicyEngine.initialize expects)."""
-        result = _build_source({
-            "engine": "llm",
-            "llm": {"model": "gemini/gemini-2.5-flash"},
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "llm",
+                "llm": {"model": "gemini/gemini-2.5-flash"},
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
         assert cfg["llm_model"] == "gemini/gemini-2.5-flash"
         assert "model" not in cfg
 
     def test_llm_passthrough_keys(self):
-        result = _build_source({
-            "engine": "llm",
-            "llm": {
-                "temperature": 0.1,
-                "max_tokens": 2048,
-                "timeout": 15.0,
-                "confident_threshold": 0.9,
-                "uncertain_threshold": 0.4,
-                "temporal_weight": 0.6,
-                "cooldown_turns": 3,
-                "max_constraints_per_batch": 10,
-            },
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "llm",
+                "llm": {
+                    "temperature": 0.1,
+                    "max_tokens": 2048,
+                    "timeout": 15.0,
+                    "confident_threshold": 0.9,
+                    "uncertain_threshold": 0.4,
+                    "temporal_weight": 0.6,
+                    "cooldown_turns": 3,
+                    "max_constraints_per_batch": 10,
+                },
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
 
         assert cfg["temperature"] == 0.1
@@ -200,18 +214,22 @@ class TestLLMMapping:
 
 class TestNemoMapping:
     def test_nemo_fail_closed(self):
-        result = _build_source({
-            "engine": "nemo",
-            "nemo": {"fail_closed": True},
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "nemo",
+                "nemo": {"fail_closed": True},
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
         assert cfg["fail_closed"] is True
 
     def test_nemo_rails(self):
-        result = _build_source({
-            "engine": "nemo",
-            "nemo": {"rails": ["input", "output"]},
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "nemo",
+                "nemo": {"rails": ["input", "output"]},
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
         assert cfg["rails"] == ["input", "output"]
 
@@ -223,26 +241,33 @@ class TestNemoMapping:
 
 class TestCompositeMapping:
     def test_composite_strategy_and_parallel(self):
-        result = _build_source({
-            "engine": "composite",
-            "composite": {
-                "strategy": "first_deny",
-                "parallel": False,
-            },
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "composite",
+                "composite": {
+                    "strategy": "first_deny",
+                    "parallel": False,
+                },
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
         assert cfg["strategy"] == "first_deny"
         assert cfg["parallel"] is False
 
     def test_composite_engines_list(self):
         engines = [
-            {"type": "judge", "config": {"models": [{"name": "primary", "model": "gpt-4o-mini"}]}},
+            {
+                "type": "judge",
+                "config": {"models": [{"name": "primary", "model": "gpt-4o-mini"}]},
+            },
             {"type": "fsm", "config": {"config_path": "./workflow.yaml"}},
         ]
-        result = _build_source({
-            "engine": "composite",
-            "composite": {"engines": engines},
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "composite",
+                "composite": {"engines": engines},
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
         assert cfg["engines"] == engines
 
@@ -255,19 +280,23 @@ class TestCompositeMapping:
 class TestFSMMapping:
     def test_fsm_empty_section_no_crash(self):
         """Empty fsm: section should not break anything."""
-        result = _build_source({
-            "engine": "fsm",
-            "fsm": {},
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "fsm",
+                "fsm": {},
+            }
+        )._map_to_settings()
         # Should have engine type but no config entries from fsm section
         assert result["policy"]["engine"]["type"] == "fsm"
 
     def test_fsm_future_keys_pass_through(self):
         """Any future keys added to fsm: should pass through."""
-        result = _build_source({
-            "engine": "fsm",
-            "fsm": {"some_future_setting": 42},
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "fsm",
+                "fsm": {"some_future_setting": 42},
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
         assert cfg["some_future_setting"] == 42
 
@@ -279,13 +308,15 @@ class TestFSMMapping:
 
 class TestTracingMapping:
     def test_tracing_otlp(self):
-        result = _build_source({
-            "tracing": {
-                "type": "otlp",
-                "endpoint": "http://jaeger:4317",
-                "service_name": "my-service",
-            },
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "tracing": {
+                    "type": "otlp",
+                    "endpoint": "http://jaeger:4317",
+                    "service_name": "my-service",
+                },
+            }
+        )._map_to_settings()
         otel = result["otel"]
         assert otel["exporter_type"] == "otlp"
         assert otel["enabled"] is True
@@ -302,22 +333,26 @@ class TestTracingMapping:
         assert result["otel"]["enabled"] is True
 
     def test_tracing_insecure(self):
-        result = _build_source({
-            "tracing": {"type": "otlp", "insecure": False},
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "tracing": {"type": "otlp", "insecure": False},
+            }
+        )._map_to_settings()
         assert result["otel"]["insecure"] is False
 
     def test_tracing_langfuse_complete(self):
-        result = _build_source({
-            "tracing": {
-                "type": "langfuse",
-                "endpoint": "http://localhost:4317",
-                "service_name": "test-svc",
-                "langfuse_public_key": "pk-test-123",
-                "langfuse_secret_key": "sk-test-456",
-                "langfuse_host": "https://us.cloud.langfuse.com",
-            },
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "tracing": {
+                    "type": "langfuse",
+                    "endpoint": "http://localhost:4317",
+                    "service_name": "test-svc",
+                    "langfuse_public_key": "pk-test-123",
+                    "langfuse_secret_key": "sk-test-456",
+                    "langfuse_host": "https://us.cloud.langfuse.com",
+                },
+            }
+        )._map_to_settings()
         otel = result["otel"]
         assert otel["exporter_type"] == "langfuse"
         assert otel["enabled"] is True
@@ -335,44 +370,50 @@ class TestTracingMapping:
 
 class TestInterventionMapping:
     def test_intervention_nested_under_fsm(self):
-        result = _build_source({
-            "engine": "fsm",
-            "fsm": {
-                "intervention": {
-                    "default_strategy": "hard_block",
-                    "max_intervention_attempts": 5,
-                    "include_headers": False,
+        result = _build_source(
+            {
+                "engine": "fsm",
+                "fsm": {
+                    "intervention": {
+                        "default_strategy": "hard_block",
+                        "max_intervention_attempts": 5,
+                        "include_headers": False,
+                    },
                 },
-            },
-        })._map_to_settings()
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
         assert cfg["intervention"]["default_strategy"] == "hard_block"
         assert cfg["intervention"]["max_intervention_attempts"] == 5
         assert cfg["intervention"]["include_headers"] is False
 
     def test_intervention_nested_under_llm(self):
-        result = _build_source({
-            "engine": "llm",
-            "llm": {
-                "intervention": {
-                    "default_strategy": "user_message_inject",
-                    "max_intervention_attempts": 3,
+        result = _build_source(
+            {
+                "engine": "llm",
+                "llm": {
+                    "intervention": {
+                        "default_strategy": "user_message_inject",
+                        "max_intervention_attempts": 3,
+                    },
                 },
-            },
-        })._map_to_settings()
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
         assert cfg["intervention"]["default_strategy"] == "user_message_inject"
         assert cfg["intervention"]["max_intervention_attempts"] == 3
 
     def test_toplevel_intervention_deprecated_fallback(self):
         """Top-level intervention: should still work via backward-compat fallback."""
-        result = _build_source({
-            "engine": "fsm",
-            "intervention": {
-                "default_strategy": "hard_block",
-                "max_intervention_attempts": 5,
-            },
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "fsm",
+                "intervention": {
+                    "default_strategy": "hard_block",
+                    "max_intervention_attempts": 5,
+                },
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
         assert cfg["intervention"]["default_strategy"] == "hard_block"
         assert cfg["intervention"]["max_intervention_attempts"] == 5
@@ -385,18 +426,20 @@ class TestInterventionMapping:
 
 class TestClassifierMapping:
     def test_classifier_nested_under_fsm(self):
-        result = _build_source({
-            "engine": "fsm",
-            "fsm": {
-                "classifier": {
-                    "model_name": "all-MiniLM-L12-v2",
-                    "backend": "onnx",
-                    "similarity_threshold": 0.85,
-                    "cache_embeddings": False,
-                    "device": "cuda",
+        result = _build_source(
+            {
+                "engine": "fsm",
+                "fsm": {
+                    "classifier": {
+                        "model_name": "all-MiniLM-L12-v2",
+                        "backend": "onnx",
+                        "similarity_threshold": 0.85,
+                        "cache_embeddings": False,
+                        "device": "cuda",
+                    },
                 },
-            },
-        })._map_to_settings()
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
         assert cfg["classifier"]["model_name"] == "all-MiniLM-L12-v2"
         assert cfg["classifier"]["backend"] == "onnx"
@@ -406,13 +449,15 @@ class TestClassifierMapping:
 
     def test_toplevel_classifier_deprecated_fallback(self):
         """Top-level classifier: should still work via backward-compat fallback."""
-        result = _build_source({
-            "engine": "fsm",
-            "classifier": {
-                "model_name": "custom-model",
-                "backend": "onnx",
-            },
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "fsm",
+                "classifier": {
+                    "model_name": "custom-model",
+                    "backend": "onnx",
+                },
+            }
+        )._map_to_settings()
         cfg = _get_engine_config(result)
         assert cfg["classifier"]["model_name"] == "custom-model"
         assert cfg["classifier"]["backend"] == "onnx"
@@ -426,17 +471,19 @@ class TestClassifierMapping:
 class TestCombinedYAML:
     def test_full_judge_config(self):
         """Test a realistic full judge osentinel.yaml."""
-        result = _build_source({
-            "engine": "judge",
-            "model": "gemini/gemini-2.5-flash",
-            "port": 4000,
-            "judge": {
-                "mode": "balanced",
-                "pass_threshold": 0.7,
-            },
-            "policy": ["No PII", "Be professional"],
-            "tracing": {"type": "none"},
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "judge",
+                "model": "gemini/gemini-2.5-flash",
+                "port": 4000,
+                "judge": {
+                    "mode": "balanced",
+                    "pass_threshold": 0.7,
+                },
+                "policy": ["No PII", "Be professional"],
+                "tracing": {"type": "none"},
+            }
+        )._map_to_settings()
 
         assert result["policy"]["engine"]["type"] == "judge"
         assert result["proxy"]["default_model"] == "gemini/gemini-2.5-flash"
@@ -448,21 +495,23 @@ class TestCombinedYAML:
 
     def test_full_llm_config(self):
         """Test a realistic full LLM engine osentinel.yaml."""
-        result = _build_source({
-            "engine": "llm",
-            "model": "gpt-4o",
-            "port": 5000,
-            "policy": "./workflow.yaml",
-            "llm": {
-                "model": "gpt-4o-mini",
-                "temperature": 0.1,
-                "cooldown_turns": 3,
-                "intervention": {
-                    "default_strategy": "user_message_inject",
-                    "max_intervention_attempts": 5,
+        result = _build_source(
+            {
+                "engine": "llm",
+                "model": "gpt-4o",
+                "port": 5000,
+                "policy": "./workflow.yaml",
+                "llm": {
+                    "model": "gpt-4o-mini",
+                    "temperature": 0.1,
+                    "cooldown_turns": 3,
+                    "intervention": {
+                        "default_strategy": "user_message_inject",
+                        "max_intervention_attempts": 5,
+                    },
                 },
-            },
-        })._map_to_settings()
+            }
+        )._map_to_settings()
 
         assert result["policy"]["engine"]["type"] == "llm"
         assert result["proxy"]["default_model"] == "gpt-4o"
@@ -477,11 +526,13 @@ class TestCombinedYAML:
 
     def test_model_and_judge_model_coexist(self):
         """Top-level model sets proxy default; judge.model overrides for the engine."""
-        result = _build_source({
-            "engine": "judge",
-            "model": "gpt-4o",
-            "judge": {"model": "gpt-4o-mini"},
-        })._map_to_settings()
+        result = _build_source(
+            {
+                "engine": "judge",
+                "model": "gpt-4o",
+                "judge": {"model": "gpt-4o-mini"},
+            }
+        )._map_to_settings()
 
         assert result["proxy"]["default_model"] == "gpt-4o"
         cfg = _get_engine_config(result)

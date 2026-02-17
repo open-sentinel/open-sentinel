@@ -240,7 +240,7 @@ class SentinelCallback(CustomLogger):
             logger.info(f"Policy engine initialized: {self._policy_engine.name}")
 
         except Exception as e:
-            logger.error(f"Failed to initialize policy engine: {e}")
+            logger.error(f"Failed to initialize policy engine: {e}", exc_info=True)
             self._policy_engine_initialized = True
             self._policy_engine = None
 

@@ -15,6 +15,7 @@ Requires: pip install nemoguardrails
 
 from typing import Optional, Dict, Any, List
 import logging
+import sys
 
 from opensentinel.policy.protocols import (
     PolicyEngine,
@@ -111,6 +112,15 @@ class NemoGuardrailsPolicyEngine(PolicyEngine):
                 "Install with: pip install 'open-sentinel[nemo]' "
                 "or: pip install nemoguardrails"
             )
+        except TypeError as e:
+            # Check for known Python 3.14 incompatibility with LangChain/Pydantic
+            # "TypeError: 'function' object is not subscriptable"
+            if sys.version_info >= (3, 14) and "subscriptable" in str(e):
+                raise ImportError(
+                    "NeMo Guardrails (via LangChain) is not compatible with Python 3.14 yet. "
+                    "Please downgrade to Python 3.10-3.13."
+                ) from e
+            raise
 
         # Load configuration
         if "config_path" in config:

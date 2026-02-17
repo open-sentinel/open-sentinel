@@ -33,7 +33,11 @@ You help with refunds, subscriptions, and general questions.
 
 def create_client():
     """Create OpenAI client configured for Open Sentinel."""
-    return OpenAI(base_url=OSNTL_URL, api_key=GOOGLE_API_KEY or "dummy")
+    return OpenAI(
+        base_url=OSNTL_URL,
+        api_key=GOOGLE_API_KEY or "dummy",
+        default_headers={"x-sentinel-session-id": SESSION_ID},
+    )
 
 
 # =============================================================================

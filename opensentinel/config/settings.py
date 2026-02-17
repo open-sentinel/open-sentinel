@@ -50,7 +50,9 @@ def detect_available_model() -> Tuple[str, str, str]:
     if os.environ.get("OPENAI_API_KEY"):
         return ("gpt-4o-mini", "OpenAI", "OPENAI_API_KEY")
     if os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY"):
-        env_var = "GOOGLE_API_KEY" if os.environ.get("GOOGLE_API_KEY") else "GEMINI_API_KEY"
+        env_var = (
+            "GOOGLE_API_KEY" if os.environ.get("GOOGLE_API_KEY") else "GEMINI_API_KEY"
+        )
         return ("gemini/gemini-2.5-flash", "Google Gemini", env_var)
     if os.environ.get("ANTHROPIC_API_KEY"):
         return ("anthropic/claude-sonnet-4-5", "Anthropic", "ANTHROPIC_API_KEY")
@@ -248,12 +250,27 @@ class YamlConfigSource(PydanticBaseSettingsSource):
 
         return None
 
+    def _resolve_path(self, path_str: Any) -> Any:
+        """Resolve a path string relative to the config file location."""
+        if not isinstance(path_str, str) or not self._config_file:
+            return path_str
+            
+        p = Path(path_str)
+        if p.is_absolute():
+            return path_str
+            
+        # Resolve relative to config file directory
+        return str(self._config_file.parent / p)
+
     def _load(self) -> None:
         """Load and parse the YAML config file."""
         path = self._discover_config_file()
         if path is None:
             self._yaml_data = {}
+            self._config_file = None
             return
+            
+        self._config_file = path
 
         try:
             import yaml
@@ -268,12 +285,24 @@ class YamlConfigSource(PydanticBaseSettingsSource):
 
     # Keys that are handled specially and should NOT be passed through
     # to engine config as generic keys.
-    _RESERVED_TOPLEVEL_KEYS = frozenset({
-        "engine", "policy", "port", "host", "debug", "log_level",
-        "model", "tracing",
-        # Engine-specific sections are handled below
-        "judge", "llm", "fsm", "nemo", "composite",
-    })
+    _RESERVED_TOPLEVEL_KEYS = frozenset(
+        {
+            "engine",
+            "policy",
+            "port",
+            "host",
+            "debug",
+            "log_level",
+            "model",
+            "tracing",
+            # Engine-specific sections are handled below
+            "judge",
+            "llm",
+            "fsm",
+            "nemo",
+            "composite",
+        }
+    )
 
     # Keys within judge: that receive special handling
     _JUDGE_SPECIAL_KEYS = frozenset({"model", "mode"})
@@ -307,9 +336,10 @@ class YamlConfigSource(PydanticBaseSettingsSource):
         if "policy" in data:
             policy_val = data["policy"]
             if isinstance(policy_val, str):
+                resolved_path = self._resolve_path(policy_val)
                 result.setdefault("policy", {}).setdefault("engine", {})[
                     "config_path"
-                ] = policy_val
+                ] = resolved_path
             elif isinstance(policy_val, (list, dict)):
                 engine_config = (
                     result.setdefault("policy", {})
@@ -359,7 +389,9 @@ class YamlConfigSource(PydanticBaseSettingsSource):
             # Special: judge.mode -> apply reliability preset defaults
             if "mode" in judge_cfg:
                 try:
-                    from opensentinel.policy.engines.judge.modes import build_mode_config
+                    from opensentinel.policy.engines.judge.modes import (
+                        build_mode_config,
+                    )
 
                     mode_config = build_mode_config(judge_cfg["mode"])
                     for k, v in mode_config.items():
@@ -396,6 +428,8 @@ class YamlConfigSource(PydanticBaseSettingsSource):
                 .setdefault("config", {})
             )
             for k, v in nemo_cfg.items():
+                if k == "config_path":
+                    v = self._resolve_path(v)
                 engine_config[k] = v
 
         # composite.* -> policy config
@@ -418,6 +452,8 @@ class YamlConfigSource(PydanticBaseSettingsSource):
                 .setdefault("config", {})
             )
             for k, v in fsm_cfg.items():
+                if k == "workflow_path" or k == "config_path":
+                    v = self._resolve_path(v)
                 engine_config[k] = v
 
         # -----------------------------------------------------------------
@@ -564,7 +600,7 @@ class SentinelSettings(BaseSettings):
 
     def get_model_list(self) -> List[dict]:
         """Get model list for LiteLLM router using wildcard routing.
-        
+
         Returns wildcard entries for providers whose API keys are present,
         allowing LiteLLM to dynamically route any model from those providers.
         """
@@ -588,9 +624,11 @@ class SentinelSettings(BaseSettings):
             # Check if any required env var is set
             env_var_list = env_vars if isinstance(env_vars, list) else [env_vars]
             if any(os.environ.get(var) for var in env_var_list):
-                model_list.append({
-                    "model_name": model_name,
-                    "litellm_params": {"model": litellm_model},
-                })
+                model_list.append(
+                    {
+                        "model_name": model_name,
+                        "litellm_params": {"model": litellm_model},
+                    }
+                )
 
         return model_list
