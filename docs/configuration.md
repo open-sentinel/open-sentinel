@@ -114,12 +114,12 @@ judge:
   aggregation_strategy: mean_score
   models:
     - name: primary
-      model: gpt-4o-mini
+      model: anthropic/claude-sonnet-4-5
       temperature: 0.0
       max_tokens: 2048
       timeout: 15.0
     - name: secondary
-      model: anthropic/claude-sonnet-4-5
+      model: gpt-4o-mini
       temperature: 0.0
 ```
 
@@ -300,7 +300,7 @@ debug: false
 policy: ./policy.yaml
 
 judge:
-  model: gpt-4o-mini
+  model: anthropic/claude-sonnet-4-5
   mode: balanced
   pass_threshold: 0.6
   pre_call_enabled: false

@@ -70,7 +70,7 @@ policy:
   - "No financial advice"
   - "Be professional"
 judge:
-  model: gpt-4o-mini
+  model: anthropic/claude-sonnet-4-5
   mode: balanced
 ```
 
@@ -185,7 +185,7 @@ Uses a lightweight sidecar LLM for state classification, drift detection, and so
 engine: llm
 policy: ./workflow.yaml
 llm:
-  model: gpt-4o-mini
+  model: anthropic/claude-sonnet-4-5
 ```
 
 Full configuration reference: [docs/configuration.md](configuration.md#llm-engine)
