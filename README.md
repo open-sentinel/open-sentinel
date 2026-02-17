@@ -1,15 +1,13 @@
 # Open Sentinel
 
-**Your AI agent just went off-script. Again.**
-
-Open Sentinel is a transparent proxy that monitors LLM calls and intervenes when your agent deviates from policy. Change one line (`base_url`), write your rules in plain English, and it handles the rest.
+Open Sentinel is a transparent proxy that monitors LLM API calls and enforces policies on AI agent behavior. Point your LLM client at the proxy, define rules in YAML, and every response is evaluated before it reaches the user.
 
 ```
 Your App  ──▶  Open Sentinel  ──▶  LLM Provider
-                  │
-           monitors every call
-           enforces your rules
-           corrects on deviation
+                    │
+             classifies responses
+             evaluates constraints
+             injects corrections
 ```
 
 ## Quickstart
@@ -19,7 +17,7 @@ pip install open-sentinel
 osentinel init
 ```
 
-Write your rules in `osentinel.yaml`:
+Edit `osentinel.yaml`:
 
 ```yaml
 engine: judge
@@ -31,99 +29,161 @@ policy:
   - "Always be professional and helpful"
 ```
 
-Start the proxy:
-
 ```bash
 osentinel serve
 ```
 
-Point your existing client at it — one line change:
+Point your client at it:
 
 ```python
+from openai import OpenAI
+
 client = OpenAI(
-    base_url="http://localhost:4000/v1",  # ← this is the only change
+    base_url="http://localhost:4000/v1",  # only change
     api_key="your-api-key"
+)
+
+response = client.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": "Hello!"}]
 )
 ```
 
-That's it. Every LLM call now runs through your policy.
+Every call now runs through your policy. The judge engine scores each response against your rules using a sidecar LLM, and intervenes (warn, modify, or block) when scores fall below threshold.
 
-## What can you enforce?
+## Engines
 
-| You want to... | Engine | Config |
-|---|---|---|
-| Block prompt injection, enforce tone, ban topics | `judge` | Write rules in plain English |
-| Require identity verification before refunds | `fsm` | Define states and transitions in YAML |
-| Catch jailbreaks, PII leakage, toxicity | `nemo` | NVIDIA NeMo Guardrails |
-| All of the above, simultaneously | `composite` | Run multiple engines in parallel |
+Open Sentinel ships five policy engines. Each uses a different mechanism; all implement the same interface.
 
-### Judge — rules in plain English (recommended)
+| Engine | What it does | Latency | Config |
+|--------|-------------|---------|--------|
+| `judge` | Scores responses against rubrics via a sidecar LLM | 200-800ms (async by default: 0ms on critical path) | Rules in plain English |
+| `fsm` | Enforces state machine workflows with LTL-lite temporal constraints | ~0ms (local regex/embeddings) | States, transitions, constraints in YAML |
+| `llm` | Classifies state and detects drift using LLM-based reasoning | 200-500ms | Workflow YAML + LLM config |
+| `nemo` | Runs NVIDIA NeMo Guardrails for content safety and dialog rails | 200-800ms | NeMo config directory |
+| `composite` | Combines multiple engines, merges results (most restrictive wins) | Sum of children | List of engine configs |
+
+### Judge engine (default)
+
+Write rules in plain English. The judge LLM evaluates every response against built-in or custom rubrics (tone, safety, instruction following) and maps aggregate scores to actions.
 
 ```yaml
 engine: judge
 judge:
-  mode: balanced  # safe | balanced | aggressive
-
+  mode: balanced    # safe | balanced | aggressive
+  model: gpt-4o-mini
 policy:
-  - "Must NOT generate harmful content"
-  - "Responses must stay on topic"
+  - "No harmful content"
+  - "Stay on topic"
 ```
 
-### FSM — deterministic workflow enforcement
+Runs async by default -- zero latency on the critical path. Violations are applied as interventions on the next turn.
+
+### FSM engine
+
+Define allowed agent behavior as a finite state machine. Classification uses a three-tier cascade: tool call matching -> regex patterns -> embedding similarity. Constraints are evaluated using LTL-lite temporal logic.
 
 ```yaml
 engine: fsm
-policy: ./customer_support.yaml  # states, transitions, constraints
+policy: ./customer_support.yaml
 ```
 
-Define states like `greeting → identify_issue → identity_verification → account_action → resolution` with constraints like "must verify identity before any account modification."
+Where `customer_support.yaml` defines states (`greeting -> identify_issue -> verify_identity -> account_action -> resolution`), transitions, constraints (`must verify identity before account modifications`), and intervention prompts.
 
-## Design
+### Composite engine
 
-- **Fail-open** — Open Sentinel crashes? Your app keeps working. All hooks have timeout and exception handling.
-- **Zero lock-in** — Works with any OpenAI-compatible client. No SDK. No wrapper. One URL change.
-- **Async by default** — Policy violations are corrected on the next turn, not blocking the current response.
-- **Observable** — OpenTelemetry tracing with Langfuse integration out of the box.
-- **Model auto-detection** — Set an API key (`OPENAI_API_KEY`, `GOOGLE_API_KEY`, or `ANTHROPIC_API_KEY`) and Open Sentinel picks the right model. Or specify it explicitly.
+Run multiple engines in parallel:
+
+```yaml
+engine: composite
+engines:
+  - type: judge
+    policy: ["No harmful content"]
+  - type: fsm
+    policy: ./workflow.yaml
+strategy: all       # evaluate all engines; most restrictive decision wins
+parallel: true
+```
+
+Full engine documentation: [docs/engines.md](docs/engines.md)
+
+## How It Works
+
+Open Sentinel wraps [LiteLLM](https://github.com/BerriAI/litellm) as its proxy layer. On each LLM call:
+
+1. **Pre-call**: The interceptor applies any pending interventions from previous violations, then runs pre-call checkers (e.g., input rails).
+2. **LLM call**: Request is forwarded to the upstream provider.
+3. **Post-call**: The policy engine evaluates the response. Violations schedule interventions for the next call. Critical violations block immediately.
+
+All hooks are wrapped with `safe_hook()` -- if a hook throws or times out, the request passes through unmodified. Only intentional blocks (`WorkflowViolationError`) propagate. This is fail-open by design.
+
+```
+┌─────────────┐    ┌───────────────────────────────────────────┐    ┌─────────────┐
+│  Your App   │───▶│              OPEN SENTINEL                │───▶│ LLM Provider│
+│             │    │  ┌────────-┐  ┌─────────────┐             │    │             │
+│             │◀───│  │ Hooks   │─▶│ Interceptor │             │◀───│             │
+└─────────────┘    │  │safe_hook│  │ ┌─────────┐ │             │    └─────────────┘
+                   │  └────────-┘  │ │Checkers │ │             │
+                   │      │        │ └─────────┘ │             │
+                   │      ▼        └─────────────┘             │
+                   │  ┌────────────────────────────────────┐   │
+                   │  │         Policy Engines             │   │
+                   │  │  ┌───────┐ ┌─────┐ ┌─────┐ ┌────┐  │   │
+                   │  │  │ Judge │ │ FSM │ │ LLM │ │NeMo│  │   │
+                   │  │  └───────┘ └─────┘ └─────┘ └────┘  │   │
+                   │  └────────────────────────────────────┘   │
+                   │      │                                    │
+                   │      ▼                                    │
+                   │  ┌────────────────────────────────────┐   │
+                   │  │      OpenTelemetry Tracing         │   │
+                   │  └────────────────────────────────────┘   │
+                   └───────────────────────────────────────────┘
+```
 
 ## Configuration
 
-Everything lives in `osentinel.yaml`:
+Everything lives in `osentinel.yaml`. Environment variables with the `OSNTL_` prefix override any setting (nested with `__`: `OSNTL_JUDGE__MODE=safe`).
 
 ```yaml
-engine: judge              # judge | fsm | nemo | composite
+engine: judge              # judge | fsm | llm | nemo | composite
 port: 4000
+debug: false
 
 judge:
-  model: gpt-4o-mini       # optional — auto-detected from API keys
+  model: gpt-4o-mini       # auto-detected from API keys if omitted
   mode: balanced            # safe | balanced | aggressive
 
-policy:                     # inline rules or path to file
+policy:
   - "Your rules here"
 
 tracing:
   type: none                # none | console | otlp | langfuse
 ```
 
-Environment variables override any setting with the `OSNTL_` prefix.
+Full reference: [docs/configuration.md](docs/configuration.md)
 
 ## CLI
 
-```
-osentinel init              # interactive setup
-osentinel serve             # start proxy
-osentinel compile "..."     # natural language → policy YAML
-osentinel validate file.yaml
-```
+| Command | Description |
+|---------|-------------|
+| `osentinel init` | Interactive project setup -- creates `osentinel.yaml` and `policy.yaml` |
+| `osentinel serve` | Start the proxy server |
+| `osentinel compile "..."` | Compile natural language policy to engine-specific YAML |
+| `osentinel validate file.yaml` | Validate a workflow definition |
+| `osentinel info file.yaml` | Show detailed workflow information |
 
 ## Status
 
-**v0.1.0 — alpha.** Core proxy, judge engine, FSM engine, and NeMo integration work. API surface may change.
+v0.1.0 -- alpha. The proxy layer, judge engine, FSM engine, LLM engine, NeMo integration, composite engine, policy compiler, and OpenTelemetry tracing all work. API surface may change. Session state is in-memory only (not persistent across restarts).
 
-## Docs
+Missing: persistent session storage, dashboard UI, pre-built policy library, rate limiting. These are planned but not built.
 
-- [Architecture](ARCHITECTURE.md)
-- [Developer Guide](DEVELOPER.md)
+## Documentation
+
+- [Configuration Reference](docs/configuration.md) -- every config option with type, default, description
+- [Policy Engines](docs/engines.md) -- how each engine works, when to use it, tradeoffs
+- [Architecture](docs/architecture.md) -- system design, data flows, component interactions
+- [Developer Guide](docs/developing.md) -- setup, testing, extension points, debugging
 - [Examples](examples/)
 
 ## License
