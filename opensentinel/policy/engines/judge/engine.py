@@ -125,6 +125,7 @@ class JudgePolicyEngine(PolicyEngine):
             warn_threshold=config.get("warn_threshold", 0.4),
             block_threshold=config.get("block_threshold", 0.2),
             confidence_threshold=config.get("confidence_threshold", 0.5),
+            verbose=config.get("verbose", False),
         )
 
         # Config

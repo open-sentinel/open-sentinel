@@ -56,12 +56,14 @@ class JudgeEvaluator:
         warn_threshold: float = 0.4,
         block_threshold: float = 0.2,
         confidence_threshold: float = 0.5,
+        verbose: bool = False,
     ) -> None:
         self._client = client
         self._pass_threshold = pass_threshold
         self._warn_threshold = warn_threshold
         self._block_threshold = block_threshold
         self._confidence_threshold = confidence_threshold
+        self.verbose = verbose
 
     async def evaluate_turn(
         self,
@@ -118,11 +120,21 @@ class JudgeEvaluator:
             )
         )
 
+
+        if self.verbose:
+            logger.info("=== JUDGE PROMPT (TURN) ===")
+            logger.info(f"System: {self._truncate_log(system_prompt)}")
+            logger.info(f"User: {self._truncate_log(user_prompt)}")
+            logger.info("===========================")
+
         start = time.monotonic()
         raw = await self._client.call_judge(model_name, system_prompt, user_prompt, session_id=session_id)
         latency_ms = (time.monotonic() - start) * 1000
 
-
+        if self.verbose:
+            logger.info(f"=== JUDGE RESPONSE (TURN - {latency_ms:.2f}ms) ===")
+            logger.info(raw)
+            logger.info("=============================================")
 
         self._validate_judge_response(raw, rubric.criteria)
         scores = self._parse_pointwise_scores(raw, rubric.criteria)
@@ -200,11 +212,20 @@ class JudgeEvaluator:
             )
         )
 
+        if self.verbose:
+            logger.info("=== JUDGE PROMPT (CONVERSATION) ===")
+            logger.info(f"System: {self._truncate_log(system_prompt)}")
+            logger.info(f"User: {self._truncate_log(user_prompt)}")
+            logger.info("===================================")
+
         start = time.monotonic()
         raw = await self._client.call_judge(model_name, system_prompt, user_prompt, session_id=session_id)
         latency_ms = (time.monotonic() - start) * 1000
 
-
+        if self.verbose:
+            logger.info(f"=== JUDGE RESPONSE (CONVERSATION - {latency_ms:.2f}ms) ===")
+            logger.info(raw)
+            logger.info("=====================================================")
 
         self._validate_judge_response(raw, rubric.criteria)
         scores = self._parse_pointwise_scores(raw, rubric.criteria)
@@ -587,3 +608,9 @@ class JudgeEvaluator:
                 raise ValueError("Score item missing 'criterion'")
             if "score" not in item:
                 raise ValueError(f"Score item for '{item.get('criterion')}' missing 'score'")
+
+    def _truncate_log(self, text: str, max_len: int = 2000) -> str:
+        """Truncate text for logging if it exceeds max_len."""
+        if len(text) <= max_len:
+            return text
+        return text[:max_len] + f"... (truncated {len(text) - max_len} chars)"
