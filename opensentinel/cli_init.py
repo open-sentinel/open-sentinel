@@ -86,8 +86,36 @@ def run_init(
         config_content = MINIMAL_TEMPLATE
         rule_count = 3
 
+    # Edit policy
+    click.echo("")
+    if click.confirm("  Review/edit generated policy?", default=False):
+        edited = click.edit(config_content, extension=".yaml")
+        if edited:
+            config_content = edited
+            # Update rule count estimate
+            rule_count = config_content.count("- ")
+
+    # Opt-in for tracing
+    tracing_config = ""
+    # Add a newline for better spacing in terminal output
+    click.echo("")
+    if click.confirm("  Initialize with Langfuse tracing? (optional)", default=False):
+        pk = click.prompt("    Langfuse Public Key")
+        sk = click.prompt("    Langfuse Secret Key", hide_input=True)
+        host = click.prompt("    Langfuse Host", default="https://cloud.langfuse.com")
+
+        import textwrap
+
+        tracing_config = textwrap.dedent(f"""
+            tracing:
+              type: langfuse
+              langfuse_public_key: "{pk}"
+              langfuse_secret_key: "{sk}"
+              langfuse_host: "{host}"
+            """)
+
     # Write config
-    config_path.write_text(config_content)
+    config_path.write_text(config_content + tracing_config)
 
     if compile_from:
         click.echo(
@@ -110,4 +138,7 @@ def run_init(
 
     click.echo("    2. osentinel serve")
     click.echo("")
-    click.echo("  Point your LLM client to: http://localhost:4000/v1")
+    click.echo(
+        click.style("Point your LLM client to: ", bold=True)
+        + click.style("http://localhost:4000/v1", fg="cyan", bold=True)
+    )
