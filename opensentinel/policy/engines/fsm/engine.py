@@ -22,6 +22,7 @@ from opensentinel.policy.engines.fsm.workflow.parser import WorkflowParser
 from opensentinel.policy.engines.fsm.workflow.state_machine import WorkflowStateMachine, TransitionResult
 from opensentinel.policy.engines.fsm.workflow.constraints import ConstraintEvaluator
 from opensentinel.policy.engines.fsm.classifier import StateClassifier
+from opensentinel.policy.engines.fsm.intervention import InterventionHandler
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,7 @@ class FSMPolicyEngine(StatefulPolicyEngine):
         self._state_machine: Optional[WorkflowStateMachine] = None
         self._classifier: Optional[StateClassifier] = None
         self._constraint_evaluator: Optional[ConstraintEvaluator] = None
+        self._intervention_handler: Optional[InterventionHandler] = None
         self._initialized = False
 
     @property
@@ -101,8 +103,27 @@ class FSMPolicyEngine(StatefulPolicyEngine):
             )
 
         self._state_machine = WorkflowStateMachine(self._workflow)
-        self._classifier = StateClassifier(self._workflow.states)
+
+        # Wire classifier config from engine config
+        from opensentinel.config.settings import ClassifierConfig
+        classifier_cfg = config.get("classifier", {})
+        classifier_config = ClassifierConfig(**classifier_cfg) if classifier_cfg else None
+        self._classifier = StateClassifier(self._workflow.states, config=classifier_config)
+
         self._constraint_evaluator = ConstraintEvaluator(self._workflow.constraints)
+
+        # Wire intervention config from engine config
+        from opensentinel.core.intervention.strategies import StrategyType
+        intervention_cfg = config.get("intervention", {})
+        default_strategy_str = intervention_cfg.get("default_strategy", "system_prompt_append")
+        default_strategy = StrategyType(default_strategy_str)
+        max_intervention_attempts = intervention_cfg.get("max_intervention_attempts", 3)
+        self._intervention_handler = InterventionHandler(
+            self._workflow,
+            default_strategy=default_strategy,
+            max_intervention_attempts=max_intervention_attempts,
+        )
+
         self._initialized = True
 
         logger.info(

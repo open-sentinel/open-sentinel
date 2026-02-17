@@ -50,9 +50,11 @@ class InterventionHandler:
         self,
         workflow: WorkflowDefinition,
         default_strategy: StrategyType = StrategyType.SYSTEM_PROMPT_APPEND,
+        max_intervention_attempts: int = 3,
     ):
         self.workflow = workflow
         self.default_strategy = default_strategy
+        self.max_intervention_attempts = max_intervention_attempts
         self._intervention_configs = self._load_configs()
 
         # Track intervention applications per session
@@ -85,6 +87,7 @@ class InterventionHandler:
             configs[name] = InterventionConfig(
                 strategy_type=strategy,
                 message_template=message,
+                max_applications=self.max_intervention_attempts,
             )
 
         return configs
