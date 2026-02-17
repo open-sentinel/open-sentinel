@@ -7,10 +7,10 @@
 The FSM engine is Open Sentinel' **deterministic** policy engine. It models allowed agent behavior as a finite state machine defined in YAML, then classifies each LLM response to a workflow state, evaluates temporal constraints, and triggers interventions when deviations are detected.
 
 **Key characteristics:**
-- ⚡ **Zero LLM overhead** — Classification uses tool-call matching, regex, and local embeddings (no external API calls)
-- 🔒 **Deterministic** — Same input always produces the same constraint evaluation
-- 📐 **Formally grounded** — Constraints based on LTL-lite temporal logic
-- 🔄 **Stateful** — Tracks full state history per session, implements `StatefulPolicyEngine`
+- **Zero LLM overhead** — Classification uses tool-call matching, regex, and local embeddings (no external API calls)
+- **Deterministic** — Same input always produces the same constraint evaluation
+- **Formally grounded** — Constraints based on LTL-lite temporal logic
+- **Stateful** — Tracks full state history per session, implements `StatefulPolicyEngine`
 
 ```
 Request ──► evaluate_request() ──► Check pending interventions
