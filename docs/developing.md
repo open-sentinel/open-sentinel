@@ -3,7 +3,7 @@
 ## Setup
 
 ```bash
-git clone https://github.com/your-org/open-sentinel.git
+git clone https://github.com/open-sentinel/open-sentinel.git
 cd open-sentinel
 pip install -e ".[dev]"
 ```

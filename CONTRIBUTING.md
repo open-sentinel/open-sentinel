@@ -3,7 +3,7 @@
 ## Setup
 
 ```bash
-git clone https://github.com/your-org/open-sentinel.git
+git clone https://github.com/open-sentinel/open-sentinel.git
 cd open-sentinel
 pip install -e ".[dev]"
 ```
@@ -57,7 +57,7 @@ Full walkthrough with code examples: [docs/developing.md](docs/developing.md#ext
 
 ## Reporting Issues
 
-Use [GitHub Issues](https://github.com/your-org/open-sentinel/issues). Include:
+Use [GitHub Issues](https://github.com/open-sentinel/open-sentinel/issues). Include:
 
 - What you did (steps to reproduce).
 - What you expected.
