@@ -38,7 +38,7 @@ Your App  ──▶  Open Sentinel  ──▶  LLM Provider
 
 ```bash
 pip install opensentinel
-export OPENAI_API_KEY=sk-...    # or GEMINI_API_KEY, ANTHROPIC_API_KEY
+export ANTHROPIC_API_KEY=sk-ant-...    # or GEMINI_API_KEY, OPENAI_API_KEY
 osentinel init
 osentinel serve
 ```
@@ -56,14 +56,15 @@ Point your client at the proxy:
 
 ```python
 from openai import OpenAI
+import os
 
 client = OpenAI(
     base_url="http://localhost:4000/v1",  # only change
-    api_key="your-api-key"
+    api_key=os.environ.get("ANTHROPIC_API_KEY", "dummy-key")
 )
 
 response = client.chat.completions.create(
-    model="gpt-4o",
+    model="anthropic/claude-sonnet-4-5",
     messages=[{"role": "user", "content": "Hello!"}]
 )
 ```
@@ -96,7 +97,7 @@ Write rules in plain English. The judge LLM evaluates every response against bui
 engine: judge
 judge:
   mode: balanced    # safe | balanced | aggressive
-  model: gpt-4o-mini
+  model: anthropic/claude-sonnet-4-5
 policy:
   - "No harmful content"
   - "Stay on topic"
@@ -180,7 +181,7 @@ port: 4000
 debug: false
 
 judge:
-  model: gpt-4o-mini       # auto-detected from API keys if omitted
+  model: anthropic/claude-sonnet-4-5       # auto-detected from API keys if omitted
   mode: balanced            # safe | balanced | aggressive
 
 tracing:

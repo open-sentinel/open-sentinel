@@ -15,7 +15,7 @@ Uses an LLM to evaluate responses against a rubric.
    export GOOGLE_API_KEY=AIza...
    osentinel serve
    ```
-   *This uses the local `osentinel.yaml` configuration (Gemini model). If you switch to an OpenAI model in the config, use `OPENAI_API_KEY` instead.*
+   *This uses the local `osentinel.yaml` configuration (Gemini model). If you switch to an Anthropic model in the config, use `ANTHROPIC_API_KEY` instead.*
 
 2. Run the agent client:
    ```bash
@@ -51,7 +51,7 @@ Demonstrates NeMo Guardrails integration.
 1. Start Open Sentinel:
    ```bash
    cd examples/nemo_guardrails
-   export OPENAI_API_KEY=sk-...  # or GOOGLE_API_KEY depending on config
+   export ANTHROPIC_API_KEY=sk-ant-...  # or GOOGLE_API_KEY depending on config
    osentinel serve
    ```
 
