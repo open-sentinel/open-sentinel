@@ -110,40 +110,29 @@ def serve(port: int, host: str, config: Path, debug: bool):
 
 @main.command()
 @click.option(
-    "--engine",
-    "-e",
-    type=click.Choice(["judge", "fsm"]),
+    "--from",
+    "compile_from",
+    type=str,
     default=None,
-    help="Policy engine type (default: judge)",
+    help="Natural language policy description to compile into rules",
 )
-@click.option(
-    "--non-interactive",
-    "-y",
-    is_flag=True,
-    default=False,
-    help="Use all defaults without prompting (good for automation)",
-)
-def init(engine: str, non_interactive: bool):
+def init(compile_from: str):
     """Initialize a new Open Sentinel project.
 
-    Creates osentinel.yaml and a starter policy file in the current directory.
+    Creates a minimal osentinel.yaml in the current directory.
 
     Examples:
 
-        # Interactive setup
+        # Default setup (3 starter rules)
         osentinel init
 
-        # Non-interactive with defaults (for LLM agents / CI)
-        osentinel init --non-interactive
-
-        # Specify engine type
-        osentinel init --engine fsm
+        # Compile from natural language
+        osentinel init --from "customer support bot, never share internal pricing"
     """
     from opensentinel.cli_init import run_init
 
-    click.echo(click.style("Open Sentinel Init", bold=True))
     click.echo("")
-    run_init(engine=engine, non_interactive=non_interactive)
+    run_init(compile_from=compile_from)
 
 
 @main.command()
