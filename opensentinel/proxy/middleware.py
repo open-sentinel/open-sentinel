@@ -149,6 +149,16 @@ class SessionExtractor:
                 if session_id:
                     return session_id
 
+        # 1b. Check litellm_params metadata (Library mode)
+        # Internal calls via LLMClient/litellm.acompletion pass context here
+        litellm_params = data.get("litellm_params")
+        if isinstance(litellm_params, dict):
+            lp_meta = litellm_params.get("metadata")
+            if isinstance(lp_meta, dict):
+                if session_id := lp_meta.get("session_id"):
+                    return str(session_id)
+
+
         # 2. Check metadata fields
         metadata = data.get("metadata", {})
         if isinstance(metadata, dict):

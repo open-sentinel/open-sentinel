@@ -4,7 +4,7 @@ port: 4000
 
 judge:
   mode: balanced
-  # model: gpt-4o-mini  # uncomment to override global model for judge
+  # model: gpt-4o-mini  # uncomment to override global model for judge after setting OPENAI_API_KEY
 
 policy:
   - "Must NOT provide personalized financial advice or investment strategies"

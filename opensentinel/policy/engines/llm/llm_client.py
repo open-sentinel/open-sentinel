@@ -110,6 +110,7 @@ class LLMClient:
                     max_tokens=self.max_tokens,
                     timeout=self.timeout,
                     extra_headers=extra_headers,
+                    metadata={"session_id": session_id} if session_id else {},
                 )
                 
                 # Track token usage

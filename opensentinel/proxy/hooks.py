@@ -333,6 +333,16 @@ class SentinelCallback(CustomLogger):
     ) -> Optional[Union[Exception, str, dict]]:
         """Inner implementation for async_pre_call_hook."""
         session_id = self._extract_session_id(data)
+        
+        # Persist session ID in metadata to ensure consistency across hooks
+        # This prevents generating a new random UUID in post_call/failure hooks
+        if "metadata" not in data:
+            data["metadata"] = {}
+        
+        # Use existing if present, otherwise set the extracted/generated one
+        if not data["metadata"].get("session_id"):
+            data["metadata"]["session_id"] = session_id
+
 
         logger.debug(f"pre_call_hook: session={session_id}, call_type={call_type}")
 
