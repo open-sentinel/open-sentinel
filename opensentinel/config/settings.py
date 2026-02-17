@@ -78,10 +78,10 @@ class OTelConfig(BaseModel):
     - none: Disable tracing
     """
 
-    enabled: bool = True
+    enabled: bool = False
     endpoint: str = "http://localhost:4317"
     service_name: str = "opensentinel"
-    exporter_type: Literal["otlp", "langfuse", "console", "none"] = "otlp"
+    exporter_type: Literal["otlp", "langfuse", "console", "none"] = "none"
     insecure: bool = True  # Use insecure connection (no TLS) for local dev
 
     # Langfuse-specific settings (used when exporter_type="langfuse")
@@ -374,7 +374,7 @@ class YamlConfigSource(PydanticBaseSettingsSource):
         # Each engine's YAML section passes all keys into the config dict
         # that the engine's initialize() receives.
         # -----------------------------------------------------------------
-        engine_type = data.get("engine", "nemo")
+        engine_type = data.get("engine", "judge")
 
         # judge.* -> policy.engine.config.*
         judge_cfg = data.get("judge", {})
