@@ -122,12 +122,22 @@ class JudgeEvaluator:
         raw = await self._client.call_judge(model_name, system_prompt, user_prompt, session_id=session_id)
         latency_ms = (time.monotonic() - start) * 1000
 
+
+
+        self._validate_judge_response(raw, rubric.criteria)
         scores = self._parse_pointwise_scores(raw, rubric.criteria)
+        
+        # Check for critical failures immediately
+        failed_criteria = self._check_criterion_failures(scores, rubric.criteria)
         composite = self._compute_composite(scores, rubric.criteria)
         action = self._map_action(composite, rubric)
         model_id = self._client.get_model_id(model_name)
         overall_confidence = self._compute_confidence(scores, rubric.criteria)
         low_confidence = overall_confidence < self._confidence_threshold
+
+        # If any criterion failed, override action
+        if failed_criteria and action != VerdictAction.BLOCK:
+            action = rubric.fail_action
 
         return JudgeVerdict(
             scores=scores,
@@ -140,6 +150,7 @@ class JudgeEvaluator:
             scope=EvaluationScope.TURN,
             overall_confidence=overall_confidence,
             low_confidence=low_confidence,
+            metadata={"criterion_failures": failed_criteria} if failed_criteria else {},
         )
 
     async def evaluate_conversation(
@@ -193,12 +204,20 @@ class JudgeEvaluator:
         raw = await self._client.call_judge(model_name, system_prompt, user_prompt, session_id=session_id)
         latency_ms = (time.monotonic() - start) * 1000
 
+
+
+        self._validate_judge_response(raw, rubric.criteria)
         scores = self._parse_pointwise_scores(raw, rubric.criteria)
+        
+        failed_criteria = self._check_criterion_failures(scores, rubric.criteria)
         composite = self._compute_composite(scores, rubric.criteria)
         action = self._map_action(composite, rubric)
         model_id = self._client.get_model_id(model_name)
         overall_confidence = self._compute_confidence(scores, rubric.criteria)
         low_confidence = overall_confidence < self._confidence_threshold
+
+        if failed_criteria and action != VerdictAction.BLOCK:
+            action = rubric.fail_action
 
         return JudgeVerdict(
             scores=scores,
@@ -211,6 +230,7 @@ class JudgeEvaluator:
             scope=EvaluationScope.CONVERSATION,
             overall_confidence=overall_confidence,
             low_confidence=low_confidence,
+            metadata={"criterion_failures": failed_criteria} if failed_criteria else {},
         )
 
     async def evaluate_pairwise(
@@ -268,13 +288,21 @@ class JudgeEvaluator:
         raw_scores = raw.get("scores", [])
         demapped_scores = demap_pairwise_scores(raw_scores, mapping)
 
+
+
         # Build JudgeScores from the "a" side scores
         scores = self._parse_pairwise_scores(demapped_scores, rubric.criteria)
+        
+        # Check for critical failures
+        failed_criteria = self._check_criterion_failures(scores, rubric.criteria)
         composite = self._compute_composite(scores, rubric.criteria)
         action = self._map_action(composite, rubric)
         model_id = self._client.get_model_id(model_name)
         overall_confidence = self._compute_confidence(scores, rubric.criteria)
         low_confidence = overall_confidence < self._confidence_threshold
+
+        if failed_criteria and action != VerdictAction.BLOCK:
+            action = rubric.fail_action
 
         return JudgeVerdict(
             scores=scores,
@@ -291,6 +319,7 @@ class JudgeEvaluator:
                 "pairwise": True,
                 "overall_winner": raw.get("overall_winner", "tie"),
                 "position_mapping": mapping,
+                "criterion_failures": failed_criteria,
             },
         )
 
@@ -331,12 +360,18 @@ class JudgeEvaluator:
         raw = await self._client.call_judge(model_name, system_prompt, user_prompt, session_id=session_id)
         latency_ms = (time.monotonic() - start) * 1000
 
+        self._validate_judge_response(raw, rubric.criteria)
         scores = self._parse_pointwise_scores(raw, rubric.criteria)
+        
+        failed_criteria = self._check_criterion_failures(scores, rubric.criteria)
         composite = self._compute_composite(scores, rubric.criteria)
         action = self._map_action(composite, rubric)
         model_id = self._client.get_model_id(model_name)
         overall_confidence = self._compute_confidence(scores, rubric.criteria)
         low_confidence = overall_confidence < self._confidence_threshold
+
+        if failed_criteria and action != VerdictAction.BLOCK:
+            action = rubric.fail_action
 
         return JudgeVerdict(
             scores=scores,
@@ -349,7 +384,10 @@ class JudgeEvaluator:
             scope=EvaluationScope.TURN,
             overall_confidence=overall_confidence,
             low_confidence=low_confidence,
-            metadata={"reference_based": True},
+            metadata={
+                "reference_based": True,
+                "criterion_failures": failed_criteria,
+            },
         )
 
     # =========================================================================
@@ -373,9 +411,13 @@ class JudgeEvaluator:
                 logger.warning(f"Unknown criterion in judge response: {criterion_name}")
                 continue
 
+            score_val = int(raw_score.get("score", 0))
+            # Clamp score to validity range
+            score_val = max(criterion.scale.min_score, min(criterion.scale.max_score, score_val))
+
             scores.append(JudgeScore(
                 criterion=criterion_name,
-                score=int(raw_score.get("score", 0)),
+                score=score_val,
                 max_score=criterion.scale.max_score,
                 reasoning=raw_score.get("reasoning", ""),
                 evidence=raw_score.get("evidence", []),
@@ -415,9 +457,13 @@ class JudgeEvaluator:
             if not criterion:
                 continue
 
+            score_val = int(raw_score.get("score_a", 0))
+            # Clamp score
+            score_val = max(criterion.scale.min_score, min(criterion.scale.max_score, score_val))
+
             scores.append(JudgeScore(
                 criterion=criterion_name,
-                score=int(raw_score.get("score_a", 0)),
+                score=score_val,
                 max_score=criterion.scale.max_score,
                 reasoning=raw_score.get("reasoning", ""),
                 evidence=raw_score.get("evidence", []),
@@ -519,3 +565,25 @@ class JudgeEvaluator:
                     failures.append(score.criterion)
 
         return failures
+
+
+    def _validate_judge_response(
+        self,
+        raw: Dict[str, Any],
+        criteria: List[RubricCriterion],
+    ) -> None:
+        """Validate the structure of the judge LLM response."""
+        if "scores" not in raw:
+            raise ValueError("Judge response missing 'scores' key")
+        
+        if not isinstance(raw["scores"], list):
+            raise ValueError("Judge response 'scores' must be a list")
+
+        # Basic schema check for each score item
+        for item in raw["scores"]:
+            if not isinstance(item, dict):
+                raise ValueError("Score item must be a dictionary")
+            if "criterion" not in item:
+                raise ValueError("Score item missing 'criterion'")
+            if "score" not in item:
+                raise ValueError(f"Score item for '{item.get('criterion')}' missing 'score'")
