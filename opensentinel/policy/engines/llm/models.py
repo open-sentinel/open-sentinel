@@ -6,7 +6,7 @@ for state classification, drift detection, constraint evaluation, and interventi
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, List, Dict, Any
 
@@ -75,7 +75,7 @@ class StateTransition:
     confidence: float
     tier: ConfidenceTier
     drift_score: float
-    timestamp: datetime = field(default_factory=datetime.now)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
@@ -157,8 +157,8 @@ class SessionContext:
     last_intervention_turn: int = -1
     
     # Timestamps
-    created_at: datetime = field(default_factory=datetime.now)
-    last_updated_at: datetime = field(default_factory=datetime.now)
+    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     def get_state_sequence(self) -> List[str]:
         """Get chronological list of states visited."""
@@ -189,7 +189,7 @@ class SessionContext:
         if len(self.turn_window) > max_window:
             self.turn_window.pop(0)
         self.turn_count += 1
-        self.last_updated_at = datetime.now()
+        self.last_updated_at = datetime.now(timezone.utc)
 
     def record_transition(
         self,
@@ -212,7 +212,7 @@ class SessionContext:
         self.state_history.append(transition)
         self.current_state = to_state
         self.drift_score = drift_score
-        self.last_updated_at = datetime.now()
+        self.last_updated_at = datetime.now(timezone.utc)
 
     def clear_violation_buffer(self) -> None:
         """Clear the violation buffer after interventions."""

@@ -13,7 +13,6 @@ import logging
 import time
 from collections import OrderedDict
 from typing import Optional, Dict, Any, List
-from datetime import datetime, timezone
 from contextlib import contextmanager
 
 from opensentinel import __version__

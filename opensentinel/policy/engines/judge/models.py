@@ -6,7 +6,7 @@ for rubric-based evaluation, scoring, and verdict generation.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional, List, Dict, Any
 
@@ -64,7 +64,6 @@ class RubricCriterion:
     description: str
     scale: ScoreScale = ScoreScale.LIKERT_5
     weight: float = 1.0
-    fail_threshold: Optional[float] = None
     fail_threshold: Optional[float] = None
     score_descriptions: Dict[int, str] = field(default_factory=dict)
 
@@ -189,8 +188,8 @@ class JudgeSessionContext:
     turn_count: int = 0
     total_tokens_used: int = 0
     pending_intervention: Optional[str] = None
-    created_at: datetime = field(default_factory=datetime.now)
-    last_updated_at: datetime = field(default_factory=datetime.now)
+    created_at: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
+    last_updated_at: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
     def record_verdict(self, verdict: JudgeVerdict) -> None:
         """Record a verdict and update trends."""
@@ -198,7 +197,7 @@ class JudgeSessionContext:
         self.score_trend.append(verdict.composite_score)
         self.total_tokens_used += verdict.token_usage
         self.turn_count += 1
-        self.last_updated_at = datetime.now()
+        self.last_updated_at = datetime.now(tz=timezone.utc)
 
         if verdict.action in (VerdictAction.WARN, VerdictAction.INTERVENE, VerdictAction.BLOCK):
             action_key = verdict.action.value
