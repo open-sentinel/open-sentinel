@@ -128,17 +128,34 @@ llm:
   # Drift detection
   temporal_weight: 0.55          # default: 0.55
 
-  # Interventions
+  # Constraint evaluation
   cooldown_turns: 2              # default: 2
   max_constraints_per_batch: 5   # default: 5
+
+  # Intervention settings (engine-specific overrides)
+  intervention:
+    default_strategy: user_message_inject  # system_prompt_append | user_message_inject | hard_block
+    max_intervention_attempts: 3           # default: 3
+    include_headers: true                  # default: true
 
 # ---------------------------------------------------------------------------
 # FSM Engine — engine: fsm
 # ---------------------------------------------------------------------------
 # Requires `policy:` pointing to a workflow YAML file.
-# No additional config keys — the workflow file defines everything.
-# fsm:
-#   (reserved for future extension)
+fsm:
+  # State classifier configuration (embedding-based classification)
+  classifier:
+    model_name: all-MiniLM-L6-v2   # sentence-transformers model (default: all-MiniLM-L6-v2)
+    backend: pytorch               # pytorch | onnx (default: pytorch)
+    similarity_threshold: 0.7      # minimum similarity score (default: 0.7)
+    cache_embeddings: true         # cache computed embeddings (default: true)
+    device: cpu                    # inference device: cpu | cuda (default: cpu)
+
+  # Intervention settings
+  intervention:
+    default_strategy: system_prompt_append  # system_prompt_append | user_message_inject | hard_block
+    max_intervention_attempts: 3            # default: 3
+    include_headers: true                   # default: true
 
 # ---------------------------------------------------------------------------
 # NeMo Guardrails Engine — engine: nemo
