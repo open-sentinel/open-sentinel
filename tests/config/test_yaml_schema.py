@@ -334,18 +334,48 @@ class TestTracingMapping:
 
 
 class TestInterventionMapping:
-    def test_intervention_settings(self):
+    def test_intervention_nested_under_fsm(self):
         result = _build_source({
+            "engine": "fsm",
+            "fsm": {
+                "intervention": {
+                    "default_strategy": "hard_block",
+                    "max_intervention_attempts": 5,
+                    "include_headers": False,
+                },
+            },
+        })._map_to_settings()
+        cfg = _get_engine_config(result)
+        assert cfg["intervention"]["default_strategy"] == "hard_block"
+        assert cfg["intervention"]["max_intervention_attempts"] == 5
+        assert cfg["intervention"]["include_headers"] is False
+
+    def test_intervention_nested_under_llm(self):
+        result = _build_source({
+            "engine": "llm",
+            "llm": {
+                "intervention": {
+                    "default_strategy": "user_message_inject",
+                    "max_intervention_attempts": 3,
+                },
+            },
+        })._map_to_settings()
+        cfg = _get_engine_config(result)
+        assert cfg["intervention"]["default_strategy"] == "user_message_inject"
+        assert cfg["intervention"]["max_intervention_attempts"] == 3
+
+    def test_toplevel_intervention_deprecated_fallback(self):
+        """Top-level intervention: should still work via backward-compat fallback."""
+        result = _build_source({
+            "engine": "fsm",
             "intervention": {
                 "default_strategy": "hard_block",
                 "max_intervention_attempts": 5,
-                "include_headers": False,
             },
         })._map_to_settings()
-        intervention = result["intervention"]
-        assert intervention["default_strategy"] == "hard_block"
-        assert intervention["max_intervention_attempts"] == 5
-        assert intervention["include_headers"] is False
+        cfg = _get_engine_config(result)
+        assert cfg["intervention"]["default_strategy"] == "hard_block"
+        assert cfg["intervention"]["max_intervention_attempts"] == 5
 
 
 # =========================================================================
@@ -354,22 +384,38 @@ class TestInterventionMapping:
 
 
 class TestClassifierMapping:
-    def test_classifier_settings(self):
+    def test_classifier_nested_under_fsm(self):
         result = _build_source({
-            "classifier": {
-                "model_name": "all-MiniLM-L12-v2",
-                "backend": "onnx",
-                "similarity_threshold": 0.85,
-                "cache_embeddings": False,
-                "device": "cuda",
+            "engine": "fsm",
+            "fsm": {
+                "classifier": {
+                    "model_name": "all-MiniLM-L12-v2",
+                    "backend": "onnx",
+                    "similarity_threshold": 0.85,
+                    "cache_embeddings": False,
+                    "device": "cuda",
+                },
             },
         })._map_to_settings()
-        classifier = result["classifier"]
-        assert classifier["model_name"] == "all-MiniLM-L12-v2"
-        assert classifier["backend"] == "onnx"
-        assert classifier["similarity_threshold"] == 0.85
-        assert classifier["cache_embeddings"] is False
-        assert classifier["device"] == "cuda"
+        cfg = _get_engine_config(result)
+        assert cfg["classifier"]["model_name"] == "all-MiniLM-L12-v2"
+        assert cfg["classifier"]["backend"] == "onnx"
+        assert cfg["classifier"]["similarity_threshold"] == 0.85
+        assert cfg["classifier"]["cache_embeddings"] is False
+        assert cfg["classifier"]["device"] == "cuda"
+
+    def test_toplevel_classifier_deprecated_fallback(self):
+        """Top-level classifier: should still work via backward-compat fallback."""
+        result = _build_source({
+            "engine": "fsm",
+            "classifier": {
+                "model_name": "custom-model",
+                "backend": "onnx",
+            },
+        })._map_to_settings()
+        cfg = _get_engine_config(result)
+        assert cfg["classifier"]["model_name"] == "custom-model"
+        assert cfg["classifier"]["backend"] == "onnx"
 
 
 # =========================================================================
@@ -411,6 +457,10 @@ class TestCombinedYAML:
                 "model": "gpt-4o-mini",
                 "temperature": 0.1,
                 "cooldown_turns": 3,
+                "intervention": {
+                    "default_strategy": "user_message_inject",
+                    "max_intervention_attempts": 5,
+                },
             },
         })._map_to_settings()
 
@@ -422,6 +472,8 @@ class TestCombinedYAML:
         assert cfg["llm_model"] == "gpt-4o-mini"
         assert cfg["temperature"] == 0.1
         assert cfg["cooldown_turns"] == 3
+        assert cfg["intervention"]["default_strategy"] == "user_message_inject"
+        assert cfg["intervention"]["max_intervention_attempts"] == 5
 
     def test_model_and_judge_model_coexist(self):
         """Top-level model sets proxy default; judge.model overrides for the engine."""
