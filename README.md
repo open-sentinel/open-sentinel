@@ -1,4 +1,28 @@
-# Open Sentinel
+<p align="center">
+<pre align="center">
+ ██████╗ ██████╗ ███████╗███╗   ██╗
+██╔═══██╗██╔══██╗██╔════╝████╗  ██║
+██║   ██║██████╔╝█████╗  ██╔██╗ ██║
+██║   ██║██╔═══╝ ██╔══╝  ██║╚██╗██║
+╚██████╔╝██║     ███████╗██║ ╚████║
+ ╚═════╝ ╚═╝     ╚══════╝╚═╝  ╚═══╝
+███████╗███████╗███╗   ██╗████████╗██╗███╗   ██╗███████╗██╗
+██╔════╝██╔════╝████╗  ██║╚══██╔══╝██║████╗  ██║██╔════╝██║
+███████╗█████╗  ██╔██╗ ██║   ██║   ██║██╔██╗ ██║█████╗  ██║
+╚════██║██╔══╝  ██║╚██╗██║   ██║   ██║██║╚██╗██║██╔══╝  ██║
+     ███████║███████╗██║ ╚████║   ██║   ██║██║ ╚████║███████╗███████╗
+     ╚══════╝╚══════╝╚═╝  ╚═══╝   ╚═╝   ╚═╝╚═╝  ╚═══╝╚══════╝╚══════╝
+</pre>
+</p>
+
+<p align="center"><em>Reliability layer for AI agents — define rules, monitor responses, intervene automatically.</em></p>
+
+<p align="center">
+  <a href="https://pypi.org/project/opensentinel"><img src="https://img.shields.io/pypi/v/opensentinel?color=blue" alt="PyPI"></a>
+  <a href="https://pypi.org/project/opensentinel"><img src="https://img.shields.io/pypi/pyversions/opensentinel" alt="Python"></a>
+  <a href="https://github.com/open-sentinel/open-sentinel/blob/main/LICENSE"><img src="https://img.shields.io/github/license/open-sentinel/open-sentinel" alt="License"></a>
+  <!-- <a href="https://github.com/open-sentinel/open-sentinel/actions"><img src="https://img.shields.io/github/actions/workflow/status/open-sentinel/open-sentinel/ci.yml" alt="CI"></a> -->
+</p>
 
 Open Sentinel is a transparent proxy that monitors LLM API calls and enforces policies on AI agent behavior. Point your LLM client at the proxy, define rules in YAML, and every response is evaluated before it reaches the user.
 
