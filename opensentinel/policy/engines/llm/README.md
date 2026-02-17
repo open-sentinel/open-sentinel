@@ -7,11 +7,11 @@
 The LLM engine is Open Sentinel' **intelligence-based** policy engine. Instead of relying on deterministic pattern matching, it uses a lightweight LLM (e.g., `gpt-4o-mini`) as a reasoning backbone to classify states, detect behavioral drift, and evaluate soft constraints that are difficult to express as regex or tool-call matches.
 
 **Key characteristics:**
-- 🧠 **LLM-powered** — Uses a sidecar LLM for nuanced classification and evaluation
-- 📊 **Confidence-tiered** — Three-tier confidence system (CONFIDENT / UNCERTAIN / LOST)
-- 📈 **Drift detection** — Combines temporal and semantic drift signals
-- 🔄 **Same workflow schema** — Reuses `WorkflowDefinition` from FSM engine; swap engines without rewriting policies
-- 💬 **Evidence memory** — Accumulates constraint evaluation evidence across turns
+- **LLM-powered** — Uses a sidecar LLM for nuanced classification and evaluation
+- **Confidence-tiered** — Three-tier confidence system (CONFIDENT / UNCERTAIN / LOST)
+- **Drift detection** — Combines temporal and semantic drift signals
+- **Same workflow schema** — Reuses `WorkflowDefinition` from FSM engine; swap engines without rewriting policies
+- **Evidence memory** — Accumulates constraint evaluation evidence across turns
 
 ```
 Response ──► evaluate_response()
