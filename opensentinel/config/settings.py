@@ -147,7 +147,7 @@ class PolicyEngineConfig(BaseModel):
 
     # Accepts any registered engine type — not hard-coded to a fixed set.
     # See PolicyEngineRegistry.list_engines() for available types at runtime.
-    type: str = "nemo"
+    type: str = "judge"
     enabled: bool = True
     # Unified configuration path (can be set via OSNTL_POLICY__ENGINE__CONFIG_PATH)
     config_path: Optional[str] = None
@@ -280,6 +280,11 @@ class YamlConfigSource(PydanticBaseSettingsSource):
             self._yaml_data = data if isinstance(data, dict) else {}
             logger.debug(f"Loaded config from {path}")
         except Exception as e:
+            # If a specific config path was provided, we must not silent-fail
+            if self._config_path:
+                logger.error(f"Failed to load config from {self._config_path}: {e}")
+                raise
+
             logger.warning(f"Failed to load config from {path}: {e}")
             self._yaml_data = {}
 
@@ -532,6 +537,7 @@ class SentinelSettings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
+        populate_by_name=True, # Allow initializing with field names even if aliases are set
     )
 
     # Path to osentinel.yaml (set via _config_path kwarg, not a real setting field)
@@ -548,9 +554,44 @@ class SentinelSettings(BaseSettings):
     # Policy engine configuration
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
 
+    # API Keys (loaded from env vars or .env file)
+    # We use validation_alias to bypass the OSNTL_ prefix for these standard keys
+    openai_api_key: Optional[str] = Field(None, validation_alias="OPENAI_API_KEY")
+    anthropic_api_key: Optional[str] = Field(None, validation_alias="ANTHROPIC_API_KEY")
+    google_api_key: Optional[str] = Field(None, validation_alias="GOOGLE_API_KEY")
+    gemini_api_key: Optional[str] = Field(None, validation_alias="GEMINI_API_KEY")
+    groq_api_key: Optional[str] = Field(None, validation_alias="GROQ_API_KEY")
+    togetherai_api_key: Optional[str] = Field(None, validation_alias="TOGETHERAI_API_KEY")
+    openrouter_api_key: Optional[str] = Field(None, validation_alias="OPENROUTER_API_KEY")
+
     def __init__(self, _config_path: Optional[str] = None, **kwargs: Any):
         self.__class__._config_path = _config_path
         super().__init__(**kwargs)
+        
+        # Sync API keys to os.environ for downstream libraries (LiteLLM, LangChain)
+        # This allows us to use .env files without explicit load_dotenv() in CLI
+        self._sync_env_var("OPENAI_API_KEY", self.openai_api_key)
+        self._sync_env_var("ANTHROPIC_API_KEY", self.anthropic_api_key)
+        self._sync_env_var("GOOGLE_API_KEY", self.google_api_key)
+        self._sync_env_var("GEMINI_API_KEY", self.gemini_api_key)
+        self._sync_env_var("GROQ_API_KEY", self.groq_api_key)
+        self._sync_env_var("TOGETHERAI_API_KEY", self.togetherai_api_key)
+        self._sync_env_var("OPENROUTER_API_KEY", self.openrouter_api_key)
+
+        # Re-evaluate auto-detection if we're using the fallback default
+        # and better options are available via strictly loaded keys
+        if self.proxy.default_model == "gpt-4o-mini" and not self.openai_api_key:
+            if self.google_api_key or self.gemini_api_key:
+                self.proxy.default_model = "gemini/gemini-2.5-flash"
+                logger.info("Auto-detected Gemini model based on API key")
+            elif self.anthropic_api_key:
+                self.proxy.default_model = "anthropic/claude-sonnet-4-5"
+                logger.info("Auto-detected Claude model based on API key")
+
+    def _sync_env_var(self, key: str, value: Optional[str]) -> None:
+        """Set env var if present in settings but missing in os.environ."""
+        if value and not os.getenv(key):
+            os.environ[key] = value
 
     @classmethod
     def settings_customise_sources(
@@ -632,3 +673,27 @@ class SentinelSettings(BaseSettings):
                 )
 
         return model_list
+
+    def validate(self) -> None:
+        """Validate configuration logic."""
+        # 1. Check if policy config path exists
+        # Check both the unified 'config_path' field and within the 'config' dictionary
+        policy_config_path = self.policy.engine.config_path or self.policy.engine.config.get("config_path")
+        
+        if policy_config_path and not Path(policy_config_path).exists():
+            raise ValueError(
+                f"Policy configuration file not found: {policy_config_path}"
+            )
+
+        default_model = self.proxy.default_model
+        
+        if "gpt" in default_model and not self.openai_api_key:
+            raise ValueError("OPENAI_API_KEY not found (required for OpenAI models)")
+        if "gemini" in default_model and not (
+            self.google_api_key or self.gemini_api_key
+        ):
+            raise ValueError("GOOGLE_API_KEY not found (required for Gemini models)")
+        if "claude" in default_model and not self.anthropic_api_key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY not found (required for Anthropic models)"
+            )

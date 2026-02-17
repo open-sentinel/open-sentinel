@@ -82,12 +82,22 @@ def serve(port: int, host: str, config: Path, debug: bool):
 
     click.echo(f"Starting Open Sentinel proxy on {host}:{port}")
 
-    settings = SentinelSettings(
-        _config_path=str(config) if config else None,
-        debug=debug,
-    )
-    settings.proxy.host = host
-    settings.proxy.port = port
+    try:
+        settings = SentinelSettings(
+            _config_path=str(config) if config else None,
+            debug=debug,
+        )
+        settings.proxy.host = host
+        settings.proxy.port = port
+        settings.validate()
+        
+    except Exception as e:
+        click.echo(click.style(f"Configuration Error: {e}", fg="red"), err=True)
+        # In debug mode, show the full traceback for context
+        if debug:
+            import traceback
+            traceback.print_exc()
+        raise SystemExit(1)
 
     try:
         start_proxy(settings)
