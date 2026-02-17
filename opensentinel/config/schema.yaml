@@ -67,7 +67,7 @@ log_level: INFO        # default: INFO
 # ---------------------------------------------------------------------------
 judge:
   # LLM model for the judge (overrides global `model`).
-  model: gpt-4o-mini
+  model: anthropic/claude-sonnet-4-5
 
   # Reliability preset: safe | balanced | aggressive
   # Sets sensible defaults for thresholds and behavior.
@@ -100,12 +100,12 @@ judge:
   # Advanced: explicit multi-model config (overrides `model` above)
   # models:
   #   - name: primary
-  #     model: gpt-4o-mini
+  #     model: anthropic/claude-sonnet-4-5
   #     temperature: 0.0
   #     max_tokens: 2048
   #     timeout: 15.0
   #   - name: secondary
-  #     model: anthropic/claude-sonnet-4-5
+  #     model: gpt-4o-mini
   #     temperature: 0.0
 
 # ---------------------------------------------------------------------------
@@ -182,7 +182,7 @@ composite:
       config:
         models:
           - name: primary
-            model: gpt-4o-mini
+            model: anthropic/claude-sonnet-4-5
         inline_policy:
           - "No financial advice"
     - type: fsm

@@ -5,7 +5,7 @@ port: 4000
 judge:
   mode: balanced
   verbose: true
-  # model: gpt-4o-mini  # uncomment to override global model for judge after setting OPENAI_API_KEY
+  # model: anthropic/claude-sonnet-4-5  # uncomment to override global model for judge after setting ANTHROPIC_API_KEY
 
 policy:
   - "Must NOT provide personalized financial advice or investment strategies"
