@@ -47,7 +47,7 @@ def test_tracer_disabled(mock_otel):
     mock_otel["trace"].set_tracer_provider.assert_not_called()
 
 def test_log_event(mock_otel):
-    config = OTelConfig(enabled=True)
+    config = OTelConfig(enabled=True, exporter_type="otlp")
     tracer = SentinelTracer(config)
     
     # Mock span context manager
@@ -69,7 +69,7 @@ def test_log_event(mock_otel):
     assert any(call.args[0] == "opensentinel.output.res" for call in calls)
 
 def test_log_llm_call(mock_otel):
-    config = OTelConfig(enabled=True)
+    config = OTelConfig(enabled=True, exporter_type="otlp")
     tracer = SentinelTracer(config)
     
     mock_span = MagicMock()
@@ -102,7 +102,7 @@ def test_log_llm_call(mock_otel):
     mock_span.set_attribute.assert_any_call("llm.total_tokens", 100)
 
 def test_shutdown(mock_otel):
-    config = OTelConfig(enabled=True)
+    config = OTelConfig(enabled=True, exporter_type="otlp")
     tracer = SentinelTracer(config)
     
     tracer.shutdown()
@@ -122,7 +122,7 @@ class TestSessionEviction:
 
     def test_stale_sessions_evicted_by_ttl(self, mock_otel):
         """Sessions older than session_ttl_seconds should be ended and removed."""
-        config = OTelConfig(enabled=True)
+        config = OTelConfig(enabled=True, exporter_type="otlp")
         tracer = SentinelTracer(config, session_ttl_seconds=2)
 
         # Create session spans
@@ -152,7 +152,7 @@ class TestSessionEviction:
 
     def test_active_session_refreshed_on_access(self, mock_otel):
         """Accessing an existing session should refresh its timestamp so it isn't evicted."""
-        config = OTelConfig(enabled=True)
+        config = OTelConfig(enabled=True, exporter_type="otlp")
         tracer = SentinelTracer(config, session_ttl_seconds=10)
 
         mock_span = MagicMock()
@@ -170,7 +170,7 @@ class TestSessionEviction:
 
     def test_max_sessions_cap(self, mock_otel):
         """When max_sessions is exceeded, oldest sessions should be evicted."""
-        config = OTelConfig(enabled=True)
+        config = OTelConfig(enabled=True, exporter_type="otlp")
         tracer = SentinelTracer(config, max_sessions=3, session_ttl_seconds=9999)
 
         spans = [MagicMock() for _ in range(5)]
@@ -192,7 +192,7 @@ class TestSessionEviction:
 
     def test_end_trace_cleans_up_timestamps(self, mock_otel):
         """end_trace should remove the session from both tracking dicts."""
-        config = OTelConfig(enabled=True)
+        config = OTelConfig(enabled=True, exporter_type="otlp")
         tracer = SentinelTracer(config)
 
         mock_span = MagicMock()
@@ -208,7 +208,7 @@ class TestSessionEviction:
 
     def test_default_ttl_and_max_sessions(self, mock_otel):
         """Verify default values are applied when not explicitly provided."""
-        config = OTelConfig(enabled=True)
+        config = OTelConfig(enabled=True, exporter_type="otlp")
         tracer = SentinelTracer(config)
 
         assert tracer._session_ttl == SentinelTracer.DEFAULT_SESSION_TTL
@@ -216,14 +216,14 @@ class TestSessionEviction:
 
     def test_custom_ttl_zero_allowed(self, mock_otel):
         """A TTL of 0 should be allowed (immediate eviction of all prior sessions)."""
-        config = OTelConfig(enabled=True)
+        config = OTelConfig(enabled=True, exporter_type="otlp")
         tracer = SentinelTracer(config, session_ttl_seconds=0)
 
         assert tracer._session_ttl == 0
 
     def test_shutdown_cleans_all_sessions(self, mock_otel):
         """shutdown() should end all remaining sessions and clear tracking."""
-        config = OTelConfig(enabled=True)
+        config = OTelConfig(enabled=True, exporter_type="otlp")
         tracer = SentinelTracer(config)
 
         spans = [MagicMock() for _ in range(3)]
