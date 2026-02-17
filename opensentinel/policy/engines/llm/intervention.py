@@ -63,10 +63,13 @@ class InterventionHandler:
         workflow: WorkflowDefinition,
         cooldown_turns: int = 2,
         self_correction_margin: float = 0.1,
+        max_intervention_attempts: int = 3,
     ):
         self.workflow = workflow
         self.cooldown_turns = cooldown_turns
         self.self_correction_margin = self_correction_margin
+        self.max_intervention_attempts = max_intervention_attempts
+        self._intervention_counts: Dict[str, int] = {}
 
     def decide(
         self,
@@ -84,12 +87,21 @@ class InterventionHandler:
         Returns:
             InterventionConfig if intervention needed, None otherwise
         """
+        # Check max intervention attempts
+        session_count = self._intervention_counts.get(session.session_id, 0)
+        if session_count >= self.max_intervention_attempts:
+            logger.warning(
+                f"Session {session.session_id} exceeded max intervention attempts "
+                f"({session_count}/{self.max_intervention_attempts})"
+            )
+            return None
+
         # Check for critical violations that bypass cooldown
         has_critical = any(
             v.severity == "critical" and v.violated
             for v in violations
         )
-        
+
         # Cooldown check (skip if critical)
         if not has_critical:
             turns_since_intervention = session.turn_count - session.last_intervention_turn
@@ -189,9 +201,12 @@ class InterventionHandler:
         # Apply intervention
         modified_data = strategy.apply(data, config, context)
         
-        # Update session
+        # Update session and track count
         session.last_intervention_turn = session.turn_count
-        
+        self._intervention_counts[session.session_id] = (
+            self._intervention_counts.get(session.session_id, 0) + 1
+        )
+
         logger.info(
             f"Applied {config.strategy_type.value} intervention for "
             f"session {session.session_id}"
