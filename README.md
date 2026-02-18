@@ -39,11 +39,11 @@ Your App  ──▶  Open Sentinel  ──▶  LLM Provider
 ```bash
 pip install opensentinel
 export ANTHROPIC_API_KEY=sk-ant-...    # or GEMINI_API_KEY, OPENAI_API_KEY
-osentinel init
+osentinel init                         # interactive setup
 osentinel serve
 ```
 
-That's it. `osentinel init` creates a minimal `osentinel.yaml`:
+That's it. `osentinel init` guides you to create a starter `osentinel.yaml`:
 
 ```yaml
 policy:
@@ -74,7 +74,7 @@ Every call now runs through your policy. The judge engine (default) scores each 
 You can also compile rules from natural language:
 
 ```bash
-osentinel init --from "customer support bot, verify identity before refunds, never share internal pricing"
+osentinel compile "customer support bot, verify identity before refunds, never share internal pricing"
 ```
 
 ## How It Works
@@ -178,9 +178,8 @@ Full reference: [docs/configuration.md](docs/configuration.md)
 
 ```bash
 # Bootstrap a project
-osentinel init -i                                         # interactive wizard
-osentinel init                                            # creates osentinel.yaml with defaults
-osentinel init --from "no PII, professional tone only"    # compile rules from English
+osentinel init                                            # interactive wizard
+osentinel init --quick                                    # non-interactive defaults
 
 # Run
 osentinel serve                         # start proxy (default: 0.0.0.0:4000)
