@@ -37,23 +37,6 @@ async def test_initialization(engine, mocks):
     assert engine.engine_type == "fsm"
 
 @pytest.mark.asyncio
-async def test_evaluate_request_pending_intervention(engine, mocks):
-    # Setup initialized engine
-    mock_workflow = MagicMock(name="test_workflow", states=[], constraints=[])
-    mocks["parser"]().parse_dict.return_value = mock_workflow
-    await engine.initialize({"workflow": {}})
-    
-    # Mock session with pending intervention
-    mock_session = MagicMock()
-    mock_session.pending_intervention = "human_approval"
-    mocks["sm"].return_value.get_or_create_session = AsyncMock(return_value=mock_session)
-    
-    result = await engine.evaluate_request("sid", {}, {})
-    
-    assert result.decision == PolicyDecision.MODIFY
-    assert result.intervention_needed == "human_approval"
-
-@pytest.mark.asyncio
 async def test_evaluate_response_success(engine, mocks):
     mock_workflow = MagicMock(name="test_workflow", states=[], constraints=[])
     mocks["parser"]().parse_dict.return_value = mock_workflow
@@ -106,14 +89,12 @@ async def test_evaluate_response_with_violations(engine, mocks):
     mocks["constraints"].return_value.evaluate_all.return_value = [violation]
     
     mocks["sm"].return_value.transition = AsyncMock(return_value=(TransitionResult.SUCCESS, None))
-    mocks["sm"].return_value.set_pending_intervention = AsyncMock()
-    
+
     result = await engine.evaluate_response("sid", "response", {})
-    
+
     assert result.decision == PolicyDecision.DENY
     assert len(result.violations) == 1
     assert result.intervention_needed == "block"
-    mocks["sm"].return_value.set_pending_intervention.assert_called_with("sid", "block")
 
 @pytest.mark.asyncio
 async def test_initialization_with_config_path(engine, mocks):

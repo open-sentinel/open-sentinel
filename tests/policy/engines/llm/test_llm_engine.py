@@ -97,10 +97,10 @@ class TestEvaluateRequest:
         assert result.decision == PolicyDecision.ALLOW
 
     @pytest.mark.asyncio
-    async def test_allow_when_no_pending_intervention(self, engine, sample_workflow):
-        """Should allow when no pending intervention."""
+    async def test_allow_when_initialized(self, engine, sample_workflow):
+        """Initialized engine should allow requests (pass-through)."""
         await engine.initialize({"workflow": sample_workflow})
-        
+
         result = await engine.evaluate_request("session1", {"messages": []})
         assert result.decision == PolicyDecision.ALLOW
 
@@ -174,11 +174,15 @@ class TestSessionManagement:
     async def test_reset_session(self, engine, sample_workflow):
         """Test resetting session."""
         await engine.initialize({"workflow": sample_workflow})
-        
-        # Create a session by evaluating a request
-        await engine.evaluate_request("session1", {"messages": []})
+
+        # Create a session by evaluating a response
+        await engine.evaluate_response(
+            "session1",
+            {"choices": [{"message": {"content": "Hello!"}}]},
+            {"messages": []},
+        )
         assert "session1" in engine._sessions
-        
+
         # Reset it
         await engine.reset_session("session1")
         assert "session1" not in engine._sessions
@@ -187,9 +191,13 @@ class TestSessionManagement:
     async def test_get_session_state(self, engine, sample_workflow):
         """Test getting session state dict."""
         await engine.initialize({"workflow": sample_workflow})
-        
-        # Create session via evaluate_request
-        await engine.evaluate_request("session1", {"messages": []})
+
+        # Create session via evaluate_response
+        await engine.evaluate_response(
+            "session1",
+            {"choices": [{"message": {"content": "Hello!"}}]},
+            {"messages": []},
+        )
         
         state = await engine.get_session_state("session1")
         assert state is not None
@@ -212,11 +220,12 @@ class TestShutdown:
     async def test_shutdown_clears_sessions(self, engine, sample_workflow):
         """Test that shutdown clears sessions."""
         await engine.initialize({"workflow": sample_workflow})
-        
-        # Create some sessions via evaluate_request
-        await engine.evaluate_request("session1", {"messages": []})
-        await engine.evaluate_request("session2", {"messages": []})
+
+        # Create some sessions via evaluate_response
+        response = {"choices": [{"message": {"content": "Hi"}}]}
+        await engine.evaluate_response("session1", response, {"messages": []})
+        await engine.evaluate_response("session2", response, {"messages": []})
         assert len(engine._sessions) == 2
-        
+
         await engine.shutdown()
         assert len(engine._sessions) == 0

@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock
 from opensentinel.core.interceptor import (
     CheckPhase,
     CheckerMode,
-    CheckDecision,
     CheckerContext,
 )
 from opensentinel.core.interceptor.adapters import PolicyEngineChecker
@@ -96,25 +95,78 @@ class TestPhaseRouting:
 class TestDecisionMapping:
 
     @pytest.mark.parametrize(
-        "policy_decision, expected_check_decision",
+        "policy_decision, expected_decision",
         [
-            (PolicyDecision.ALLOW, CheckDecision.PASS),
-            (PolicyDecision.DENY, CheckDecision.FAIL),
-            (PolicyDecision.MODIFY, CheckDecision.WARN),
-            (PolicyDecision.WARN, CheckDecision.WARN),
+            (PolicyDecision.ALLOW, PolicyDecision.ALLOW),
+            (PolicyDecision.DENY, PolicyDecision.DENY),
+            (PolicyDecision.MODIFY, PolicyDecision.DENY),  # SYNC coerces MODIFY→DENY
+            (PolicyDecision.WARN, PolicyDecision.ALLOW),   # SYNC coerces WARN→ALLOW
         ],
     )
-    async def test_decision_mapping(self, policy_decision, expected_check_decision):
-        """PolicyDecision maps correctly to CheckDecision."""
+    async def test_sync_decision_mapping(self, policy_decision, expected_decision):
+        """SYNC mode: ALLOW/DENY pass through, MODIFY→DENY, WARN→ALLOW."""
         engine = _mock_engine()
         engine.evaluate_request.return_value = PolicyEvaluationResult(
             decision=policy_decision
         )
 
-        checker = PolicyEngineChecker(engine=engine, phase=CheckPhase.PRE_CALL)
+        checker = PolicyEngineChecker(
+            engine=engine, phase=CheckPhase.PRE_CALL, mode=CheckerMode.SYNC
+        )
         result = await checker.check(_context())
 
-        assert result.decision == expected_check_decision
+        assert result.decision == expected_decision
+
+    @pytest.mark.parametrize(
+        "policy_decision",
+        [PolicyDecision.ALLOW, PolicyDecision.DENY, PolicyDecision.MODIFY, PolicyDecision.WARN],
+    )
+    async def test_async_decision_passthrough(self, policy_decision):
+        """ASYNC mode: all decisions pass through unchanged."""
+        engine = _mock_engine()
+        engine.evaluate_request.return_value = PolicyEvaluationResult(
+            decision=policy_decision
+        )
+
+        checker = PolicyEngineChecker(
+            engine=engine, phase=CheckPhase.PRE_CALL, mode=CheckerMode.ASYNC
+        )
+        result = await checker.check(_context())
+
+        assert result.decision == policy_decision
+
+    async def test_sync_modify_strips_modified_data(self):
+        """SYNC mode: MODIFY coercion also strips modified_data."""
+        engine = _mock_engine()
+        engine.evaluate_request.return_value = PolicyEvaluationResult(
+            decision=PolicyDecision.MODIFY,
+            modified_request={"system_prompt_append": "Be safe"},
+        )
+
+        checker = PolicyEngineChecker(
+            engine=engine, phase=CheckPhase.PRE_CALL, mode=CheckerMode.SYNC
+        )
+        result = await checker.check(_context())
+
+        assert result.decision == PolicyDecision.DENY
+        assert result.modified_data is None
+
+    async def test_async_modify_keeps_modified_data(self):
+        """ASYNC mode: MODIFY keeps modified_data."""
+        engine = _mock_engine()
+        engine.evaluate_request.return_value = PolicyEvaluationResult(
+            decision=PolicyDecision.MODIFY,
+            modified_request={"system_prompt_append": "Be safe"},
+        )
+
+        checker = PolicyEngineChecker(
+            engine=engine, phase=CheckPhase.PRE_CALL, mode=CheckerMode.ASYNC
+        )
+        result = await checker.check(_context())
+
+        assert result.decision == PolicyDecision.MODIFY
+        assert result.modified_data is not None
+        assert result.modified_data["system_prompt_append"] == "Be safe"
 
 
 # ===========================================================================
@@ -125,14 +177,16 @@ class TestDecisionMapping:
 class TestDataForwarding:
 
     async def test_modified_request_forwarded(self):
-        """modified_request from engine maps to CheckResult.modified_data."""
+        """modified_request from engine maps to CheckResult.modified_data (ASYNC mode)."""
         engine = _mock_engine()
         engine.evaluate_request.return_value = PolicyEvaluationResult(
             decision=PolicyDecision.MODIFY,
             modified_request={"messages": [{"role": "system", "content": "injected"}]},
         )
 
-        checker = PolicyEngineChecker(engine=engine, phase=CheckPhase.PRE_CALL)
+        checker = PolicyEngineChecker(
+            engine=engine, phase=CheckPhase.PRE_CALL, mode=CheckerMode.ASYNC
+        )
         result = await checker.check(_context())
 
         assert result.modified_data is not None
@@ -176,7 +230,7 @@ class TestDataForwarding:
         assert ";" in result.message
 
     async def test_intervention_as_modified_data(self):
-        """When engine sets intervention_needed with metadata, it maps to modified_data."""
+        """When engine sets intervention_needed with metadata, it maps to modified_data (ASYNC)."""
         engine = _mock_engine()
         engine.evaluate_request.return_value = PolicyEvaluationResult(
             decision=PolicyDecision.WARN,
@@ -184,7 +238,9 @@ class TestDataForwarding:
             metadata={"correction": "Do X instead"},
         )
 
-        checker = PolicyEngineChecker(engine=engine, phase=CheckPhase.PRE_CALL)
+        checker = PolicyEngineChecker(
+            engine=engine, phase=CheckPhase.PRE_CALL, mode=CheckerMode.ASYNC
+        )
         result = await checker.check(_context())
 
         assert result.modified_data is not None
@@ -207,7 +263,7 @@ class TestErrorHandling:
         checker = PolicyEngineChecker(engine=engine, phase=CheckPhase.PRE_CALL)
         result = await checker.check(_context())
 
-        assert result.decision == CheckDecision.FAIL
+        assert result.decision == PolicyDecision.DENY
         assert "engine exploded" in result.message
 
 

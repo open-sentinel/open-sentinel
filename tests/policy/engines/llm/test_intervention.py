@@ -222,21 +222,21 @@ class TestCriticalBypassCooldown:
 class TestSelfCorrection:
     """Tests for self-correction detection."""
 
-    def test_self_correction_cancels_pending(self, engine, session):
-        """Decreasing drift should cancel pending intervention."""
-        session.pending_intervention = {"strategy_type": "system_prompt_append"}
+    def test_self_correction_skips_intervention(self, engine, session):
+        """Decreasing drift should skip intervention."""
+        session.last_intervention_turn = 0  # Previous intervention happened
         session.drift_score = 0.6  # Previous drift
-        
+        session.turn_count = 5  # Past cooldown
+
         # Current drift is lower (agent self-correcting)
         current_drift = DriftScores(
             temporal=0.2, semantic=0.2, composite=0.2, level=DriftLevel.NOMINAL
         )
-        
+
         result = engine.decide(session, [], current_drift)
-        
-        # Should return None (intervention canceled)
+
+        # Should return None (intervention skipped due to self-correction)
         assert result is None
-        assert session.pending_intervention is None
 
 
 class TestEscalation:

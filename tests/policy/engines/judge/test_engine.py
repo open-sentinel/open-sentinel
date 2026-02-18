@@ -149,16 +149,6 @@ class TestEvaluateRequest:
         result = await engine.evaluate_request("s1", sample_request)
         assert result.decision == PolicyDecision.ALLOW
 
-    @pytest.mark.asyncio
-    async def test_applies_pending_intervention(self, engine, judge_config, sample_request):
-        await engine.initialize(judge_config)
-        session = engine._get_or_create_session("s1")
-        session.pending_intervention = "Please stay on topic."
-
-        result = await engine.evaluate_request("s1", sample_request)
-        assert result.decision == PolicyDecision.MODIFY
-        assert result.modified_request is not None
-        assert session.pending_intervention is None
 
 
 class TestEvaluateResponse:

@@ -2,12 +2,12 @@
 Comprehensive tests for the Interceptor orchestrator.
 
 Covers:
-- Sync PRE_CALL checker flow (pass, fail, warn/modify, chaining, short-circuit)
-- Sync POST_CALL checker flow (pass, fail, warn/modify)
+- Sync PRE_CALL checker flow (pass, fail, short-circuit)
+- Sync POST_CALL checker flow (pass, fail)
 - Async checker lifecycle (fire, collect, cross-request handoff)
 - Async edge cases (task failure, still-running, cleanup, shutdown)
 - Modification merging (messages append, system_prompt_append, key replace)
-- Response modification (full replacement, dict merge, immutable response)
+- Interceptor init categorization (4 buckets)
 """
 
 import asyncio
@@ -19,7 +19,7 @@ from opensentinel.core.interceptor import (
     Checker,
     CheckPhase,
     CheckerMode,
-    CheckDecision,
+    PolicyDecision,
     CheckResult,
     CheckerContext,
 )
@@ -44,7 +44,7 @@ class FakeChecker(Checker):
         checker_name: str = "fake",
         phase: CheckPhase = CheckPhase.PRE_CALL,
         mode: CheckerMode = CheckerMode.SYNC,
-        decision: CheckDecision = CheckDecision.PASS,
+        decision: PolicyDecision = PolicyDecision.ALLOW,
         modified_data: Optional[Dict[str, Any]] = None,
         message: Optional[str] = None,
         delay: float = 0,
@@ -105,7 +105,7 @@ def _request(content: str = "hello") -> Dict[str, Any]:
 class TestSyncPreCall:
 
     async def test_pass_unchanged(self):
-        """Single PASS checker — request goes through unchanged."""
+        """Single ALLOW checker — request goes through unchanged."""
         checker = FakeChecker(phase=CheckPhase.PRE_CALL)
         interceptor = Interceptor([checker])
 
@@ -114,13 +114,13 @@ class TestSyncPreCall:
         assert result.allowed is True
         assert result.modified_data is None
         assert len(result.results) == 1
-        assert result.results[0].decision == CheckDecision.PASS
+        assert result.results[0].decision == PolicyDecision.ALLOW
 
     async def test_fail_blocks(self):
-        """FAIL checker blocks the request."""
+        """DENY checker blocks the request."""
         checker = FakeChecker(
             phase=CheckPhase.PRE_CALL,
-            decision=CheckDecision.FAIL,
+            decision=PolicyDecision.DENY,
             message="forbidden",
         )
         interceptor = Interceptor([checker])
@@ -128,58 +128,15 @@ class TestSyncPreCall:
         result = await interceptor.run_pre_call(SESSION, _request(), REQUEST_ID)
 
         assert result.allowed is False
-        assert result.results[0].decision == CheckDecision.FAIL
+        assert result.results[0].decision == PolicyDecision.DENY
         assert result.results[0].message == "forbidden"
 
-    async def test_warn_merges_modifications(self):
-        """WARN checker with modified_data merges into request."""
-        mods = {"temperature": 0.5}
-        checker = FakeChecker(
-            phase=CheckPhase.PRE_CALL,
-            decision=CheckDecision.WARN,
-            modified_data=mods,
-        )
-        interceptor = Interceptor([checker])
-        req = _request()
-
-        result = await interceptor.run_pre_call(SESSION, req, REQUEST_ID)
-
-        assert result.allowed is True
-        assert result.modified_data is not None
-        assert result.modified_data["temperature"] == 0.5
-        # Original messages still present
-        assert len(result.modified_data["messages"]) == 1
-
-    async def test_multiple_checkers_chain(self):
-        """Two WARN checkers — modifications chain correctly."""
-        c1 = FakeChecker(
-            checker_name="c1",
-            phase=CheckPhase.PRE_CALL,
-            decision=CheckDecision.WARN,
-            modified_data={"key_a": 1},
-        )
-        c2 = FakeChecker(
-            checker_name="c2",
-            phase=CheckPhase.PRE_CALL,
-            decision=CheckDecision.WARN,
-            modified_data={"key_b": 2},
-        )
-        interceptor = Interceptor([c1, c2])
-
-        result = await interceptor.run_pre_call(SESSION, _request(), REQUEST_ID)
-
-        assert result.allowed is True
-        assert result.modified_data["key_a"] == 1
-        assert result.modified_data["key_b"] == 2
-        assert c1.call_count == 1
-        assert c2.call_count == 1
-
     async def test_fail_short_circuits(self):
-        """First checker FAILs — second checker never runs."""
+        """First checker DENYs — second checker never runs."""
         c1 = FakeChecker(
             checker_name="blocker",
             phase=CheckPhase.PRE_CALL,
-            decision=CheckDecision.FAIL,
+            decision=PolicyDecision.DENY,
         )
         c2 = FakeChecker(checker_name="skipped", phase=CheckPhase.PRE_CALL)
         interceptor = Interceptor([c1, c2])
@@ -190,8 +147,8 @@ class TestSyncPreCall:
         assert c1.call_count == 1
         assert c2.call_count == 0  # Never reached
 
-    async def test_checker_exception_becomes_fail(self):
-        """Exception in a sync checker produces FAIL result."""
+    async def test_checker_exception_becomes_deny(self):
+        """Exception in a sync checker produces DENY result."""
         checker = FakeChecker(
             phase=CheckPhase.PRE_CALL,
             raise_on_check=RuntimeError("kaboom"),
@@ -212,7 +169,7 @@ class TestSyncPreCall:
 class TestSyncPostCall:
 
     async def test_pass_unchanged(self):
-        """PASS checker — response goes through unchanged."""
+        """ALLOW checker — response goes through unchanged."""
         checker = FakeChecker(phase=CheckPhase.POST_CALL)
         interceptor = Interceptor([checker])
         req = _request()
@@ -223,10 +180,10 @@ class TestSyncPostCall:
         assert result.modified_data is None
 
     async def test_fail_blocks(self):
-        """FAIL checker — response is blocked."""
+        """DENY checker — response is blocked."""
         checker = FakeChecker(
             phase=CheckPhase.POST_CALL,
-            decision=CheckDecision.FAIL,
+            decision=PolicyDecision.DENY,
             message="toxic content",
         )
         interceptor = Interceptor([checker])
@@ -237,24 +194,6 @@ class TestSyncPostCall:
 
         assert result.allowed is False
         assert result.results[0].message == "toxic content"
-
-    async def test_warn_merges_response(self):
-        """WARN checker — modifications applied to dict response."""
-        checker = FakeChecker(
-            phase=CheckPhase.POST_CALL,
-            decision=CheckDecision.WARN,
-            modified_data={"filtered": True},
-        )
-        interceptor = Interceptor([checker])
-
-        result = await interceptor.run_post_call(
-            SESSION, _request(), {"answer": "ok"}, REQUEST_ID
-        )
-
-        assert result.allowed is True
-        assert result.modified_data is not None
-        assert result.modified_data["filtered"] is True
-        assert result.modified_data["answer"] == "ok"
 
 
 # ===========================================================================
@@ -290,7 +229,7 @@ class TestAsyncCheckerLifecycle:
             checker_name="async_monitor",
             phase=CheckPhase.POST_CALL,
             mode=CheckerMode.ASYNC,
-            decision=CheckDecision.PASS,
+            decision=PolicyDecision.ALLOW,
             delay=0.01,  # Fast enough to complete before next call
         )
         interceptor = Interceptor([async_checker])
@@ -309,15 +248,15 @@ class TestAsyncCheckerLifecycle:
         assert len(result.results) >= 1
         async_results = [r for r in result.results if r.checker_name == "async_monitor"]
         assert len(async_results) == 1
-        assert async_results[0].decision == CheckDecision.PASS
+        assert async_results[0].decision == PolicyDecision.ALLOW
 
     async def test_async_fail_blocks_next_request(self):
-        """Async checker returns FAIL — next PRE_CALL blocks."""
+        """Async checker returns DENY — next PRE_CALL blocks."""
         async_checker = FakeChecker(
             checker_name="async_blocker",
             phase=CheckPhase.POST_CALL,
             mode=CheckerMode.ASYNC,
-            decision=CheckDecision.FAIL,
+            decision=PolicyDecision.DENY,
             message="violation detected async",
             delay=0.01,
         )
@@ -331,17 +270,17 @@ class TestAsyncCheckerLifecycle:
         result = await interceptor.run_pre_call(SESSION, _request(), "req-002")
 
         assert result.allowed is False
-        fail_results = [r for r in result.results if r.decision == CheckDecision.FAIL]
+        fail_results = [r for r in result.results if r.decision == PolicyDecision.DENY]
         assert len(fail_results) == 1
         assert "violation detected async" in fail_results[0].message
 
-    async def test_async_warn_merges_into_next_request(self):
-        """Async checker returns WARN with modifications — applied on next PRE_CALL."""
+    async def test_async_modify_merges_into_next_request(self):
+        """Async checker returns MODIFY with modifications — applied on next PRE_CALL."""
         async_checker = FakeChecker(
             checker_name="async_modifier",
             phase=CheckPhase.POST_CALL,
             mode=CheckerMode.ASYNC,
-            decision=CheckDecision.WARN,
+            decision=PolicyDecision.MODIFY,
             modified_data={"extra_key": "injected_value"},
             delay=0.01,
         )
@@ -355,10 +294,10 @@ class TestAsyncCheckerLifecycle:
         result = await interceptor.run_pre_call(SESSION, _request(), "req-002")
 
         assert result.allowed is True
-        # The async WARN result should be collected
-        warn_results = [r for r in result.results if r.checker_name == "async_modifier"]
-        assert len(warn_results) == 1
-        assert warn_results[0].decision == CheckDecision.WARN
+        # The async MODIFY result should be collected
+        mod_results = [r for r in result.results if r.checker_name == "async_modifier"]
+        assert len(mod_results) == 1
+        assert mod_results[0].decision == PolicyDecision.MODIFY
         # modified_data should contain the injected key
         assert result.modified_data is not None
         assert result.modified_data["extra_key"] == "injected_value"
@@ -373,8 +312,8 @@ class TestAsyncCheckerLifecycle:
 
 class TestAsyncEdgeCases:
 
-    async def test_async_exception_becomes_fail(self):
-        """Async checker that raises — produces FAIL result on next collection."""
+    async def test_async_exception_becomes_deny(self):
+        """Async checker that raises — produces DENY result on next collection."""
         async_checker = FakeChecker(
             checker_name="async_crasher",
             phase=CheckPhase.POST_CALL,
@@ -388,9 +327,9 @@ class TestAsyncEdgeCases:
 
         result = await interceptor.run_pre_call(SESSION, _request(), "req-002")
 
-        # Should still be allowed=False because async errors produce FAIL
+        # Should be blocked because async errors produce DENY
         assert result.allowed is False
-        fail_results = [r for r in result.results if r.decision == CheckDecision.FAIL]
+        fail_results = [r for r in result.results if r.decision == PolicyDecision.DENY]
         assert len(fail_results) == 1
         assert "async boom" in fail_results[0].message
 
@@ -527,50 +466,6 @@ class TestModificationMerging:
 
 
 # ===========================================================================
-# Response modification tests
-# ===========================================================================
-
-
-class TestResponseModification:
-
-    async def test_full_replacement_via_response_key(self):
-        """{"response": ...} replaces entire response."""
-        interceptor = Interceptor([])
-        original = {"answer": "old"}
-        mods = {"response": {"answer": "new", "extra": True}}
-
-        result = interceptor._merge_response_modifications(original, mods)
-
-        assert result == {"answer": "new", "extra": True}
-
-    async def test_dict_response_merge(self):
-        """Dict responses get fields merged."""
-        interceptor = Interceptor([])
-        original = {"answer": "old", "keep": True}
-        mods = {"answer": "new"}
-
-        result = interceptor._merge_response_modifications(original, mods)
-
-        assert result["answer"] == "new"
-        assert result["keep"] is True
-
-    async def test_immutable_response_ignored(self):
-        """Non-dict response with modifications returns unchanged."""
-        interceptor = Interceptor([])
-
-        class ImmutableResponse:
-            pass
-
-        original = ImmutableResponse()
-        mods = {"filtered": True}
-
-        result = interceptor._merge_response_modifications(original, mods)
-
-        # Should return the original object unchanged
-        assert result is original
-
-
-# ===========================================================================
 # Interceptor init categorization
 # ===========================================================================
 
@@ -578,17 +473,26 @@ class TestResponseModification:
 class TestInterceptorInit:
 
     async def test_categorizes_checkers_correctly(self):
-        """Checkers are bucketed into sync_pre, sync_post, and async."""
-        sync_pre = FakeChecker(checker_name="sp", phase=CheckPhase.PRE_CALL, mode=CheckerMode.SYNC)
-        sync_post = FakeChecker(checker_name="spo", phase=CheckPhase.POST_CALL, mode=CheckerMode.SYNC)
-        async_pre = FakeChecker(checker_name="ap", phase=CheckPhase.PRE_CALL, mode=CheckerMode.ASYNC)
-        async_post = FakeChecker(checker_name="apo", phase=CheckPhase.POST_CALL, mode=CheckerMode.ASYNC)
+        """Checkers are bucketed into sync_pre, sync_post, async_pre, async_post."""
+        sync_pre = FakeChecker(
+            checker_name="sp", phase=CheckPhase.PRE_CALL, mode=CheckerMode.SYNC
+        )
+        sync_post = FakeChecker(
+            checker_name="spo", phase=CheckPhase.POST_CALL, mode=CheckerMode.SYNC
+        )
+        async_pre = FakeChecker(
+            checker_name="ap", phase=CheckPhase.PRE_CALL, mode=CheckerMode.ASYNC
+        )
+        async_post = FakeChecker(
+            checker_name="apo", phase=CheckPhase.POST_CALL, mode=CheckerMode.ASYNC
+        )
 
         interceptor = Interceptor([sync_pre, sync_post, async_pre, async_post])
 
         assert len(interceptor._sync_pre_call) == 1
         assert len(interceptor._sync_post_call) == 1
-        assert len(interceptor._async_checkers) == 2
+        assert len(interceptor._async_pre_call) == 1
+        assert len(interceptor._async_post_call) == 1
 
     async def test_empty_checkers_list(self):
         """Interceptor with no checkers still works."""

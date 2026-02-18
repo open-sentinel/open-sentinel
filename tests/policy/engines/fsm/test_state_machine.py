@@ -100,20 +100,6 @@ class TestWorkflowStateMachine:
         assert is_terminal is True
 
     @pytest.mark.asyncio
-    async def test_pending_intervention(self, machine):
-        """Test setting and getting pending intervention."""
-        await machine.get_or_create_session("test-session")
-
-        await machine.set_pending_intervention("test-session", "test_intervention")
-        intervention = await machine.get_pending_intervention("test-session")
-
-        assert intervention == "test_intervention"
-
-        # Should be cleared after getting
-        intervention2 = await machine.get_pending_intervention("test-session")
-        assert intervention2 is None
-
-    @pytest.mark.asyncio
     async def test_reset_session(self, machine):
         """Test resetting a session."""
         await machine.get_or_create_session("test-session")
