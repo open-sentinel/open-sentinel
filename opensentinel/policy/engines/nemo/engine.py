@@ -13,9 +13,13 @@ NeMo Guardrails provides:
 Requires: pip install nemoguardrails
 """
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 import logging
 import sys
+
+if TYPE_CHECKING:
+    from opensentinel.core.intervention.strategies import InterventionConfig
+    from opensentinel.policy.compiler.protocol import PolicyCompiler
 
 from opensentinel.policy.protocols import (
     PolicyEngine,
@@ -498,6 +502,37 @@ class NemoGuardrailsPolicyEngine(PolicyEngine):
         if session_id in self._session_contexts:
             del self._session_contexts[session_id]
         logger.debug(f"NeMo session {session_id} reset")
+
+    def get_compiler(self) -> Optional["PolicyCompiler"]:
+        """Return a NemoCompiler instance."""
+        from opensentinel.policy.engines.nemo.compiler import NemoCompiler
+        return NemoCompiler()
+
+    def resolve_intervention(
+        self,
+        name: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Optional["InterventionConfig"]:
+        """Resolve NeMo intervention names to configs.
+
+        NeMo uses simple intervention names like 'nemo_output_blocked'
+        that map directly to HARD_BLOCK with the blocked response message.
+        """
+        from opensentinel.core.intervention.strategies import InterventionConfig, StrategyType
+        if name == "nemo_output_blocked":
+            message = "Response blocked by NeMo output guardrails"
+            if context and "nemo_response" in context:
+                message = context["nemo_response"]
+            return InterventionConfig(
+                strategy_type=StrategyType.HARD_BLOCK,
+                message_template=message,
+            )
+        if name == "nemo_input_blocked":
+            return InterventionConfig(
+                strategy_type=StrategyType.HARD_BLOCK,
+                message_template="Request blocked by NeMo input guardrails",
+            )
+        return None
 
     async def shutdown(self) -> None:
         """Cleanup resources."""

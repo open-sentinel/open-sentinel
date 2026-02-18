@@ -8,5 +8,6 @@ Requires: pip install nemoguardrails
 """
 
 from opensentinel.policy.engines.nemo.engine import NemoGuardrailsPolicyEngine
+from opensentinel.policy.engines.nemo.compiler import NemoCompiler
 
-__all__ = ["NemoGuardrailsPolicyEngine"]
+__all__ = ["NemoGuardrailsPolicyEngine", "NemoCompiler"]
