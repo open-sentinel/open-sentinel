@@ -230,11 +230,28 @@ class TestDataForwarding:
         assert ";" in result.message
 
     async def test_intervention_as_modified_data(self):
-        """When engine sets intervention_needed with metadata, it maps to modified_data (ASYNC)."""
+        """When engine sets intervention_needed with metadata, it maps to strategy-type key (ASYNC)."""
         engine = _mock_engine()
         engine.evaluate_request.return_value = PolicyEvaluationResult(
             decision=PolicyDecision.WARN,
-            intervention_needed="prompt_fix",
+            intervention_needed="system_prompt_append",
+            metadata={"message": "Do X instead"},
+        )
+
+        checker = PolicyEngineChecker(
+            engine=engine, phase=CheckPhase.PRE_CALL, mode=CheckerMode.ASYNC
+        )
+        result = await checker.check(_context())
+
+        assert result.modified_data is not None
+        assert result.modified_data["system_prompt_append"] == "Do X instead"
+
+    async def test_intervention_fallback_without_message_key(self):
+        """Fallback uses str(metadata) when no 'message' key present."""
+        engine = _mock_engine()
+        engine.evaluate_request.return_value = PolicyEvaluationResult(
+            decision=PolicyDecision.WARN,
+            intervention_needed="user_message_inject",
             metadata={"correction": "Do X instead"},
         )
 
@@ -244,8 +261,24 @@ class TestDataForwarding:
         result = await checker.check(_context())
 
         assert result.modified_data is not None
-        assert result.modified_data["intervention_name"] == "prompt_fix"
-        assert result.modified_data["intervention_context"]["correction"] == "Do X instead"
+        assert "user_message_inject" in result.modified_data
+        assert "correction" in result.modified_data["user_message_inject"]
+
+    async def test_intervention_without_metadata(self):
+        """Fallback produces empty message when no metadata present."""
+        engine = _mock_engine()
+        engine.evaluate_request.return_value = PolicyEvaluationResult(
+            decision=PolicyDecision.WARN,
+            intervention_needed="context_reminder",
+        )
+
+        checker = PolicyEngineChecker(
+            engine=engine, phase=CheckPhase.PRE_CALL, mode=CheckerMode.ASYNC
+        )
+        result = await checker.check(_context())
+
+        assert result.modified_data is not None
+        assert result.modified_data["context_reminder"] == ""
 
 
 # ===========================================================================
