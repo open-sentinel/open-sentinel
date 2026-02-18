@@ -116,7 +116,13 @@ def serve(port: int, host: str, config: Path, debug: bool):
     default=None,
     help="Natural language policy description to compile into rules",
 )
-def init(compile_from: str):
+@click.option(
+    "--interactive",
+    "-i",
+    is_flag=True,
+    help="Run comprehensive interactive initialization",
+)
+def init(compile_from: str, interactive: bool):
     """Initialize a new Open Sentinel project.
 
     Creates a minimal osentinel.yaml in the current directory.
@@ -132,7 +138,7 @@ def init(compile_from: str):
     from opensentinel.cli_init import run_init
 
     click.echo("")
-    run_init(compile_from=compile_from)
+    run_init(compile_from=compile_from, interactive=interactive)
 
 
 @main.command()
