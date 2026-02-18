@@ -33,6 +33,61 @@ def get_yaml_dumper():  # type: ignore[no-untyped-def]
     return yaml.SafeDumper
 
 
+def ensure_model_and_key(auto_confirm: bool = False) -> str:
+    """Ensure a valid model and API key are configured."""
+    import os
+
+    while True:
+        model, _, detected_env = detect_available_model()
+
+        # If we auto-detected a model/key, great.
+        if detected_env:
+            success(f"Auto-detected {model} using {detected_env}")
+            if auto_confirm:
+                return model
+            if confirm(f"Use {model}?", default=True):
+                return model
+        else:
+            if not auto_confirm:
+                warning("Model not auto-detected from environment variables.")
+
+        # If not detected or user wants to change it:
+        default_model = model or "gpt-4o-mini"
+        model = text("Default LLM model", default=default_model)
+
+        # Check if we have the key for this model
+        needed_key = None
+        if "gpt" in model and not os.environ.get("OPENAI_API_KEY"):
+            needed_key = "OPENAI_API_KEY"
+        elif "claude" in model and not os.environ.get("ANTHROPIC_API_KEY"):
+            needed_key = "ANTHROPIC_API_KEY"
+        elif "gemini" in model and not (
+            os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+        ):
+            needed_key = "GOOGLE_API_KEY"
+        elif "groq" in model and not os.environ.get("GROQ_API_KEY"):
+            needed_key = "GROQ_API_KEY"
+        elif "together" in model and not os.environ.get("TOGETHERAI_API_KEY"):
+            needed_key = "TOGETHERAI_API_KEY"
+        elif "openrouter" in model and not os.environ.get("OPENROUTER_API_KEY"):
+            needed_key = "OPENROUTER_API_KEY"
+
+        if needed_key:
+            warning(f"{needed_key} not found in environment")
+            key_value = password(f"Enter {needed_key}")
+            if key_value:
+                os.environ[needed_key] = key_value
+                success(f"Set {needed_key} for this session")
+                # Loop around to re-detect or confirm
+                continue
+            else:
+                error("API key is required to proceed.")
+                # Loop around to re-enter model or key
+                continue
+        else:
+            # Key is present or not needed (unknown provider)
+            return model
+
 def run_interactive_init() -> None:
     """Run the interactive initialization wizard."""
     import textwrap
@@ -73,53 +128,7 @@ def run_interactive_init() -> None:
     # -----------------------------------------------------------------------
     heading("Model Configuration", step=2)
 
-    while True:
-        model, _, detected_env = detect_available_model()
-
-        # If we auto-detected a model/key, great.
-        if detected_env:
-            success(f"Auto-detected {model} using {detected_env}")
-            if confirm(f"Use {model}?", default=True):
-                break
-        else:
-            warning("Model not auto-detected from environment variables.")
-
-        # If not detected or user wants to change it:
-        default_model = model or "gpt-4o-mini"
-        model = text("Default LLM model", default=default_model)
-
-        # Check if we have the key for this model
-        needed_key = None
-        if "gpt" in model and not os.environ.get("OPENAI_API_KEY"):
-            needed_key = "OPENAI_API_KEY"
-        elif "claude" in model and not os.environ.get("ANTHROPIC_API_KEY"):
-            needed_key = "ANTHROPIC_API_KEY"
-        elif "gemini" in model and not (
-            os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
-        ):
-            needed_key = "GOOGLE_API_KEY"
-        elif "groq" in model and not os.environ.get("GROQ_API_KEY"):
-            needed_key = "GROQ_API_KEY"
-        elif "together" in model and not os.environ.get("TOGETHERAI_API_KEY"):
-            needed_key = "TOGETHERAI_API_KEY"
-        elif "openrouter" in model and not os.environ.get("OPENROUTER_API_KEY"):
-            needed_key = "OPENROUTER_API_KEY"
-
-        if needed_key:
-            warning(f"{needed_key} not found in environment")
-            key_value = password(f"Enter {needed_key}")
-            if key_value:
-                os.environ[needed_key] = key_value
-                success(f"Set {needed_key} for this session")
-                # Loop around to re-detect or confirm
-                continue
-            else:
-                error("API key is required to proceed.")
-                # Loop around to re-enter model or key
-                continue
-        else:
-            # Key is present or not needed (unknown provider)
-            break
+    model = ensure_model_and_key()
 
     # -----------------------------------------------------------------------
     # 3. Engine-Specific Configuration
@@ -317,7 +326,9 @@ def run_quick_init() -> None:
     if config_path.exists():
         warning(f"{config_path} already exists — overwriting")
 
-    model, _, detected_env = detect_available_model()
+    _, _, initial_env = detect_available_model()
+    model = ensure_model_and_key(auto_confirm=True)
+    _, _, final_env = detect_available_model()
 
     final_config: dict = {
         "engine": "judge",
@@ -345,8 +356,8 @@ def run_quick_init() -> None:
     success(f"Configuration saved to {config_path}")
 
     steps: list[str] = []
-    if not detected_env:
-        steps.append("Export your API key: export OPENAI_API_KEY=<your-key>")
+    if not initial_env and final_env:
+        steps.append(f"Export your API key: export {final_env}=<your-key>")
     steps.append("osentinel serve")
     next_steps(steps)
 
