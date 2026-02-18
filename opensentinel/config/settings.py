@@ -149,7 +149,7 @@ class PolicyEngineConfig(BaseModel):
     # See PolicyEngineRegistry.list_engines() for available types at runtime.
     type: str = "judge"
     enabled: bool = True
-    # Unified configuration path (can be set via OSNTL_POLICY__ENGINE__CONFIG_PATH)
+    # Unified configuration path
     config_path: Optional[str] = None
     config: Dict[str, Any] = Field(default_factory=dict)
 
@@ -524,16 +524,11 @@ class SentinelSettings(BaseSettings):
     """
     Main Open Sentinel configuration.
 
-    All settings can be overridden via environment variables with OSNTL_ prefix.
-    Nested settings use double underscore: OSNTL_OTEL__ENDPOINT
-
     A osentinel.yaml config file is also supported (config takes priority).
     Pass _config_path to override the config file location.
     """
 
     model_config = SettingsConfigDict(
-        env_prefix="OSNTL_",
-        env_nested_delimiter="__",
         env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",

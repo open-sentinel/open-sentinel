@@ -512,14 +512,14 @@ def compile(
             click.echo(f"\nNext steps:")
             if engine == "judge":
                 click.echo(f"  1. Review the generated rubric: {output}")
-                click.echo(f"  2. Set policy path in osentinel.yaml or env var:")
-                click.echo(f"     export OSNTL_POLICY__ENGINE__TYPE=judge")
-                click.echo(f"     export OSNTL_POLICY__ENGINE__CONFIG_PATH={output}")
+                click.echo(f"  2. Update osentinel.yaml to point to this policy:")
+                click.echo(f"       policy: {output}")
                 click.echo(f"  3. Start the proxy: osentinel serve")
             else:
                 click.echo(f"  osentinel validate {output}")
-                click.echo(f"  export OSNTL_POLICY__ENGINE__TYPE=fsm")
-                click.echo(f"  export OSNTL_POLICY__ENGINE__CONFIG_PATH={output}")
+                click.echo(f"  Update osentinel.yaml:")
+                click.echo(f"    engine: fsm")
+                click.echo(f"    policy: {output}")
                 click.echo(f"  osentinel serve")
 
         except ValueError as e:

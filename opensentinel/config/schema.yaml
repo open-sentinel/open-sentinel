@@ -8,7 +8,7 @@
 #   2. A contract for engine developers — new engines must update this schema
 #
 # Configuration priority (highest wins):
-#   osentinel.yaml > OSNTL_* env vars > defaults
+#   osentinel.yaml > defaults
 #
 # API keys are ALWAYS read from environment variables (never put keys in YAML):
 #   OPENAI_API_KEY, GOOGLE_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY, etc.
