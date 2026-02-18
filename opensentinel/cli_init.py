@@ -73,22 +73,53 @@ def run_interactive_init() -> None:
     # -----------------------------------------------------------------------
     heading("Model Configuration", step=2)
 
-    _, _, detected_env = detect_available_model()
+    while True:
+        model, _, detected_env = detect_available_model()
 
-    default_model = "gpt-4o-mini"
-    if not detected_env:
-        warning("No API keys detected. You will need to export one later.")
+        # If we auto-detected a model/key, great.
+        if detected_env:
+            success(f"Auto-detected {model} using {detected_env}")
+            if confirm(f"Use {model}?", default=True):
+                break
+        else:
+            warning("Model not auto-detected from environment variables.")
 
-    model = text("Default LLM model", default=default_model)
+        # If not detected or user wants to change it:
+        default_model = model or "gpt-4o-mini"
+        model = text("Default LLM model", default=default_model)
 
-    if "gpt" in model and not os.environ.get("OPENAI_API_KEY"):
-        warning("OPENAI_API_KEY not found in environment")
-    elif "claude" in model and not os.environ.get("ANTHROPIC_API_KEY"):
-        warning("ANTHROPIC_API_KEY not found in environment")
-    elif "gemini" in model and not (
-        os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
-    ):
-        warning("GOOGLE_API_KEY/GEMINI_API_KEY not found in environment")
+        # Check if we have the key for this model
+        needed_key = None
+        if "gpt" in model and not os.environ.get("OPENAI_API_KEY"):
+            needed_key = "OPENAI_API_KEY"
+        elif "claude" in model and not os.environ.get("ANTHROPIC_API_KEY"):
+            needed_key = "ANTHROPIC_API_KEY"
+        elif "gemini" in model and not (
+            os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+        ):
+            needed_key = "GOOGLE_API_KEY"
+        elif "groq" in model and not os.environ.get("GROQ_API_KEY"):
+            needed_key = "GROQ_API_KEY"
+        elif "together" in model and not os.environ.get("TOGETHERAI_API_KEY"):
+            needed_key = "TOGETHERAI_API_KEY"
+        elif "openrouter" in model and not os.environ.get("OPENROUTER_API_KEY"):
+            needed_key = "OPENROUTER_API_KEY"
+
+        if needed_key:
+            warning(f"{needed_key} not found in environment")
+            key_value = password(f"Enter {needed_key}")
+            if key_value:
+                os.environ[needed_key] = key_value
+                success(f"Set {needed_key} for this session")
+                # Loop around to re-detect or confirm
+                continue
+            else:
+                error("API key is required to proceed.")
+                # Loop around to re-enter model or key
+                continue
+        else:
+            # Key is present or not needed (unknown provider)
+            break
 
     # -----------------------------------------------------------------------
     # 3. Engine-Specific Configuration
