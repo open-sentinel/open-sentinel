@@ -85,6 +85,9 @@ class LLMClient:
         # Lazy import to avoid import-time side effects
         import litellm
         
+        if not self.model:
+            raise LLMClientError("No LLM model configured. Please set a model in configuration or environment.")
+
         messages = [
             {"role": "system", "content": system_prompt},
         ]

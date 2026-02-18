@@ -101,9 +101,13 @@ def run_interactive_init() -> None:
     click.echo(click.style("\n2. Model Configuration", bold=True))
     _, _, detected_env = detect_available_model()
     
+    default_model = "gpt-4o-mini"
+    if not detected_env:
+        click.echo(click.style("  ! No API keys detected. You will need to export one later.", fg="yellow"))
+    
     model = click.prompt(
         "Default LLM Model", 
-        default="gpt-4o-mini"
+        default=default_model
     )
     # Check for API key presence
     if "gpt" in model and not os.environ.get("OPENAI_API_KEY"):
@@ -389,10 +393,12 @@ def run_init(
     _, detected_provider, detected_env_var = detect_available_model()
     import os
 
-    if os.environ.get(detected_env_var):
+    if detected_env_var and os.environ.get(detected_env_var):
         click.echo(f"    1. Edit policy rules in osentinel.yaml")
     else:
-        click.echo(f"    1. Export your API key: export {detected_env_var}=<your-key>")
+        # If no specific provider was detected, suggest OpenAI as a default example
+        env_var = detected_env_var or "OPENAI_API_KEY"
+        click.echo(f"    1. Export your API key: export {env_var}=<your-key>")
 
     click.echo("    2. osentinel serve")
     click.echo("")

@@ -29,7 +29,7 @@ For the complete YAML schema reference, see:
 import logging
 import os
 from pathlib import Path
-from typing import Optional, Literal, List, Dict, Any, Tuple, Type
+from typing import Optional, Literal, List, Dict, Any, Tuple, Type, Union
 
 from pydantic import BaseModel, Field
 from pydantic_settings import (
@@ -41,7 +41,7 @@ from pydantic_settings import (
 logger = logging.getLogger(__name__)
 
 
-def detect_available_model() -> Tuple[str, str, str]:
+def detect_available_model() -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """Check env vars and return the best available judge model.
 
     Returns:
@@ -56,11 +56,11 @@ def detect_available_model() -> Tuple[str, str, str]:
         return ("gemini/gemini-2.5-flash", "Google Gemini", env_var)
     if os.environ.get("ANTHROPIC_API_KEY"):
         return ("anthropic/claude-sonnet-4-5", "Anthropic", "ANTHROPIC_API_KEY")
-    # No key found — default to gpt-4o-mini (will fail with a clear error later)
-    return ("gpt-4o-mini", "OpenAI", "OPENAI_API_KEY")
+    
+    return (None, None, None)
 
 
-def get_default_model() -> str:
+def get_default_model() -> Optional[str]:
     """Helper for Pydantic default_factory to get a detected model.
     This ensures that the settings' idea of 'default_model' is consistent
     with the autodetect logic.
@@ -101,7 +101,7 @@ class ProxyConfig(BaseModel):
     timeout: int = 600
     master_key: Optional[str] = None
     # Model routing
-    default_model: str = Field(default_factory=get_default_model)
+    default_model: Optional[str] = Field(default_factory=get_default_model)
     model_list: List[dict] = Field(default_factory=list)
 
 
@@ -681,7 +681,15 @@ class SentinelSettings(BaseSettings):
             )
 
         default_model = self.proxy.default_model
-        
+
+        if not default_model:
+            # If no model is set (and auto-detection failed because no keys were found),
+            # we must enforce that the user provides at least one key or sets a model manually.
+            raise ValueError(
+                "No LLM API keys detected. Please set one of OPENAI_API_KEY, ANTHROPIC_API_KEY, "
+                "or GEMINI_API_KEY, or explicitly configure a `model` in osentinel.yaml."
+            )
+
         if "gpt" in default_model and not self.openai_api_key:
             raise ValueError("OPENAI_API_KEY not found (required for OpenAI models)")
         if "gemini" in default_model and not (
