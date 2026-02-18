@@ -16,6 +16,20 @@ from pathlib import Path
 import click
 
 from opensentinel import __version__
+from opensentinel.cli_ui import (
+    config_panel,
+    console,
+    dim,
+    error,
+    key_value,
+    make_table,
+    next_steps,
+    spinner,
+    success,
+    warning,
+    yaml_preview,
+)
+from rich.text import Text
 
 
 def setup_logging(debug: bool = False) -> None:
@@ -30,7 +44,7 @@ def setup_logging(debug: bool = False) -> None:
 
 @click.group()
 @click.version_option(version=__version__, prog_name="osentinel")
-def main():
+def main() -> None:
     """Open Sentinel - Reliability layer for AI agents.
 
     Monitor workflow adherence and intervene when agents deviate.
@@ -65,7 +79,7 @@ def main():
     default=False,
     help="Enable debug logging",
 )
-def serve(port: int, host: str, config: Path, debug: bool):
+def serve(port: int, host: str, config: Path, debug: bool) -> None:
     """Start the Open Sentinel proxy server.
 
     The proxy intercepts LLM calls and monitors workflow adherence.
@@ -80,31 +94,51 @@ def serve(port: int, host: str, config: Path, debug: bool):
     from opensentinel.config.settings import SentinelSettings
     from opensentinel.proxy.server import start_proxy
 
-    click.echo(f"Starting Open Sentinel proxy on {host}:{port}")
-
     try:
-        settings = SentinelSettings(
-            _config_path=str(config) if config else None,
-            debug=debug,
+        with spinner("Loading configuration..."):
+            settings = SentinelSettings(
+                _config_path=str(config) if config else None,
+                debug=debug,
+            )
+            settings.proxy.host = host
+            settings.proxy.port = port
+            settings.validate()
+
+        # Show config summary
+        engine = getattr(settings, "engine", "judge")
+        model = getattr(settings, "model", "default")
+        fail_open = getattr(settings.policy, "fail_open", True) if hasattr(settings, "policy") else True
+        config_panel(
+            "Open Sentinel Proxy",
+            {
+                "Engine": str(engine),
+                "Model": str(model),
+                "Host": f"{host}:{port}",
+                "Fail Open": str(fail_open),
+            },
         )
-        settings.proxy.host = host
-        settings.proxy.port = port
-        settings.validate()
-        
+        console.print(
+            Text.assemble(
+                ("  Listening on ", ""),
+                (f"http://{host}:{port}/v1", "bold cyan underline"),
+            )
+        )
+        console.print()
+
     except Exception as e:
-        click.echo(click.style(f"Configuration Error: {e}", fg="red"), err=True)
-        # In debug mode, show the full traceback for context
+        error(str(e), hint="Check your osentinel.yaml or run: osentinel init")
         if debug:
             import traceback
+
             traceback.print_exc()
         raise SystemExit(1)
 
     try:
         start_proxy(settings)
     except KeyboardInterrupt:
-        click.echo("\nShutting down...")
+        dim("\nShutting down...")
     except Exception as e:
-        click.echo(f"Error: {e}", err=True)
+        error(str(e))
         raise SystemExit(1)
 
 
@@ -116,20 +150,15 @@ def serve(port: int, host: str, config: Path, debug: bool):
     default=None,
     help="Natural language policy description to compile into rules",
 )
-@click.option(
-    "--interactive",
-    "-i",
-    is_flag=True,
-    help="Run comprehensive interactive initialization",
-)
-def init(compile_from: str, interactive: bool):
+def init(compile_from: str) -> None:
     """Initialize a new Open Sentinel project.
 
-    Creates a minimal osentinel.yaml in the current directory.
+    Creates an osentinel.yaml in the current directory.
+    Without --from, runs an interactive wizard with arrow-key selection.
 
     Examples:
 
-        # Default setup (3 starter rules)
+        # Interactive setup (default)
         osentinel init
 
         # Compile from natural language
@@ -137,8 +166,7 @@ def init(compile_from: str, interactive: bool):
     """
     from opensentinel.cli_init import run_init
 
-    click.echo("")
-    run_init(compile_from=compile_from, interactive=interactive)
+    run_init(compile_from=compile_from)
 
 
 @main.command()
@@ -146,7 +174,7 @@ def init(compile_from: str, interactive: bool):
     "config_path",
     type=click.Path(exists=True, path_type=Path),
 )
-def validate(config_path: Path):
+def validate(config_path: Path) -> None:
     """Validate a workflow definition file.
 
     Checks that the workflow YAML is valid and all references are correct.
@@ -159,19 +187,23 @@ def validate(config_path: Path):
     try:
         workflow = WorkflowParser.parse_file(config_path)
 
-        click.echo(click.style("✓ Valid workflow", fg="green"))
-        click.echo(f"  Name: {workflow.name}")
-        click.echo(f"  Version: {workflow.version}")
-        click.echo(f"  States: {len(workflow.states)}")
-        click.echo(f"  Transitions: {len(workflow.transitions)}")
-        click.echo(f"  Constraints: {len(workflow.constraints)}")
-        click.echo(f"  Interventions: {len(workflow.interventions)}")
+        config_panel(
+            "\u2713 Valid Workflow",
+            {
+                "Name": workflow.name,
+                "Version": workflow.version,
+                "States": str(len(workflow.states)),
+                "Transitions": str(len(workflow.transitions)),
+                "Constraints": str(len(workflow.constraints)),
+                "Interventions": str(len(workflow.interventions)),
+            },
+        )
 
     except FileNotFoundError:
-        click.echo(click.style(f"✗ File not found: {config_path}", fg="red"), err=True)
+        error(f"File not found: {config_path}")
         raise SystemExit(1)
     except Exception as e:
-        click.echo(click.style(f"✗ Validation error: {e}", fg="red"), err=True)
+        error(f"Validation error: {e}")
         raise SystemExit(1)
 
 
@@ -186,7 +218,7 @@ def validate(config_path: Path):
     is_flag=True,
     help="Show detailed information",
 )
-def info(config_path: Path, verbose: bool):
+def info(config_path: Path, verbose: bool) -> None:
     """Show detailed workflow information.
 
     Displays states, transitions, constraints, and interventions.
@@ -199,87 +231,91 @@ def info(config_path: Path, verbose: bool):
     try:
         workflow = WorkflowParser.parse_file(config_path)
 
-        click.echo(f"\n{click.style(workflow.name, bold=True)} v{workflow.version}")
+        console.print()
+        console.print(
+            Text.assemble(
+                (workflow.name, "bold"),
+                (f"  v{workflow.version}", "dim"),
+            )
+        )
         if workflow.description:
-            click.echo(f"  {workflow.description}")
+            dim(workflow.description)
 
-        # States
-        click.echo(f"\n{click.style('States:', bold=True)} ({len(workflow.states)})")
+        # States table
+        state_rows: list[list[str]] = []
         for state in workflow.states:
             flags = []
             if state.is_initial:
-                flags.append(click.style("initial", fg="green"))
+                flags.append("[green]initial[/]")
             if state.is_terminal:
-                flags.append(click.style("terminal", fg="blue"))
+                flags.append("[blue]terminal[/]")
             if state.is_error:
-                flags.append(click.style("error", fg="red"))
+                flags.append("[red]error[/]")
+            flag_str = ", ".join(flags) if flags else "-"
 
-            flag_str = f" [{', '.join(flags)}]" if flags else ""
-            click.echo(f"  • {state.name}{flag_str}")
-
+            desc = ""
             if verbose and state.description:
-                click.echo(f"    {state.description}")
+                desc = state.description
+            state_rows.append([state.name, flag_str, desc])
 
-            if verbose:
-                hint = state.classification
-                if hint.tool_calls:
-                    click.echo(f"    Tools: {', '.join(hint.tool_calls)}")
-                if hint.patterns:
-                    click.echo(f"    Patterns: {len(hint.patterns)} patterns")
-                if hint.exemplars:
-                    click.echo(f"    Exemplars: {len(hint.exemplars)} examples")
+        columns = ["Name", "Type", "Description"] if verbose else ["Name", "Type"]
+        rows = [r if verbose else r[:2] for r in state_rows]
+        make_table("States", columns, rows)
 
-        # Transitions
+        # Transitions table
         if workflow.transitions:
-            click.echo(
-                f"\n{click.style('Transitions:', bold=True)} ({len(workflow.transitions)})"
-            )
-            for t in workflow.transitions:
-                click.echo(f"  • {t.from_state} → {t.to_state}")
+            t_rows = [[t.from_state, f"\u2192 {t.to_state}"] for t in workflow.transitions]
+            make_table("Transitions", ["From", "To"], t_rows)
 
-        # Constraints
+        # Constraints table
         if workflow.constraints:
-            click.echo(
-                f"\n{click.style('Constraints:', bold=True)} ({len(workflow.constraints)})"
-            )
+            severity_markup = {
+                "warning": "[yellow]warning[/]",
+                "error": "[red]error[/]",
+                "critical": "[magenta]critical[/]",
+            }
+            c_rows = []
             for c in workflow.constraints:
-                severity_color = {
-                    "warning": "yellow",
-                    "error": "red",
-                    "critical": "magenta",
-                }.get(c.severity, "white")
-
-                click.echo(
-                    f"  • {c.name} "
-                    f"[{click.style(c.type.value, fg='cyan')}] "
-                    f"[{click.style(c.severity, fg=severity_color)}]"
-                )
+                sev = severity_markup.get(c.severity, c.severity)
+                row = [c.name, f"[cyan]{c.type.value}[/]", sev]
                 if verbose and c.description:
-                    click.echo(f"    {c.description}")
+                    row.append(c.description)
+                elif verbose:
+                    row.append("")
+                c_rows.append(row)
+
+            cols = ["Name", "Type", "Severity"]
+            if verbose:
+                cols.append("Description")
+            make_table("Constraints", cols, c_rows)
 
         # Interventions
         if workflow.interventions:
-            click.echo(
-                f"\n{click.style('Interventions:', bold=True)} ({len(workflow.interventions)})"
-            )
+            console.print()
+            console.print("[bold]Interventions:[/]")
             for name, template in workflow.interventions.items():
-                click.echo(f"  • {name}")
                 if verbose:
-                    # Truncate long templates
                     preview = template[:80] + "..." if len(template) > 80 else template
-                    click.echo(f"    {preview}")
+                    key_value(name, f"[dim]{preview}[/]", indent=2)
+                else:
+                    console.print(f"  {name}")
 
-        click.echo()
+        console.print()
 
     except Exception as e:
-        click.echo(click.style(f"Error: {e}", fg="red"), err=True)
+        error(str(e))
         raise SystemExit(1)
 
 
 @main.command()
-def version():
+def version() -> None:
     """Show version information."""
-    click.echo(f"Open Sentinel v{__version__}")
+    console.print(
+        Text.assemble(
+            ("Open Sentinel", "bold"),
+            (f" v{__version__}", "dim"),
+        )
+    )
 
 
 def _detect_engine_type(policy_text: str) -> str:
@@ -376,13 +412,13 @@ def _detect_engine_type(policy_text: str) -> str:
     "--base-url",
     "-b",
     type=str,
-    help="Base URL for LLM API (e.g., http://localhost:4000/v1 for Open Sentinel proxy)",
+    help="Base URL for LLM API",
 )
 @click.option(
     "--api-key",
     "-k",
     type=str,
-    help="API key for LLM provider (uses OPENAI_API_KEY or GOOGLE_API_KEY env var if not set)",
+    help="API key for LLM provider",
 )
 @click.option(
     "--debug/--no-debug",
@@ -399,7 +435,7 @@ def compile(
     base_url: str,
     api_key: str,
     debug: bool,
-):
+) -> None:
     """Compile natural language policy to engine configuration.
 
     POLICY is the natural language policy description.
@@ -414,12 +450,6 @@ def compile(
 
         # FSM workflow
         osentinel compile "verify identity before refunds" --engine fsm
-
-        # With domain hint
-        osentinel compile "verify before refunds" -d "customer support"
-
-        # Use a different model
-        osentinel compile "verify identity" -m gpt-4o
     """
     import asyncio
 
@@ -428,7 +458,7 @@ def compile(
     # Handle 'auto' engine selection
     if engine == "auto":
         engine = _detect_engine_type(policy)
-        click.echo(f"Auto-detected engine: {engine}")
+        dim(f"Auto-detected engine: {engine}")
 
     # Determine output path based on engine type
     if output is None:
@@ -439,23 +469,19 @@ def compile(
     if domain:
         context["domain"] = domain
 
-    async def run_compile():
+    async def run_compile() -> None:
         import os
         from opensentinel.policy.compiler import PolicyCompilerRegistry
 
         try:
-            # Create compiler
             compiler = PolicyCompilerRegistry.create(engine)
 
-            # Override model if specified
             if hasattr(compiler, "model"):
                 compiler.model = model
 
-            # Set base_url if specified
             if base_url and hasattr(compiler, "_base_url"):
                 compiler._base_url = base_url
 
-            # Set api_key - auto-detect from env if using Gemini
             resolved_api_key = api_key
             if not resolved_api_key and model.startswith("gemini"):
                 resolved_api_key = os.getenv("GOOGLE_API_KEY") or os.getenv(
@@ -464,73 +490,77 @@ def compile(
             if resolved_api_key and hasattr(compiler, "_api_key"):
                 compiler._api_key = resolved_api_key
 
-            click.echo(f"Compiling policy with {engine} compiler...")
-            click.echo(f"Model: {model}")
+            key_value("Engine", engine)
+            key_value("Model", model)
             if base_url:
-                click.echo(f"Base URL: {base_url}")
+                key_value("Base URL", base_url)
 
-            # Compile
-            result = await compiler.compile(policy, context if context else None)
+            with spinner("Compiling policy..."):
+                result = await compiler.compile(policy, context if context else None)
 
             if not result.success:
-                click.echo(click.style("✗ Compilation failed", fg="red"), err=True)
-                for error in result.errors:
-                    click.echo(f"  Error: {error}", err=True)
+                error("Compilation failed")
+                for err in result.errors:
+                    console.print(f"    [dim]{err}[/]")
                 raise SystemExit(1)
 
-            # Show warnings
-            for warning in result.warnings:
-                click.echo(click.style(f"  Warning: {warning}", fg="yellow"))
+            for w in result.warnings:
+                warning(w)
 
-            # Validate if requested
             if validate:
                 validation_errors = compiler.validate_result(result)
                 if validation_errors:
-                    click.echo(click.style("✗ Validation errors:", fg="red"), err=True)
-                    for error in validation_errors:
-                        click.echo(f"  {error}", err=True)
+                    error("Validation errors:")
+                    for err in validation_errors:
+                        console.print(f"    [dim]{err}[/]")
                     raise SystemExit(1)
 
-            # Export
             compiler.export(result, output)
+            success("Compiled successfully")
 
-            click.echo(click.style("✓ Compiled successfully", fg="green"))
-            click.echo(f"  Output: {output}")
-
-            # Show summary
+            # Show summary panel
+            summary: dict[str, str] = {"Output": str(output)}
             if result.metadata:
                 if "state_count" in result.metadata:
-                    click.echo(f"  States: {result.metadata['state_count']}")
+                    summary["States"] = str(result.metadata["state_count"])
                 if "constraint_count" in result.metadata:
-                    click.echo(f"  Constraints: {result.metadata['constraint_count']}")
+                    summary["Constraints"] = str(result.metadata["constraint_count"])
                 if "rubric_count" in result.metadata:
-                    click.echo(f"  Rubrics: {result.metadata['rubric_count']}")
+                    summary["Rubrics"] = str(result.metadata["rubric_count"])
                 if "criteria_count" in result.metadata:
-                    click.echo(f"  Criteria: {result.metadata['criteria_count']}")
+                    summary["Criteria"] = str(result.metadata["criteria_count"])
+            config_panel("Compilation Result", summary)
 
-            # Suggest next steps based on engine type
-            click.echo(f"\nNext steps:")
+            # Show yaml preview
+            try:
+                generated = output.read_text()
+                yaml_preview(generated, title=str(output))
+            except OSError:
+                pass
+
+            # Next steps
             if engine == "judge":
-                click.echo(f"  1. Review the generated rubric: {output}")
-                click.echo(f"  2. Update osentinel.yaml to point to this policy:")
-                click.echo(f"       policy: {output}")
-                click.echo(f"  3. Start the proxy: osentinel serve")
+                next_steps(
+                    [
+                        f"Review the generated rubric: {output}",
+                        f"Update osentinel.yaml:  policy: {output}",
+                        "Start the proxy: osentinel serve",
+                    ]
+                )
             else:
-                click.echo(f"  osentinel validate {output}")
-                click.echo(f"  Update osentinel.yaml:")
-                click.echo(f"    engine: fsm")
-                click.echo(f"    policy: {output}")
-                click.echo(f"  osentinel serve")
+                next_steps(
+                    [
+                        f"Validate: osentinel validate {output}",
+                        f"Update osentinel.yaml:  engine: fsm / policy: {output}",
+                        "Start the proxy: osentinel serve",
+                    ]
+                )
 
         except ValueError as e:
-            click.echo(click.style(f"✗ Error: {e}", fg="red"), err=True)
+            error(str(e))
             raise SystemExit(1)
         except ImportError as e:
-            click.echo(
-                click.style(f"✗ Missing dependency: {e}", fg="red"),
-                err=True,
-            )
-            click.echo("Install with: pip install openai", err=True)
+            error(f"Missing dependency: {e}", hint="Install with: pip install openai")
             raise SystemExit(1)
 
     asyncio.run(run_compile())
