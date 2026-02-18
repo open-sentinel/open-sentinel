@@ -5,11 +5,15 @@ Wraps the existing workflow/state machine implementation as a PolicyEngine,
 enabling it to be used alongside other policy mechanisms.
 """
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 import logging
+
+if TYPE_CHECKING:
+    from opensentinel.policy.compiler.protocol import PolicyCompiler
 
 from opensentinel.policy.protocols import (
     StatefulPolicyEngine,
+    InterventionHandlerProtocol,
     PolicyEvaluationResult,
     PolicyDecision,
     PolicyViolation,
@@ -357,6 +361,15 @@ class FSMPolicyEngine(StatefulPolicyEngine):
 
         await self._state_machine.reset_session(session_id)
         logger.debug(f"Session {session_id} reset")
+
+    def get_compiler(self) -> Optional["PolicyCompiler"]:
+        """Return an FSMCompiler instance."""
+        from opensentinel.policy.engines.fsm.compiler import FSMCompiler
+        return FSMCompiler()
+
+    def get_intervention_handler(self) -> Optional[InterventionHandlerProtocol]:
+        """Return the FSM intervention handler."""
+        return self._intervention_handler
 
     async def shutdown(self) -> None:
         """Cleanup resources."""
