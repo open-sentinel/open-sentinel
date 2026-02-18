@@ -41,6 +41,7 @@ For composite engines:
 from opensentinel.policy.protocols import (
     PolicyEngine,
     StatefulPolicyEngine,
+    InterventionHandlerProtocol,
 
     PolicyEvaluationResult,
     PolicyDecision,
@@ -85,6 +86,7 @@ __all__ = [
     # Core protocols
     "PolicyEngine",
     "StatefulPolicyEngine",
+    "InterventionHandlerProtocol",
     "require_initialized",
 
     # Result types

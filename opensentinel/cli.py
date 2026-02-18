@@ -472,9 +472,18 @@ def compile(
     async def run_compile() -> None:
         import os
         from opensentinel.policy.compiler import PolicyCompilerRegistry
+        from opensentinel.policy.registry import PolicyEngineRegistry
 
         try:
-            compiler = PolicyCompilerRegistry.create(engine)
+            # Prefer engine-based compiler access; fall back to registry
+            compiler = None
+            engine_cls = PolicyEngineRegistry.get(engine)
+            if engine_cls is not None:
+                eng_instance = engine_cls()
+                compiler = eng_instance.get_compiler()
+
+            if compiler is None:
+                compiler = PolicyCompilerRegistry.create(engine)
 
             if hasattr(compiler, "model"):
                 compiler.model = model

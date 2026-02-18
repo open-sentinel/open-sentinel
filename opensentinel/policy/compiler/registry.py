@@ -9,6 +9,7 @@ Mirrors PolicyEngineRegistry pattern.
 
 from typing import Dict, Type, Optional, List, Callable
 import logging
+import warnings
 
 from opensentinel.policy.compiler.protocol import PolicyCompiler
 
@@ -78,6 +79,12 @@ class PolicyCompilerRegistry:
         Raises:
             ValueError: If engine type has no registered compiler
         """
+        warnings.warn(
+            "PolicyCompilerRegistry.create() is deprecated. "
+            "Use engine.get_compiler() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         compiler_class = cls.get(engine_type)
         if not compiler_class:
             available = ", ".join(cls._compilers.keys()) or "none"

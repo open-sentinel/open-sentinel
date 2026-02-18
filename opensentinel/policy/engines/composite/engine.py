@@ -8,9 +8,12 @@ This enables using multiple policy mechanisms together,
 e.g., FSM workflow enforcement + NeMo content moderation.
 """
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 import logging
 import asyncio
+
+if TYPE_CHECKING:
+    from opensentinel.core.intervention.strategies import InterventionConfig
 
 from opensentinel.policy.protocols import (
     PolicyEngine,
@@ -384,6 +387,21 @@ class CompositePolicyEngine(PolicyEngine):
         self._engines.clear()
         self._initialized = False
         logger.info("CompositePolicyEngine shutdown")
+
+    def resolve_intervention(
+        self,
+        name: str,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> Optional["InterventionConfig"]:
+        """Delegate intervention resolution to child engines.
+
+        Iterates child engines and returns the first non-None result.
+        """
+        for engine in self._engines:
+            result = engine.resolve_intervention(name, context)
+            if result is not None:
+                return result
+        return None
 
     def get_engines(self) -> List[PolicyEngine]:
         """Get list of child engines (for debugging)."""
