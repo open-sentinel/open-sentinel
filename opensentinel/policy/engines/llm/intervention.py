@@ -174,6 +174,33 @@ class InterventionHandler:
             priority=priority,
         )
 
+    def get_config(self, intervention_name: str) -> Optional[InterventionConfig]:
+        """Get intervention config by name from workflow interventions."""
+        template = self.workflow.interventions.get(intervention_name)
+        if template is None:
+            return None
+        # Parse strategy prefix (same logic as FSM InterventionHandler)
+        strategy = StrategyType.SYSTEM_PROMPT_APPEND
+        message = template
+        if template.startswith("block:"):
+            strategy = StrategyType.HARD_BLOCK
+            message = template[6:].strip()
+        elif template.startswith("inject:"):
+            strategy = StrategyType.USER_MESSAGE_INJECT
+            message = template[7:].strip()
+        elif template.startswith("remind:"):
+            strategy = StrategyType.CONTEXT_REMINDER
+            message = template[7:].strip()
+        return InterventionConfig(
+            strategy_type=strategy,
+            message_template=message,
+            max_applications=self.max_intervention_attempts,
+        )
+
+    def list_interventions(self) -> List[str]:
+        """List all available intervention names from workflow."""
+        return list(self.workflow.interventions.keys())
+
     def should_escalate(self, drift: DriftScores) -> bool:
         """Check if situation requires escalation (human review).
         

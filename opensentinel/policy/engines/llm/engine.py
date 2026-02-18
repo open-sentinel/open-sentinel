@@ -13,6 +13,7 @@ from typing import Optional, Dict, Any, List
 from opensentinel.policy.registry import register_engine
 from opensentinel.policy.protocols import (
     StatefulPolicyEngine,
+    InterventionHandlerProtocol,
     PolicyEvaluationResult,
     PolicyDecision,
     PolicyViolation,
@@ -407,6 +408,10 @@ class LLMPolicyEngine(StatefulPolicyEngine):
         if session_id in self._sessions:
             del self._sessions[session_id]
             logger.debug(f"Reset session: {session_id}")
+
+    def get_intervention_handler(self) -> Optional[InterventionHandlerProtocol]:
+        """Return the LLM intervention handler."""
+        return self._intervention_engine
 
     async def shutdown(self) -> None:
         """Cleanup resources."""
