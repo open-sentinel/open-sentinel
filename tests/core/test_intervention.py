@@ -122,68 +122,34 @@ class TestInterventionHandler:
         return simple_workflow
 
     @pytest.fixture
-    def injector(self, workflow):
+    def handler(self, workflow):
         """Create InterventionHandler."""
         return InterventionHandler(workflow)
 
-    def test_inject_known_intervention(self, injector):
-        """Test injecting a known intervention."""
-        data = {
-            "messages": [
-                {"role": "user", "content": "Hello"},
-            ],
-        }
-
-        result = injector.inject(data, "prompt_search", context={})
-
-        # Should have modified messages
-        assert len(result["messages"]) > 1 or "[WORKFLOW GUIDANCE]" in str(result)
-
-    def test_inject_unknown_intervention(self, injector):
-        """Test injecting unknown intervention returns unchanged data."""
-        data = {
-            "messages": [
-                {"role": "user", "content": "Hello"},
-            ],
-        }
-
-        result = injector.inject(data, "nonexistent", context={})
-
-        # Should return unchanged
-        assert result == data
-
-    def test_list_interventions(self, injector):
+    def test_list_interventions(self, handler):
         """Test listing available interventions."""
-        interventions = injector.list_interventions()
+        interventions = handler.list_interventions()
 
         assert "prompt_search" in interventions
 
-    def test_get_intervention_info(self, injector):
+    def test_get_intervention_info(self, handler):
         """Test getting intervention info."""
-        info = injector.get_intervention_info("prompt_search")
+        info = handler.get_intervention_info("prompt_search")
 
         assert info is not None
         assert info["name"] == "prompt_search"
         assert "strategy" in info
         assert "template" in info
 
-    def test_application_tracking(self, injector):
-        """Test that applications are tracked per session."""
-        data = {"messages": [{"role": "user", "content": "test"}]}
+    def test_get_config_known(self, handler):
+        """Test getting config for a known intervention."""
+        config = handler.get_config("prompt_search")
 
-        # Apply multiple times
-        injector.inject(data, "prompt_search", session_id="session1")
-        injector.inject(data, "prompt_search", session_id="session1")
+        assert config is not None
+        assert config.message_template is not None
 
-        count = injector._get_application_count("session1", "prompt_search")
-        assert count == 2
+    def test_get_config_unknown(self, handler):
+        """Test getting config for unknown intervention returns None."""
+        config = handler.get_config("nonexistent")
 
-    def test_reset_session_counts(self, injector):
-        """Test resetting session application counts."""
-        data = {"messages": [{"role": "user", "content": "test"}]}
-
-        injector.inject(data, "prompt_search", session_id="session1")
-        injector.reset_session_counts("session1")
-
-        count = injector._get_application_count("session1", "prompt_search")
-        assert count == 0
+        assert config is None
