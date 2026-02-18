@@ -87,4 +87,5 @@ Thumbs.db
 .claude/
 CLAUDE.md
 .cursor/
+.worktrees/
 
