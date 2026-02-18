@@ -24,6 +24,7 @@ from opensentinel.core.intervention.strategies import (
     WorkflowViolationError,
     STRATEGY_REGISTRY,
     get_strategy,
+    merge_by_strategy,
 )
 
 __all__ = [
@@ -37,4 +38,5 @@ __all__ = [
     "WorkflowViolationError",
     "STRATEGY_REGISTRY",
     "get_strategy",
+    "merge_by_strategy",
 ]

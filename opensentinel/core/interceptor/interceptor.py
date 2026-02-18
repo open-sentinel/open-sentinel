@@ -333,55 +333,24 @@ class Interceptor:
         """
         Merge modifications into base request data.
 
-        Handles special cases like messages list appending.
+        Delegates strategy-specific message manipulation to strategy merge() methods.
         """
+        from opensentinel.core.intervention.strategies import (
+            StrategyType,
+            merge_by_strategy,
+        )
+
         result = dict(base)
+        strategy_values = {st.value for st in StrategyType}
 
         for key, value in modifications.items():
             if key == "messages" and isinstance(value, list):
                 # Append new messages to existing
                 existing = result.get("messages", [])
                 result["messages"] = existing + value
-            elif key == "system_prompt_append" and isinstance(value, str):
-                # Append to system message if exists, or add new one
+            elif key in strategy_values and isinstance(value, str):
                 messages = result.get("messages", [])
-                system_msg_idx = None
-                for i, msg in enumerate(messages):
-                    if msg.get("role") == "system":
-                        system_msg_idx = i
-                        break
-
-                if system_msg_idx is not None:
-                    messages[system_msg_idx]["content"] += "\n" + value
-                else:
-                    messages.insert(0, {"role": "system", "content": value})
-                result["messages"] = messages
-            elif key == "user_message_inject" and isinstance(value, str):
-                # Insert user guidance message before the last user message
-                messages = result.get("messages", [])
-                guidance = {"role": "user", "content": f"[System Note]: {value}"}
-                last_user_idx = None
-                for i in range(len(messages) - 1, -1, -1):
-                    if messages[i].get("role") == "user":
-                        last_user_idx = i
-                        break
-                if last_user_idx is not None:
-                    messages.insert(last_user_idx, guidance)
-                else:
-                    messages.append(guidance)
-                result["messages"] = messages
-            elif key == "context_reminder" and isinstance(value, str):
-                # Insert assistant context reminder before the last message
-                messages = result.get("messages", [])
-                reminder = {
-                    "role": "assistant",
-                    "content": f"[Context reminder: {value}]",
-                }
-                if messages:
-                    messages.insert(-1, reminder)
-                else:
-                    messages.append(reminder)
-                result["messages"] = messages
+                result["messages"] = merge_by_strategy(key, messages, value)
             else:
                 result[key] = value
 

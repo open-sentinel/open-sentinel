@@ -21,7 +21,7 @@ Strategies define HOW to modify LLM requests when deviation is detected:
 """
 
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from enum import Enum
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
@@ -78,6 +78,25 @@ class InterventionStrategy(ABC):
         pass
 
     @staticmethod
+    @abstractmethod
+    def merge(messages: List[Dict[str, Any]], value: str) -> List[Dict[str, Any]]:
+        """
+        Merge an intervention value into a messages list.
+
+        Low-level operation used when applying deferred interventions
+        from async checkers. Unlike apply(), takes a pre-formatted string
+        and operates directly on messages.
+
+        Args:
+            messages: The messages list (will be copied, not mutated).
+            value: The pre-formatted intervention text.
+
+        Returns:
+            New messages list with the intervention applied.
+        """
+        pass
+
+    @staticmethod
     def format_message(template: str, context: Dict[str, Any]) -> str:
         """Format message template with context."""
         try:
@@ -104,6 +123,30 @@ class SystemPromptAppendStrategy(InterventionStrategy):
     ```
     """
 
+    @staticmethod
+    def merge(messages: List[Dict[str, Any]], value: str) -> List[Dict[str, Any]]:
+        messages = [dict(m) for m in messages]
+
+        system_idx = None
+        for i, msg in enumerate(messages):
+            if msg.get("role") == "system":
+                system_idx = i
+                break
+
+        guidance = f"\n\n[WORKFLOW GUIDANCE]: {value}"
+
+        if system_idx is not None:
+            messages[system_idx]["content"] = (
+                messages[system_idx].get("content", "") + guidance
+            )
+        else:
+            messages.insert(0, {
+                "role": "system",
+                "content": f"[WORKFLOW GUIDANCE]: {value}",
+            })
+
+        return messages
+
     def apply(
         self,
         data: dict,
@@ -111,34 +154,8 @@ class SystemPromptAppendStrategy(InterventionStrategy):
         context: Dict[str, Any],
     ) -> dict:
         data = dict(data)
-        messages = list(data.get("messages", []))
-
-        # Format the correction message
         correction = self.format_message(config.message_template, context)
-
-        # Find system message
-        system_idx = None
-        for i, msg in enumerate(messages):
-            if msg.get("role") == "system":
-                system_idx = i
-                break
-
-        guidance = f"\n\n[WORKFLOW GUIDANCE]: {correction}"
-
-        if system_idx is not None:
-            # Append to existing system message
-            messages[system_idx] = dict(messages[system_idx])
-            messages[system_idx]["content"] = (
-                messages[system_idx].get("content", "") + guidance
-            )
-        else:
-            # Insert new system message at the beginning
-            messages.insert(0, {
-                "role": "system",
-                "content": f"[WORKFLOW GUIDANCE]: {correction}",
-            })
-
-        data["messages"] = messages
+        data["messages"] = self.merge(data.get("messages", []), correction)
         logger.debug("Applied system_prompt_append intervention")
         return data
 
@@ -157,25 +174,11 @@ class UserMessageInjectStrategy(InterventionStrategy):
     ```
     """
 
-    def apply(
-        self,
-        data: dict,
-        config: InterventionConfig,
-        context: Dict[str, Any],
-    ) -> dict:
-        data = dict(data)
-        messages = list(data.get("messages", []))
+    @staticmethod
+    def merge(messages: List[Dict[str, Any]], value: str) -> List[Dict[str, Any]]:
+        messages = list(messages)
+        guidance = {"role": "user", "content": f"[System Note]: {value}"}
 
-        correction = self.format_message(config.message_template, context)
-
-        # Create guidance message
-        guidance_message = {
-            "role": "user",
-            "content": f"[System Note]: {correction}",
-        }
-
-        # Insert before the last user message
-        # Find last user message index
         last_user_idx = None
         for i in range(len(messages) - 1, -1, -1):
             if messages[i].get("role") == "user":
@@ -183,12 +186,21 @@ class UserMessageInjectStrategy(InterventionStrategy):
                 break
 
         if last_user_idx is not None:
-            messages.insert(last_user_idx, guidance_message)
+            messages.insert(last_user_idx, guidance)
         else:
-            # No user message found, append at end
-            messages.append(guidance_message)
+            messages.append(guidance)
 
-        data["messages"] = messages
+        return messages
+
+    def apply(
+        self,
+        data: dict,
+        config: InterventionConfig,
+        context: Dict[str, Any],
+    ) -> dict:
+        data = dict(data)
+        correction = self.format_message(config.message_template, context)
+        data["messages"] = self.merge(data.get("messages", []), correction)
         logger.debug("Applied user_message_inject intervention")
         return data
 
@@ -207,6 +219,18 @@ class ContextReminderStrategy(InterventionStrategy):
     ```
     """
 
+    @staticmethod
+    def merge(messages: List[Dict[str, Any]], value: str) -> List[Dict[str, Any]]:
+        messages = list(messages)
+        reminder = {"role": "assistant", "content": f"[Context reminder: {value}]"}
+
+        if messages:
+            messages.insert(-1, reminder)
+        else:
+            messages.append(reminder)
+
+        return messages
+
     def apply(
         self,
         data: dict,
@@ -214,23 +238,8 @@ class ContextReminderStrategy(InterventionStrategy):
         context: Dict[str, Any],
     ) -> dict:
         data = dict(data)
-        messages = list(data.get("messages", []))
-
         correction = self.format_message(config.message_template, context)
-
-        # Create reminder message as assistant
-        reminder_message = {
-            "role": "assistant",
-            "content": f"[Context reminder: {correction}]",
-        }
-
-        # Insert before the last message
-        if messages:
-            messages.insert(-1, reminder_message)
-        else:
-            messages.append(reminder_message)
-
-        data["messages"] = messages
+        data["messages"] = self.merge(data.get("messages", []), correction)
         logger.debug("Applied context_reminder intervention")
         return data
 
@@ -244,6 +253,13 @@ class HardBlockStrategy(InterventionStrategy):
 
     Use for critical violations where continuing would be harmful.
     """
+
+    @staticmethod
+    def merge(messages: List[Dict[str, Any]], value: str) -> List[Dict[str, Any]]:
+        raise WorkflowViolationError(
+            f"Workflow violation blocked: {value}",
+            context={},
+        )
 
     def apply(
         self,
@@ -285,3 +301,25 @@ def get_strategy(strategy_type: StrategyType) -> InterventionStrategy:
     if not strategy:
         raise ValueError(f"Unknown strategy type: {strategy_type}")
     return strategy
+
+
+def merge_by_strategy(
+    strategy_key: str, messages: List[Dict[str, Any]], value: str
+) -> List[Dict[str, Any]]:
+    """
+    Look up a strategy by its string key and apply its merge operation.
+
+    Args:
+        strategy_key: Strategy type value string (e.g., "system_prompt_append").
+        messages: Messages list to modify.
+        value: Pre-formatted intervention text.
+
+    Returns:
+        New messages list with intervention applied.
+
+    Raises:
+        ValueError: If strategy_key is not recognized.
+        WorkflowViolationError: If strategy is hard_block.
+    """
+    strategy_type = StrategyType(strategy_key)
+    return STRATEGY_REGISTRY[strategy_type].merge(messages, value)
