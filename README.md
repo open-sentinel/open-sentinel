@@ -77,17 +77,50 @@ You can also compile rules from natural language:
 osentinel init --from "customer support bot, verify identity before refunds, never share internal pricing"
 ```
 
+## How It Works
+
+Open Sentinel wraps [LiteLLM](https://github.com/BerriAI/litellm) as its proxy layer. Three hooks fire on every request:
+
+1. **Pre-call**: Apply pending interventions from previous violations. Inject system prompt amendments, context reminders, or user message overrides. This is string manipulation — microseconds.
+2. **LLM call**: Forwarded to the upstream provider via LiteLLM. Unmodified.
+3. **Post-call**: Policy engine evaluates the response. Non-critical violations queue interventions for the next turn (deferred pattern). Critical violations raise `WorkflowViolationError` and block immediately.
+
+Every hook is wrapped in `safe_hook()` with a configurable timeout (default 30s). If a hook throws or times out, the request passes through unmodified. Only intentional blocks propagate. Fail-open by design — the proxy never becomes the bottleneck.
+
+```
+┌─────────────┐    ┌───────────────────────────────────────────┐    ┌─────────────┐
+│  Your App   │───▶│              OPEN SENTINEL                │───▶│ LLM Provider│
+│             │    │     ┌─────────┐    ┌─────────────┐        │    │             │
+│             │◀───│     │ Hooks   │───▶│ Interceptor │        │◀───│             │
+└─────────────┘    │     │safe_hook│    │ ┌─────────┐ │        │    └─────────────┘
+                   │     └─────────┘    │ │Checkers │ │        │
+                   │         │          │ └─────────┘ │        │
+                   │         ▼          └─────────────┘        │
+                   │  ┌────────────────────────────────────┐   │
+                   │  │         Policy Engines             │   │
+                   │  │  ┌───────┐ ┌─────┐ ┌─────┐ ┌────┐  │   │
+                   │  │  │ Judge │ │ FSM │ │ LLM │ │NeMo│  │   │
+                   │  │  └───────┘ └─────┘ └─────┘ └────┘  │   │
+                   │  └────────────────────────────────────┘   │
+                   │        │                                  │
+                   │        ▼                                  │
+                   │  ┌────────────────────────────────────┐   │
+                   │  │      OpenTelemetry Tracing         │   │
+                   │  └────────────────────────────────────┘   │
+                   └───────────────────────────────────────────┘
+```
+
 ## Engines
 
-Open Sentinel ships five policy engines. Each uses a different mechanism; all implement the same interface.
+Five policy engines, same interface. Pick one or compose them.
 
-| Engine | What it does | Latency | Config |
-|--------|-------------|---------|--------|
-| `judge` | Scores responses against rubrics via a sidecar LLM | 200-800ms (async by default: 0ms on critical path) | Rules in plain English |
-| `fsm` | Enforces state machine workflows with LTL-lite temporal constraints | ~0ms (local regex/embeddings) | States, transitions, constraints in YAML |
-| `llm` | Classifies state and detects drift using LLM-based reasoning | 200-500ms | Workflow YAML + LLM config |
-| `nemo` | Runs NVIDIA NeMo Guardrails for content safety and dialog rails | 200-800ms | NeMo config directory |
-| `composite` | Combines multiple engines, merges results (most restrictive wins) | Sum of children | List of engine configs |
+| Engine | Mechanism | Critical-path latency | Config |
+|--------|-----------|----------------------|--------|
+| `judge` | Sidecar LLM scores responses against rubrics | **0ms** (async, deferred intervention) | Rules in plain English |
+| `fsm` | State machine with LTL-lite temporal constraints | **<1ms** tool call match, **~1ms** regex, **~50ms** embedding fallback | States, transitions, constraints in YAML |
+| `llm` | LLM-based state classification and drift detection | **100-500ms** | Workflow YAML + LLM config |
+| `nemo` | NVIDIA NeMo Guardrails for content safety and dialog rails | **200-800ms** | NeMo config directory |
+| `composite` | Runs multiple engines, most restrictive decision wins | **max(children)** when parallel (default) | List of engine configs |
 
 ### Judge engine (default)
 
@@ -103,68 +136,19 @@ policy:
   - "Stay on topic"
 ```
 
-Runs async by default -- zero latency on the critical path. Violations are applied as interventions on the next turn.
+Runs async by default — zero latency on the critical path. The response goes back to your app immediately; the judge evaluates in a background `asyncio.Task`. Violations are applied as interventions on the next turn.
 
-### FSM engine
+### NeMo Guardrails engine
 
-Define allowed agent behavior as a finite state machine. Classification uses a three-tier cascade: tool call matching -> regex patterns -> embedding similarity. Constraints are evaluated using LTL-lite temporal logic.
-
-```yaml
-engine: fsm
-policy: ./customer_support.yaml
-```
-
-Where `customer_support.yaml` defines states (`greeting -> identify_issue -> verify_identity -> account_action -> resolution`), transitions, constraints (`must verify identity before account modifications`), and intervention prompts.
-
-### Composite engine
-
-Run multiple engines in parallel:
+Wraps [NVIDIA NeMo Guardrails](https://github.com/NVIDIA/NeMo-Guardrails) for content safety, dialog rails, and topical control. Useful when you need NeMo's built-in rail types (jailbreak detection, moderation, fact-checking) or already have a NeMo config.
 
 ```yaml
-engine: composite
-engines:
-  - type: judge
-    policy: ["No harmful content"]
-  - type: fsm
-    policy: ./workflow.yaml
-strategy: all       # evaluate all engines; most restrictive decision wins
-parallel: true
+engine: nemo
+nemo:
+  config_dir: ./nemo_config    # standard NeMo Guardrails config directory
 ```
 
 Full engine documentation: [docs/engines.md](docs/engines.md)
-
-## How It Works
-
-Open Sentinel wraps [LiteLLM](https://github.com/BerriAI/litellm) as its proxy layer. On each LLM call:
-
-1. **Pre-call**: The interceptor applies any pending interventions from previous violations, then runs pre-call checkers (e.g., input rails).
-2. **LLM call**: Request is forwarded to the upstream provider.
-3. **Post-call**: The policy engine evaluates the response. Violations schedule interventions for the next call. Critical violations block immediately.
-
-All hooks are wrapped with `safe_hook()` -- if a hook throws or times out, the request passes through unmodified. Only intentional blocks (`WorkflowViolationError`) propagate. This is fail-open by design.
-
-```
-┌─────────────┐    ┌───────────────────────────────────────────┐    ┌─────────────┐
-│  Your App   │───▶│              OPEN SENTINEL                │───▶│ LLM Provider│
-│             │    │  ┌────────-┐  ┌─────────────┐             │    │             │
-│             │◀───│  │ Hooks   │─▶│ Interceptor │             │◀───│             │
-└─────────────┘    │  │safe_hook│  │ ┌─────────┐ │             │    └─────────────┘
-                   │  └────────-┘  │ │Checkers │ │             │
-                   │      │        │ └─────────┘ │             │
-                   │      ▼        └─────────────┘             │
-                   │  ┌────────────────────────────────────┐   │
-                   │  │         Policy Engines             │   │
-                   │  │  ┌───────┐ ┌─────┐ ┌─────┐ ┌────┐  │   │
-                   │  │  │ Judge │ │ FSM │ │ LLM │ │NeMo│  │   │
-                   │  │  └───────┘ └─────┘ └─────┘ └────┘  │   │
-                   │  └────────────────────────────────────┘   │
-                   │      │                                    │
-                   │      ▼                                    │
-                   │  ┌────────────────────────────────────┐   │
-                   │  │      OpenTelemetry Tracing         │   │
-                   │  └────────────────────────────────────┘   │
-                   └───────────────────────────────────────────┘
-```
 
 ## Configuration
 
@@ -192,13 +176,36 @@ Full reference: [docs/configuration.md](docs/configuration.md)
 
 ## CLI
 
-| Command | Description |
-|---------|-------------|
-| `osentinel init` | Create a minimal `osentinel.yaml` (use `--from "..."` to compile from natural language) |
-| `osentinel serve` | Start the proxy server |
-| `osentinel compile "..."` | Compile natural language policy to engine-specific YAML |
-| `osentinel validate file.yaml` | Validate a workflow definition |
-| `osentinel info file.yaml` | Show detailed workflow information |
+```bash
+# Bootstrap a project
+osentinel init -i                                         # interactive wizard
+osentinel init                                            # creates osentinel.yaml with defaults
+osentinel init --from "no PII, professional tone only"    # compile rules from English
+
+# Run
+osentinel serve                         # start proxy (default: 0.0.0.0:4000)
+osentinel serve -p 8080 -c custom.yaml  # custom port and config
+
+# Compile policies
+osentinel compile "verify identity before refunds" --engine fsm -o workflow.yaml
+osentinel compile "be helpful, never leak PII" --engine judge -o policy.yaml
+
+# Validate and inspect
+osentinel validate workflow.yaml                          # check schema + report stats
+osentinel info workflow.yaml -v                           # detailed state/transition/constraint view
+```
+
+## Performance
+
+The proxy adds zero latency to your LLM calls in the default configuration:
+
+- **Sync pre-call**: Applies deferred interventions (prompt string manipulation — microseconds).
+- **LLM call**: Forwarded directly to provider via LiteLLM. No modification.
+- **Async post-call**: Response evaluation runs in a background `asyncio.Task`. The response is returned to your app immediately.
+
+FSM classification overhead (when sync): tool call matching is instant, regex is ~1ms, embedding fallback is ~50ms on CPU. ONNX backend available for faster inference.
+
+All hooks are wrapped in `safe_hook()` with configurable timeout (default 30s). If a hook throws or times out, the request passes through — fail-open by design. Only `WorkflowViolationError` (intentional hard blocks) propagates.
 
 ## Status
 
