@@ -30,8 +30,8 @@ class PolicyViolation:
     severity: str                                      # "warning", "error", "critical"
     message: str                                       # Human-readable description
     intervention: Optional[str] = None                 # Suggested intervention name
-    intervention: Optional[str] = None                 # Suggested intervention name
     metadata: Dict[str, Any] = field(default_factory=dict)          # Additional context
+
 
 
 @dataclass
@@ -42,8 +42,8 @@ class PolicyEvaluationResult:
     violations: List[PolicyViolation] = field(default_factory=list)
     intervention_needed: Optional[str] = None
     modified_request: Optional[Dict[str, Any]] = None
-    modified_request: Optional[Dict[str, Any]] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+
 
 
 @dataclass
