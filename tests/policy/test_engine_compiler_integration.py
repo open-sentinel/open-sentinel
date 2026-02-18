@@ -1,0 +1,93 @@
+"""
+Tests for engine.get_compiler() integration.
+
+Verifies that each engine returns the correct compiler type (or None)
+via the new get_compiler() method on PolicyEngine.
+"""
+
+import pytest
+
+from opensentinel.policy.engines.fsm.engine import FSMPolicyEngine
+from opensentinel.policy.engines.judge.engine import JudgePolicyEngine
+from opensentinel.policy.engines.llm.engine import LLMPolicyEngine
+from opensentinel.policy.engines.nemo.engine import NemoGuardrailsPolicyEngine
+from opensentinel.policy.engines.composite.engine import CompositePolicyEngine
+from opensentinel.policy.compiler.protocol import PolicyCompiler
+
+
+class TestFSMGetCompiler:
+    """FSMPolicyEngine.get_compiler() returns an FSMCompiler."""
+
+    def test_returns_compiler(self):
+        engine = FSMPolicyEngine()
+        compiler = engine.get_compiler()
+        assert compiler is not None
+        assert isinstance(compiler, PolicyCompiler)
+        assert compiler.engine_type == "fsm"
+
+    def test_returns_fsm_compiler_type(self):
+        from opensentinel.policy.engines.fsm.compiler import FSMCompiler
+
+        engine = FSMPolicyEngine()
+        compiler = engine.get_compiler()
+        assert isinstance(compiler, FSMCompiler)
+
+    def test_returns_new_instance_each_call(self):
+        engine = FSMPolicyEngine()
+        c1 = engine.get_compiler()
+        c2 = engine.get_compiler()
+        assert c1 is not c2
+
+
+class TestJudgeGetCompiler:
+    """JudgePolicyEngine.get_compiler() returns a JudgeCompiler."""
+
+    def test_returns_compiler(self):
+        engine = JudgePolicyEngine()
+        compiler = engine.get_compiler()
+        assert compiler is not None
+        assert isinstance(compiler, PolicyCompiler)
+        assert compiler.engine_type == "judge"
+
+    def test_returns_judge_compiler_type(self):
+        from opensentinel.policy.engines.judge.compiler import JudgeCompiler
+
+        engine = JudgePolicyEngine()
+        compiler = engine.get_compiler()
+        assert isinstance(compiler, JudgeCompiler)
+
+
+class TestLLMGetCompiler:
+    """LLMPolicyEngine.get_compiler() returns None (no dedicated compiler)."""
+
+    def test_returns_none(self):
+        engine = LLMPolicyEngine()
+        compiler = engine.get_compiler()
+        assert compiler is None
+
+
+class TestNemoGetCompiler:
+    """NemoGuardrailsPolicyEngine.get_compiler() returns a NemoCompiler."""
+
+    def test_returns_compiler(self):
+        engine = NemoGuardrailsPolicyEngine()
+        compiler = engine.get_compiler()
+        assert compiler is not None
+        assert isinstance(compiler, PolicyCompiler)
+        assert compiler.engine_type == "nemo"
+
+    def test_returns_nemo_compiler_type(self):
+        from opensentinel.policy.engines.nemo.compiler import NemoCompiler
+
+        engine = NemoGuardrailsPolicyEngine()
+        compiler = engine.get_compiler()
+        assert isinstance(compiler, NemoCompiler)
+
+
+class TestCompositeGetCompiler:
+    """CompositePolicyEngine.get_compiler() returns None."""
+
+    def test_returns_none(self):
+        engine = CompositePolicyEngine()
+        compiler = engine.get_compiler()
+        assert compiler is None
