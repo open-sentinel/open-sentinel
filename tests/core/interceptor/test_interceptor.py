@@ -449,7 +449,7 @@ class TestModificationMerging:
         result = interceptor._merge_modifications(base, mods)
 
         assert result["messages"][0]["role"] == "system"
-        assert result["messages"][0]["content"] == "Be safe."
+        assert result["messages"][0]["content"] == "[WORKFLOW GUIDANCE]: Be safe."
         assert result["messages"][1]["role"] == "user"
 
     async def test_other_keys_replaced(self):

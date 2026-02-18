@@ -1,13 +1,14 @@
 """
-Tests for _merge_modifications() handling of all 4 intervention strategy keys.
+Tests for _merge_modifications() handling of all intervention strategy keys.
 
-Covers: user_message_inject, context_reminder, system_prompt_append (backward compat),
-and combinations of multiple keys in the same modification dict.
+Covers: user_message_inject, context_reminder, system_prompt_append,
+hard_block, combinations of multiple keys, and edge cases.
 """
 
 import pytest
 
 from opensentinel.core.interceptor import Interceptor
+from opensentinel.core.intervention.strategies import WorkflowViolationError
 
 
 class TestUserMessageInject:
@@ -89,10 +90,10 @@ class TestContextReminder:
         assert "Remember the rules." in result["messages"][0]["content"]
 
 
-class TestSystemPromptAppendBackcompat:
+class TestSystemPromptAppend:
 
     async def test_appends_to_existing_system_msg(self):
-        """system_prompt_append appends to existing system message."""
+        """system_prompt_append appends to existing system message with WORKFLOW GUIDANCE."""
         interceptor = Interceptor([])
         base = {
             "messages": [
@@ -105,7 +106,7 @@ class TestSystemPromptAppendBackcompat:
         result = interceptor._merge_modifications(base, mods)
 
         assert "You are helpful." in result["messages"][0]["content"]
-        assert "Always be safe." in result["messages"][0]["content"]
+        assert "[WORKFLOW GUIDANCE]: Always be safe." in result["messages"][0]["content"]
 
     async def test_creates_system_msg(self):
         """system_prompt_append creates system message if none exists."""
@@ -116,8 +117,20 @@ class TestSystemPromptAppendBackcompat:
         result = interceptor._merge_modifications(base, mods)
 
         assert result["messages"][0]["role"] == "system"
-        assert result["messages"][0]["content"] == "Be safe."
+        assert result["messages"][0]["content"] == "[WORKFLOW GUIDANCE]: Be safe."
         assert result["messages"][1]["role"] == "user"
+
+
+class TestHardBlock:
+
+    async def test_hard_block_raises(self):
+        """hard_block key raises WorkflowViolationError."""
+        interceptor = Interceptor([])
+        base = {"messages": [{"role": "user", "content": "hi"}]}
+        mods = {"hard_block": "Critical violation detected."}
+
+        with pytest.raises(WorkflowViolationError, match="Critical violation detected"):
+            interceptor._merge_modifications(base, mods)
 
 
 class TestMultipleStrategyKeys:
@@ -139,7 +152,7 @@ class TestMultipleStrategyKeys:
         result = interceptor._merge_modifications(base, mods)
 
         # system_prompt_append applied
-        assert "Extra guidance." in result["messages"][0]["content"]
+        assert "[WORKFLOW GUIDANCE]: Extra guidance." in result["messages"][0]["content"]
         # context_reminder applied (inserted before last message)
         reminder_msgs = [
             m for m in result["messages"]
@@ -147,3 +160,51 @@ class TestMultipleStrategyKeys:
         ]
         assert len(reminder_msgs) == 1
         assert "Remember the workflow." in reminder_msgs[0]["content"]
+
+
+class TestEdgeCases:
+
+    async def test_no_messages_key_in_base(self):
+        """Strategy creates messages key when base has none."""
+        interceptor = Interceptor([])
+        base = {"model": "gpt-4"}
+        mods = {"system_prompt_append": "Be safe."}
+
+        result = interceptor._merge_modifications(base, mods)
+
+        assert "messages" in result
+        assert result["messages"][0]["role"] == "system"
+        assert "[WORKFLOW GUIDANCE]: Be safe." in result["messages"][0]["content"]
+
+    async def test_multiple_same_strategy_merges(self):
+        """Multiple sequential merges with same strategy both apply."""
+        interceptor = Interceptor([])
+        base = {
+            "messages": [
+                {"role": "system", "content": "You are helpful."},
+                {"role": "user", "content": "hi"},
+            ]
+        }
+
+        result = interceptor._merge_modifications(base, {"system_prompt_append": "Rule 1."})
+        result = interceptor._merge_modifications(result, {"system_prompt_append": "Rule 2."})
+
+        content = result["messages"][0]["content"]
+        assert "Rule 1." in content
+        assert "Rule 2." in content
+
+    async def test_base_not_mutated(self):
+        """Original base dict messages are not mutated."""
+        interceptor = Interceptor([])
+        original_messages = [
+            {"role": "system", "content": "You are helpful."},
+            {"role": "user", "content": "hi"},
+        ]
+        base = {"messages": original_messages}
+        mods = {"system_prompt_append": "Be safe."}
+
+        interceptor._merge_modifications(base, mods)
+
+        # Original should be unchanged
+        assert original_messages[0]["content"] == "You are helpful."
+        assert len(original_messages) == 2
