@@ -164,46 +164,13 @@ class LLMPolicyEngine(StatefulPolicyEngine):
         request_data: Dict[str, Any],
         context: Optional[Dict[str, Any]] = None,
     ) -> PolicyEvaluationResult:
-        """Evaluate incoming request - apply pending interventions.
-        
-        If there's a pending intervention from previous response evaluation,
-        apply it to the request.
+        """Evaluate incoming request.
+
+        Currently a pass-through; all evaluation happens in evaluate_response.
         """
         if not self._initialized:
             return PolicyEvaluationResult(decision=PolicyDecision.ALLOW)
-        
-        session = self._get_or_create_session(session_id)
-        
-        # Apply pending intervention if any
-        if session.pending_intervention:
-            try:
-                # Parse stored intervention config
-                intervention = session.pending_intervention
-                session.pending_intervention = None
-                
-                # Apply intervention
-                if self._intervention_engine and isinstance(intervention, dict):
-                    from opensentinel.core.intervention.strategies import (
-                        InterventionConfig,
-                        StrategyType,
-                    )
-                    config = InterventionConfig(
-                        strategy_type=StrategyType(intervention["strategy_type"]),
-                        message_template=intervention["message_template"],
-                        priority=intervention.get("priority", 0),
-                    )
-                    modified = self._intervention_engine.apply_intervention(
-                        request_data, config, session
-                    )
-                    
-                    return PolicyEvaluationResult(
-                        decision=PolicyDecision.MODIFY,
-                        modified_request=modified,
-                        metadata={"intervention_applied": True},
-                    )
-            except Exception as e:
-                logger.error(f"Failed to apply pending intervention: {e}")
-        
+
         return PolicyEvaluationResult(decision=PolicyDecision.ALLOW)
 
     async def evaluate_response(
@@ -328,27 +295,26 @@ class LLMPolicyEngine(StatefulPolicyEngine):
                 },
             )
             
-            # 6. Store pending intervention
-            if intervention_config:
-                session.pending_intervention = {
-                    "strategy_type": intervention_config.strategy_type.value,
-                    "message_template": intervention_config.message_template,
-                    "priority": intervention_config.priority,
-                }
-            
-            # Determine decision
+            # 6. Build modified_request if intervention needed
+            modified_request = None
             decision = PolicyDecision.ALLOW
             if intervention_config:
                 from opensentinel.core.intervention.strategies import StrategyType
                 if intervention_config.strategy_type == StrategyType.HARD_BLOCK:
                     decision = PolicyDecision.DENY
                 else:
-                    decision = PolicyDecision.WARN
-            
+                    decision = PolicyDecision.MODIFY
+                    modified_request = {
+                        "strategy_type": intervention_config.strategy_type.value,
+                        "message_template": intervention_config.message_template,
+                        "priority": intervention_config.priority,
+                    }
+
             return PolicyEvaluationResult(
                 decision=decision,
                 violations=violations,
                 intervention_needed=intervention_config.strategy_type.value if intervention_config else None,
+                modified_request=modified_request,
                 metadata={
                     "state": classification.best_state,
                     "confidence": classification.best_confidence,

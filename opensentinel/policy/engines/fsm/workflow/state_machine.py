@@ -50,7 +50,6 @@ class SessionState:
     Maintains:
     - Current state
     - Full state history for constraint evaluation
-    - Pending interventions
     - Constraint violations
     """
 
@@ -58,7 +57,6 @@ class SessionState:
     workflow_name: str
     current_state: str
     history: list[StateHistoryEntry] = field(default_factory=list)
-    pending_intervention: Optional[str] = None
     constraint_violations: list[str] = field(default_factory=list)
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     last_updated: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -351,23 +349,6 @@ class WorkflowStateMachine:
 
         # If no explicit transitions, return all non-current states
         return {s for s in self._states.keys() if s != current}
-
-    async def get_pending_intervention(self, session_id: str) -> Optional[str]:
-        """Get and clear pending intervention for session."""
-        session = await self.get_session(session_id)
-        if not session:
-            return None
-
-        intervention = session.pending_intervention
-        session.pending_intervention = None
-        return intervention
-
-    async def set_pending_intervention(
-        self, session_id: str, intervention: str
-    ) -> None:
-        """Set intervention to be applied on next call."""
-        session = await self.get_or_create_session(session_id)
-        session.pending_intervention = intervention
 
     async def get_state_history(self, session_id: str) -> list[str]:
         """Get state history for a session."""

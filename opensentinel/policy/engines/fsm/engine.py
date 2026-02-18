@@ -156,22 +156,6 @@ class FSMPolicyEngine(StatefulPolicyEngine):
 
         session = await self._state_machine.get_or_create_session(session_id)
 
-        # Check for pending intervention from previous violation
-        pending = session.pending_intervention
-        if pending:
-            logger.debug(
-                f"Session {session_id}: Found pending intervention '{pending}'"
-            )
-            return PolicyEvaluationResult(
-                decision=PolicyDecision.MODIFY,
-                violations=[],
-                intervention_needed=pending,
-                metadata={
-                    "current_state": session.current_state,
-                    "workflow": self._workflow.name,
-                },
-            )
-
         return PolicyEvaluationResult(
             decision=PolicyDecision.ALLOW,
             violations=[],
@@ -251,6 +235,7 @@ class FSMPolicyEngine(StatefulPolicyEngine):
 
         # Determine intervention and decision
         intervention = None
+        modified_request = None
         decision = PolicyDecision.ALLOW
 
         if violations:
@@ -258,10 +243,11 @@ class FSMPolicyEngine(StatefulPolicyEngine):
             for v in violations:
                 if v.intervention:
                     intervention = v.intervention
-                    await self._state_machine.set_pending_intervention(
-                        session_id, intervention
-                    )
-                    decision = PolicyDecision.WARN
+                    decision = PolicyDecision.MODIFY
+                    modified_request = {
+                        "intervention_name": intervention,
+                        "intervention_context": v.metadata or {},
+                    }
                     break
 
             # Critical violations should deny
@@ -272,6 +258,7 @@ class FSMPolicyEngine(StatefulPolicyEngine):
             decision=decision,
             violations=violations,
             intervention_needed=intervention,
+            modified_request=modified_request,
             metadata={
                 "previous_state": previous_state,
                 "current_state": classification.state_name,
@@ -340,7 +327,6 @@ class FSMPolicyEngine(StatefulPolicyEngine):
         return {
             "current_state": session.current_state,
             "history": session.get_state_sequence(),
-            "pending_intervention": session.pending_intervention,
             "constraint_violations": session.constraint_violations,
             "workflow": self._workflow.name,
             "created_at": session.created_at.isoformat(),

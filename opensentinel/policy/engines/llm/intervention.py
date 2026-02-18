@@ -111,17 +111,17 @@ class InterventionHandler:
                 )
                 return None
         
-        # Self-correction check
-        if session.pending_intervention:
-            # Check if drift is decreasing (agent self-correcting)
-            if drift.composite < session.drift_score - self.self_correction_margin:
-                logger.info(
-                    f"Self-correction detected: drift {session.drift_score:.3f} → "
-                    f"{drift.composite:.3f}"
-                )
-                session.pending_intervention = None
-                return None
-        
+        # Self-correction check: if drift is decreasing, skip intervention
+        if (
+            session.last_intervention_turn >= 0
+            and drift.composite < session.drift_score - self.self_correction_margin
+        ):
+            logger.info(
+                f"Self-correction detected: drift {session.drift_score:.3f} → "
+                f"{drift.composite:.3f}"
+            )
+            return None
+
         # Get violation-based strategy
         violation_strategy = None
         violation_severity = None

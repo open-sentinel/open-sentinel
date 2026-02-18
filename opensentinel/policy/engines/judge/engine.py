@@ -189,27 +189,6 @@ class JudgePolicyEngine(PolicyEngine):
             return PolicyEvaluationResult(decision=PolicyDecision.ALLOW)
 
 
-        session = self._get_or_create_session(session_id)
-
-        # Apply pending intervention from previous turn's evaluation
-        if session.pending_intervention:
-            intervention = session.pending_intervention
-            session.pending_intervention = None
-            return PolicyEvaluationResult(
-                decision=PolicyDecision.MODIFY,
-                violations=[PolicyViolation(
-                    name="judge_deferred_intervention",
-                    severity="warning",
-                    message="Judge intervention from previous turn evaluation.",
-                    intervention="system_prompt_append",
-                )],
-                intervention_needed="system_prompt_append",
-                modified_request=self._apply_system_prompt_guidance(
-                    request_data, intervention,
-                ),
-                metadata={"judge_deferred": True},
-            )
-
         # Optional pre-call screening
         if self._pre_call_enabled:
             return await self._evaluate_pre_call(session_id, request_data, context)
@@ -588,12 +567,14 @@ class JudgePolicyEngine(PolicyEngine):
                         },
                     ))
 
-        # For INTERVENE in async mode, store as pending for next request
+        # For INTERVENE, return MODIFY with guidance in modified_request
         intervention_needed = None
         modified_request = None
         if worst_verdict.action == VerdictAction.INTERVENE:
-            session.pending_intervention = worst_verdict.summary
             intervention_needed = "system_prompt_append"
+            modified_request = {
+                "system_prompt_append": f"[JUDGE GUIDANCE]: {worst_verdict.summary}",
+            }
 
         # Confidence info
         any_low_confidence = any(v.low_confidence for v in verdicts)
@@ -640,26 +621,3 @@ class JudgePolicyEngine(PolicyEngine):
         """Extract conversation messages from request data."""
         return request_data.get("messages", [])
 
-    def _apply_system_prompt_guidance(
-        self,
-        request_data: Dict[str, Any],
-        guidance: str,
-    ) -> Dict[str, Any]:
-        """Apply judge guidance to the system prompt."""
-        data = dict(request_data)
-        messages = list(data.get("messages", []))
-
-        guidance_text = f"\n\n[JUDGE GUIDANCE]: {guidance}"
-
-        # Find and append to system message
-        for i, msg in enumerate(messages):
-            if msg.get("role") == "system":
-                messages[i] = dict(msg)
-                messages[i]["content"] = msg.get("content", "") + guidance_text
-                data["messages"] = messages
-                return data
-
-        # No system message, insert one
-        messages.insert(0, {"role": "system", "content": f"[JUDGE GUIDANCE]: {guidance}"})
-        data["messages"] = messages
-        return data

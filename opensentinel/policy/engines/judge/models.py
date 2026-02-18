@@ -187,7 +187,6 @@ class JudgeSessionContext:
     violation_counts: Dict[str, int] = field(default_factory=dict)
     turn_count: int = 0
     total_tokens_used: int = 0
-    pending_intervention: Optional[str] = None
     created_at: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
     last_updated_at: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
@@ -210,7 +209,6 @@ class JudgeSessionContext:
             "total_tokens_used": self.total_tokens_used,
             "score_trend": self.score_trend,
             "violation_counts": self.violation_counts,
-            "pending_intervention": self.pending_intervention,
             "evaluation_count": len(self.evaluation_history),
             "created_at": self.created_at.isoformat(),
             "last_updated_at": self.last_updated_at.isoformat(),
