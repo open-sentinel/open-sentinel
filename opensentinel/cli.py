@@ -144,29 +144,29 @@ def serve(port: int, host: str, config: Path, debug: bool) -> None:
 
 @main.command()
 @click.option(
-    "--from",
-    "compile_from",
-    type=str,
-    default=None,
-    help="Natural language policy description to compile into rules",
+    "--quick",
+    "-q",
+    is_flag=True,
+    default=False,
+    help="Quick setup with sensible defaults (skip interactive wizard)",
 )
-def init(compile_from: str) -> None:
+def init(quick: bool) -> None:
     """Initialize a new Open Sentinel project.
 
     Creates an osentinel.yaml in the current directory.
-    Without --from, runs an interactive wizard with arrow-key selection.
+    Without flags, runs an interactive wizard with arrow-key selection.
 
     Examples:
 
         # Interactive setup (default)
         osentinel init
 
-        # Compile from natural language
-        osentinel init --from "customer support bot, never share internal pricing"
+        # Quick setup with sensible defaults
+        osentinel init --quick
     """
     from opensentinel.cli_init import run_init
 
-    run_init(compile_from=compile_from)
+    run_init(quick=quick)
 
 
 @main.command()
