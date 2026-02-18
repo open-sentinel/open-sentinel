@@ -299,16 +299,24 @@ class LLMPolicyEngine(StatefulPolicyEngine):
             modified_request = None
             decision = PolicyDecision.ALLOW
             if intervention_config:
-                from opensentinel.core.intervention.strategies import StrategyType
+                from opensentinel.core.intervention.strategies import (
+                    InterventionStrategy,
+                    StrategyType,
+                )
                 if intervention_config.strategy_type == StrategyType.HARD_BLOCK:
                     decision = PolicyDecision.DENY
                 else:
                     decision = PolicyDecision.MODIFY
-                    modified_request = {
-                        "strategy_type": intervention_config.strategy_type.value,
-                        "message_template": intervention_config.message_template,
-                        "priority": intervention_config.priority,
+                    template_context = {
+                        "state": classification.best_state,
+                        "drift": drift.composite,
+                        "drift_level": drift.level.value,
                     }
+                    formatted = InterventionStrategy.format_message(
+                        intervention_config.message_template, template_context
+                    )
+                    key = intervention_config.strategy_type.value
+                    modified_request = {key: formatted}
 
             return PolicyEvaluationResult(
                 decision=decision,

@@ -243,11 +243,28 @@ class FSMPolicyEngine(StatefulPolicyEngine):
             for v in violations:
                 if v.intervention:
                     intervention = v.intervention
-                    decision = PolicyDecision.MODIFY
-                    modified_request = {
-                        "intervention_name": intervention,
-                        "intervention_context": v.metadata or {},
-                    }
+                    config = (
+                        self._intervention_handler.get_config(v.intervention)
+                        if self._intervention_handler
+                        else None
+                    )
+                    if config:
+                        from opensentinel.core.intervention.strategies import (
+                            InterventionStrategy,
+                            StrategyType,
+                        )
+                        template_context = v.metadata or {}
+                        formatted = InterventionStrategy.format_message(
+                            config.message_template, template_context
+                        )
+                        if config.strategy_type == StrategyType.HARD_BLOCK:
+                            decision = PolicyDecision.DENY
+                        else:
+                            decision = PolicyDecision.MODIFY
+                            key = config.strategy_type.value
+                            modified_request = {key: formatted}
+                    else:
+                        decision = PolicyDecision.MODIFY
                     break
 
             # Critical violations should deny

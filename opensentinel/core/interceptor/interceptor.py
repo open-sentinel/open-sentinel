@@ -356,6 +356,32 @@ class Interceptor:
                 else:
                     messages.insert(0, {"role": "system", "content": value})
                 result["messages"] = messages
+            elif key == "user_message_inject" and isinstance(value, str):
+                # Insert user guidance message before the last user message
+                messages = result.get("messages", [])
+                guidance = {"role": "user", "content": f"[System Note]: {value}"}
+                last_user_idx = None
+                for i in range(len(messages) - 1, -1, -1):
+                    if messages[i].get("role") == "user":
+                        last_user_idx = i
+                        break
+                if last_user_idx is not None:
+                    messages.insert(last_user_idx, guidance)
+                else:
+                    messages.append(guidance)
+                result["messages"] = messages
+            elif key == "context_reminder" and isinstance(value, str):
+                # Insert assistant context reminder before the last message
+                messages = result.get("messages", [])
+                reminder = {
+                    "role": "assistant",
+                    "content": f"[Context reminder: {value}]",
+                }
+                if messages:
+                    messages.insert(-1, reminder)
+                else:
+                    messages.append(reminder)
+                result["messages"] = messages
             else:
                 result[key] = value
 

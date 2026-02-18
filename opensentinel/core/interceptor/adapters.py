@@ -114,11 +114,12 @@ class PolicyEngineChecker(Checker):
 
         if result.modified_request:
             modified_data = result.modified_request
-        elif result.intervention_needed and result.metadata:
-            modified_data = {
-                "intervention_name": result.intervention_needed,
-                "intervention_context": result.metadata,
-            }
+        elif result.intervention_needed:
+            # intervention_needed is a strategy type value; use it as the merge key
+            message = ""
+            if result.metadata:
+                message = result.metadata.get("message", str(result.metadata))
+            modified_data = {result.intervention_needed: message}
 
         # Mode-aware coercion
         if self._mode == CheckerMode.SYNC:
