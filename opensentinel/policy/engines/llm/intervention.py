@@ -1,8 +1,9 @@
 """
 Intervention decision engine for the LLM Policy Engine.
 
-Maps violations and drift scores to intervention strategies with
-cooldown management and self-correction detection.
+Maps violations and drift scores to intervention configurations with
+cooldown management and self-correction detection. Actual application
+of interventions is handled by the interceptor layer.
 """
 
 import logging
@@ -18,7 +19,6 @@ from opensentinel.policy.engines.llm.templates import DEFAULT_TEMPLATES, format_
 from opensentinel.core.intervention.strategies import (
     StrategyType,
     InterventionConfig,
-    get_strategy,
 )
 from opensentinel.policy.engines.fsm.workflow.schema import WorkflowDefinition
 
@@ -27,17 +27,15 @@ logger = logging.getLogger(__name__)
 
 class InterventionHandler:
     """Decides when and how to intervene based on violations and drift.
-    
-    Maps constraint violations and drift levels to intervention strategies,
+
+    Maps constraint violations and drift levels to intervention configurations,
     with cooldown to prevent intervention spam and self-correction detection.
-    
+    Actual application of interventions is handled by the interceptor.
+
     Example:
         engine = InterventionHandler(workflow, cooldown_turns=2)
-        intervention = engine.decide(session, violations, drift)
-        if intervention:
-            modified_request = engine.apply_intervention(
-                request_data, intervention, session
-            )
+        config = engine.decide(session, violations, drift)
+        # config is returned to the interceptor for application
     """
 
     # Severity to strategy mapping
@@ -176,44 +174,6 @@ class InterventionHandler:
             priority=priority,
         )
 
-    def apply_intervention(
-        self,
-        data: Dict[str, Any],
-        config: InterventionConfig,
-        session: SessionContext,
-    ) -> Dict[str, Any]:
-        """Apply an intervention to request data.
-        
-        Args:
-            data: LLM request data
-            config: Intervention configuration
-            session: Session context
-            
-        Returns:
-            Modified request data
-        """
-        # Build context for template formatting
-        context = self._build_context(session)
-        
-        # Get strategy
-        strategy = get_strategy(config.strategy_type)
-        
-        # Apply intervention
-        modified_data = strategy.apply(data, config, context)
-        
-        # Update session and track count
-        session.last_intervention_turn = session.turn_count
-        self._intervention_counts[session.session_id] = (
-            self._intervention_counts.get(session.session_id, 0) + 1
-        )
-
-        logger.info(
-            f"Applied {config.strategy_type.value} intervention for "
-            f"session {session.session_id}"
-        )
-        
-        return modified_data
-
     def should_escalate(self, drift: DriftScores) -> bool:
         """Check if situation requires escalation (human review).
         
@@ -284,23 +244,3 @@ class InterventionHandler:
         
         return DEFAULT_TEMPLATES["policy_violation"]
 
-    def _build_context(self, session: SessionContext) -> Dict[str, Any]:
-        """Build context dict for template formatting."""
-        # Get current state info
-        state = self.workflow.get_state(session.current_state)
-        state_description = state.description if state else ""
-        
-        # Get active constraints
-        active_constraints = ", ".join(
-            c.name for c in self.workflow.constraints[:5]
-        ) or "none"
-        
-        return {
-            "session_id": session.session_id,
-            "workflow_name": self.workflow.name,
-            "current_state": session.current_state,
-            "state_description": state_description,
-            "drift_score": session.drift_score,
-            "active_constraints": active_constraints,
-            "turn_count": session.turn_count,
-        }
