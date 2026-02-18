@@ -11,6 +11,7 @@ from typing import Dict, Any, Optional, List, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from opensentinel.policy.engines.judge.ensemble import JudgeEnsemble
+    from opensentinel.policy.compiler.protocol import PolicyCompiler
 
 from opensentinel.policy.protocols import (
     PolicyEngine,
@@ -343,6 +344,11 @@ class JudgePolicyEngine(PolicyEngine):
     async def reset_session(self, session_id: str) -> None:
         """Reset session state."""
         self._sessions.pop(session_id, None)
+
+    def get_compiler(self) -> Optional["PolicyCompiler"]:
+        """Return a JudgeCompiler instance."""
+        from opensentinel.policy.engines.judge.compiler import JudgeCompiler
+        return JudgeCompiler()
 
     async def shutdown(self) -> None:
         """Cleanup resources."""
