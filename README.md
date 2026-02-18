@@ -152,7 +152,7 @@ Full engine documentation: [docs/engines.md](docs/engines.md)
 
 ## Configuration
 
-Everything lives in `osentinel.yaml`. The minimal config is just a `policy:` list -- everything else has smart defaults. Environment variables with the `OSNTL_` prefix override any setting (nested with `__`: `OSNTL_JUDGE__MODE=safe`).
+Everything lives in `osentinel.yaml`. The minimal config is just a `policy:` list -- everything else has smart defaults.
 
 ```yaml
 # Minimal (all you need):
