@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 from opensentinel.policy.protocols import PolicyDecision, PolicyEngine, PolicyEvaluationResult
 
 from .checker import Checker
-from .types import CheckDecision, CheckerContext, CheckerMode, CheckPhase, CheckResult
+from .types import CheckerContext, CheckerMode, CheckPhase, CheckResult
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,10 @@ class PolicyEngineChecker(Checker):
 
     Maps PolicyEngine.evaluate_request() for PRE_CALL phase
     and PolicyEngine.evaluate_response() for POST_CALL phase.
+
+    Mode-aware decision coercion:
+    - SYNC mode: MODIFY → DENY, WARN → ALLOW (sync checkers are gates only)
+    - ASYNC mode: pass through all decisions as-is
     """
 
     def __init__(
@@ -90,7 +94,7 @@ class PolicyEngineChecker(Checker):
         except Exception as e:
             logger.error(f"PolicyEngine '{self._engine.name}' evaluation failed: {e}")
             return CheckResult(
-                decision=CheckDecision.FAIL,
+                decision=PolicyDecision.DENY,
                 checker_name=self.name,
                 message=f"Policy engine error: {e}",
             )
@@ -99,13 +103,11 @@ class PolicyEngineChecker(Checker):
         """
         Map PolicyEvaluationResult to CheckResult.
 
-        Mapping:
-        - ALLOW -> PASS
-        - DENY -> FAIL
-        - MODIFY -> WARN with modified_data
-        - WARN -> WARN
+        Mode-aware coercion:
+        - SYNC: MODIFY → DENY (log warning), WARN → ALLOW. Strip modified_data.
+        - ASYNC: Pass through as-is. Keep modified_data.
         """
-        decision = self._map_decision(result.decision)
+        decision = result.decision
 
         # Build modified_data from various sources
         modified_data: Optional[Dict[str, Any]] = None
@@ -113,11 +115,22 @@ class PolicyEngineChecker(Checker):
         if result.modified_request:
             modified_data = result.modified_request
         elif result.intervention_needed and result.metadata:
-            # If intervention is needed, include that in modified_data
             modified_data = {
                 "intervention_name": result.intervention_needed,
                 "intervention_context": result.metadata,
             }
+
+        # Mode-aware coercion
+        if self._mode == CheckerMode.SYNC:
+            if decision == PolicyDecision.MODIFY:
+                logger.warning(
+                    f"Sync checker '{self.name}' returned MODIFY, coercing to DENY"
+                )
+                decision = PolicyDecision.DENY
+                modified_data = None
+            elif decision == PolicyDecision.WARN:
+                decision = PolicyDecision.ALLOW
+                modified_data = None
 
         # Pass through violations directly as PolicyViolation instances
         violations = list(result.violations)
@@ -136,18 +149,3 @@ class PolicyEngineChecker(Checker):
             violations=violations,
             message=message,
         )
-
-    def _map_decision(self, decision: PolicyDecision) -> CheckDecision:
-        """Map PolicyDecision to CheckDecision."""
-        if decision == PolicyDecision.ALLOW:
-            return CheckDecision.PASS
-        elif decision == PolicyDecision.DENY:
-            return CheckDecision.FAIL
-        elif decision == PolicyDecision.MODIFY:
-            return CheckDecision.WARN
-        elif decision == PolicyDecision.WARN:
-            return CheckDecision.WARN
-        else:
-            # Unknown decision, default to PASS
-            logger.warning(f"Unknown policy decision: {decision}, defaulting to PASS")
-            return CheckDecision.PASS

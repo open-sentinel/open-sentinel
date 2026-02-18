@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from opensentinel.policy.protocols import PolicyViolation
+from opensentinel.policy.protocols import PolicyDecision, PolicyViolation
 
 
 class CheckPhase(Enum):
@@ -25,21 +25,13 @@ class CheckerMode(Enum):
     ASYNC = "async"  # Background, results applied on next request
 
 
-class CheckDecision(Enum):
-    """Result of a check operation."""
-
-    PASS = "pass"  # Allowed, no changes
-    WARN = "warn"  # Allowed, may have modified_data
-    FAIL = "fail"  # Blocked
-
-
 @dataclass
 class CheckResult:
     """Result returned by a checker."""
 
-    decision: CheckDecision
+    decision: PolicyDecision
     checker_name: str
-    modified_data: Optional[Dict[str, Any]] = None  # For WARN passthrough
+    modified_data: Optional[Dict[str, Any]] = None  # For MODIFY decisions
     violations: List[PolicyViolation] = field(default_factory=list)
     message: Optional[str] = None
 

@@ -45,7 +45,7 @@ from opensentinel.core.interceptor import (
     CheckPhase,
     CheckerMode,
     PolicyEngineChecker,
-    CheckDecision,
+    PolicyDecision,
 )
 
 logger = logging.getLogger(__name__)
@@ -179,12 +179,13 @@ class SentinelCallback(CustomLogger):
                 )
             )
 
-            # Sync POST_CALL checker for response evaluation
+            # Async POST_CALL checker for response evaluation
+            # Results deferred to next PRE_CALL via interceptor
             checkers.append(
                 PolicyEngineChecker(
                     engine=policy_engine,
                     phase=CheckPhase.POST_CALL,
-                    mode=CheckerMode.SYNC,
+                    mode=CheckerMode.ASYNC,
                 )
             )
 
@@ -389,7 +390,7 @@ class SentinelCallback(CustomLogger):
             if not result.allowed:
                 # Find the failing result for context
                 fail_results = [
-                    r for r in result.results if r.decision == CheckDecision.FAIL
+                    r for r in result.results if r.decision == PolicyDecision.DENY
                 ]
                 violations = []
                 message = "Request blocked by checker"
@@ -534,42 +535,8 @@ class SentinelCallback(CustomLogger):
                     span.set_attribute("output.value", output_json)
                     span.set_attribute("langfuse.span.output", output_json)
 
-            # Handle result
-            if not result.allowed:
-                fail_results = [
-                    r for r in result.results if r.decision == CheckDecision.FAIL
-                ]
-                violations = []
-                message = "Response blocked by checker"
-                if fail_results:
-                    for r in fail_results:
-                        violations.extend(v.name for v in r.violations)
-                    message = fail_results[0].message or message
-
-                logger.warning(
-                    f"Response blocked for session {session_id}: {violations}"
-                )
-                raise WorkflowViolationError(
-                    message,
-                    context={
-                        "session_id": session_id,
-                        "violations": violations,
-                    },
-                )
-
-            # Apply modifications to response if any
-            if result.modified_data:
-                if isinstance(result.modified_data, dict):
-                    if "response" in result.modified_data:
-                        response = result.modified_data["response"]
-                    elif isinstance(response, dict):
-                        response.update(result.modified_data)
-                    else:
-                        logger.warning(
-                            f"POST_CALL modifications requested for session {session_id} "
-                            f"but response is immutable (type={type(response).__name__}). "
-                            "Modifications not applied."
-                        )
+            # With async POST_CALL, results are deferred to next PRE_CALL.
+            # run_post_call only starts async checkers; no sync gates here.
 
         # Log LLM call via OTEL
         if self.tracer:

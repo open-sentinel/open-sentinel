@@ -9,7 +9,6 @@ from .adapters import PolicyEngineChecker
 from .checker import Checker
 from .interceptor import Interceptor
 from .types import (
-    CheckDecision,
     CheckerContext,
     CheckerMode,
     CheckPhase,
@@ -18,11 +17,14 @@ from .types import (
     PolicyViolation,
 )
 
+# Re-export PolicyDecision for convenience (replaces old CheckDecision)
+from opensentinel.policy.protocols import PolicyDecision
+
 __all__ = [
     # Types
     "CheckPhase",
     "CheckerMode",
-    "CheckDecision",
+    "PolicyDecision",
     "CheckResult",
     "CheckerContext",
     "InterceptionResult",

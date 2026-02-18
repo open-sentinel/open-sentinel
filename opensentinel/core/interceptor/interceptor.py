@@ -10,8 +10,9 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from .checker import Checker
+from opensentinel.policy.protocols import PolicyDecision
+
 from .types import (
-    CheckDecision,
     CheckerContext,
     CheckerMode,
     CheckPhase,
@@ -27,10 +28,10 @@ class Interceptor:
     Orchestrator for running checkers during LLM request lifecycle.
 
     Manages:
-    - Sync checkers that block and must complete
+    - Sync checkers that block and must complete (ALLOW or DENY only)
     - Async checkers that run in background with results applied next request
     - Pending async results per session
-    - Modification merging for WARN decisions
+    - Modification merging for deferred MODIFY decisions
     """
 
     def __init__(self, checkers: List[Checker]):
@@ -40,14 +41,18 @@ class Interceptor:
         Args:
             checkers: List of Checker instances to run
         """
-        # Categorize checkers by phase and mode
+        # Categorize checkers into 4 buckets by phase and mode
         self._sync_pre_call: List[Checker] = []
         self._sync_post_call: List[Checker] = []
-        self._async_checkers: List[Checker] = []
+        self._async_pre_call: List[Checker] = []
+        self._async_post_call: List[Checker] = []
 
         for checker in checkers:
             if checker.mode == CheckerMode.ASYNC:
-                self._async_checkers.append(checker)
+                if checker.phase == CheckPhase.PRE_CALL:
+                    self._async_pre_call.append(checker)
+                else:
+                    self._async_post_call.append(checker)
             elif checker.phase == CheckPhase.PRE_CALL:
                 self._sync_pre_call.append(checker)
             else:  # POST_CALL + SYNC
@@ -62,7 +67,8 @@ class Interceptor:
         logger.info(
             f"Interceptor initialized: {len(self._sync_pre_call)} sync pre-call, "
             f"{len(self._sync_post_call)} sync post-call, "
-            f"{len(self._async_checkers)} async checkers"
+            f"{len(self._async_pre_call)} async pre-call, "
+            f"{len(self._async_post_call)} async post-call"
         )
 
     async def run_pre_call(
@@ -75,12 +81,11 @@ class Interceptor:
         Run PRE_CALL phase.
 
         1. Apply pending async results from previous request
-           - FAIL -> block this request
-           - WARN -> merge modified_data into request
-        2. Run sync PRE_CALL checkers
-           - FAIL -> reject request
-           - WARN -> merge modified_data
-        3. Return result with possibly modified request_data
+           - DENY -> block this request
+           - MODIFY -> merge modified_data into request
+        2. Run sync PRE_CALL checkers (gate only: ALLOW or DENY)
+        3. Start async PRE_CALL checkers in background
+        4. Return result with possibly modified request_data
 
         Args:
             session_id: Session identifier
@@ -98,7 +103,7 @@ class Interceptor:
         for result in pending_results:
             all_results.append(result)
 
-            if result.decision == CheckDecision.FAIL:
+            if result.decision == PolicyDecision.DENY:
                 logger.warning(
                     f"Request blocked by async checker '{result.checker_name}': "
                     f"{result.message}"
@@ -109,7 +114,7 @@ class Interceptor:
                     results=all_results,
                 )
 
-            if result.decision == CheckDecision.WARN and result.modified_data:
+            if result.decision == PolicyDecision.MODIFY and result.modified_data:
                 logger.info(
                     f"Applying async modification from '{result.checker_name}'"
                 )
@@ -117,7 +122,7 @@ class Interceptor:
                     modified_data, result.modified_data
                 )
 
-        # Step 2: Run sync PRE_CALL checkers
+        # Step 2: Run sync PRE_CALL checkers (gate only: ALLOW or DENY)
         context = CheckerContext(
             session_id=session_id,
             user_request_id=user_request_id,
@@ -130,7 +135,7 @@ class Interceptor:
                 result = await checker.check(context)
                 all_results.append(result)
 
-                if result.decision == CheckDecision.FAIL:
+                if result.decision == PolicyDecision.DENY:
                     logger.warning(
                         f"Request blocked by sync checker '{result.checker_name}': "
                         f"{result.message}"
@@ -141,26 +146,10 @@ class Interceptor:
                         results=all_results,
                     )
 
-                if result.decision == CheckDecision.WARN and result.modified_data:
-                    logger.info(
-                        f"Applying sync modification from '{result.checker_name}'"
-                    )
-                    modified_data = self._merge_modifications(
-                        modified_data, result.modified_data
-                    )
-                    # Update context for next checker
-                    context = CheckerContext(
-                        session_id=session_id,
-                        user_request_id=user_request_id,
-                        request_data=modified_data,
-                        response_data=None,
-                    )
-
             except Exception as e:
                 logger.error(f"Checker '{checker.name}' failed: {e}")
-                # Create a FAIL result for the error
                 error_result = CheckResult(
-                    decision=CheckDecision.FAIL,
+                    decision=PolicyDecision.DENY,
                     checker_name=checker.name,
                     message=f"Checker error: {e}",
                 )
@@ -170,6 +159,17 @@ class Interceptor:
                     modified_data=None,
                     results=all_results,
                 )
+
+        # Step 3: Start async PRE_CALL checkers in background
+        if self._async_pre_call:
+            async_context = CheckerContext(
+                session_id=session_id,
+                user_request_id=user_request_id,
+                request_data=modified_data,
+                response_data=None,
+            )
+            for checker in self._async_pre_call:
+                self._start_async_checker(checker, async_context)
 
         return InterceptionResult(
             allowed=True,
@@ -187,11 +187,9 @@ class Interceptor:
         """
         Run POST_CALL phase.
 
-        1. Run sync POST_CALL checkers
-           - FAIL -> reject response
-           - WARN -> merge modified_data into response
-        2. Start async checkers in background (don't wait)
-        3. Return result with possibly modified response_data
+        1. Run sync POST_CALL checkers (gate only: ALLOW or DENY)
+        2. Start async POST_CALL checkers in background (don't wait)
+        3. Return result
 
         Args:
             session_id: Session identifier
@@ -200,17 +198,16 @@ class Interceptor:
             user_request_id: Optional request ID for tracing
 
         Returns:
-            InterceptionResult with allowed flag and modified_data
+            InterceptionResult with allowed flag
         """
         all_results: List[CheckResult] = []
-        modified_response = response_data
 
-        # Step 1: Run sync POST_CALL checkers
+        # Step 1: Run sync POST_CALL checkers (gate only: ALLOW or DENY)
         context = CheckerContext(
             session_id=session_id,
             user_request_id=user_request_id,
             request_data=request_data,
-            response_data=modified_response,
+            response_data=response_data,
         )
 
         for checker in self._sync_post_call:
@@ -218,7 +215,7 @@ class Interceptor:
                 result = await checker.check(context)
                 all_results.append(result)
 
-                if result.decision == CheckDecision.FAIL:
+                if result.decision == PolicyDecision.DENY:
                     logger.warning(
                         f"Response blocked by sync checker '{result.checker_name}': "
                         f"{result.message}"
@@ -229,25 +226,10 @@ class Interceptor:
                         results=all_results,
                     )
 
-                if result.decision == CheckDecision.WARN and result.modified_data:
-                    logger.info(
-                        f"Applying sync modification from '{result.checker_name}' to response"
-                    )
-                    modified_response = self._merge_response_modifications(
-                        modified_response, result.modified_data
-                    )
-                    # Update context for next checker
-                    context = CheckerContext(
-                        session_id=session_id,
-                        user_request_id=user_request_id,
-                        request_data=request_data,
-                        response_data=modified_response,
-                    )
-
             except Exception as e:
                 logger.error(f"Checker '{checker.name}' failed: {e}")
                 error_result = CheckResult(
-                    decision=CheckDecision.FAIL,
+                    decision=PolicyDecision.DENY,
                     checker_name=checker.name,
                     message=f"Checker error: {e}",
                 )
@@ -258,21 +240,20 @@ class Interceptor:
                     results=all_results,
                 )
 
-        # Step 2: Start async checkers in background
-        if self._async_checkers:
+        # Step 2: Start async POST_CALL checkers in background
+        if self._async_post_call:
             async_context = CheckerContext(
                 session_id=session_id,
                 user_request_id=user_request_id,
                 request_data=request_data,
-                response_data=modified_response,
+                response_data=response_data,
             )
-            for checker in self._async_checkers:
+            for checker in self._async_post_call:
                 self._start_async_checker(checker, async_context)
 
-        # Return modified response if changed
         return InterceptionResult(
             allowed=True,
-            modified_data=modified_response if modified_response != response_data else None,
+            modified_data=None,
             results=all_results,
         )
 
@@ -302,7 +283,7 @@ class Interceptor:
                         logger.error(f"Async checker task failed: {e}")
                         results.append(
                             CheckResult(
-                                decision=CheckDecision.FAIL,
+                                decision=PolicyDecision.DENY,
                                 checker_name="async_task_error",
                                 message=f"Async task error: {e}",
                             )
@@ -333,7 +314,7 @@ class Interceptor:
             except Exception as e:
                 logger.error(f"Async checker '{checker.name}' failed: {e}")
                 return CheckResult(
-                    decision=CheckDecision.FAIL,
+                    decision=PolicyDecision.DENY,
                     checker_name=checker.name,
                     message=f"Async checker error: {e}",
                 )
@@ -379,38 +360,6 @@ class Interceptor:
                 result[key] = value
 
         return result
-
-    def _merge_response_modifications(
-        self, response: Any, modifications: Dict[str, Any]
-    ) -> Any:
-        """
-        Apply modifications to response data.
-
-        Supports:
-        - Full response replacement via "response" key in modifications
-        - Dict-style merge when response is a plain dict
-
-        LLM response objects (e.g., OpenAI ChatCompletion) are typically
-        immutable and cannot be modified in place. For those cases,
-        use the "response" key to provide a complete replacement.
-        """
-        # Full response replacement
-        if "response" in modifications:
-            return modifications["response"]
-
-        # Dict responses can be merged directly
-        if isinstance(response, dict):
-            result = dict(response)
-            result.update(modifications)
-            return result
-
-        # For immutable LLM response objects, we cannot modify in place.
-        logger.warning(
-            "Response modifications requested but response object is immutable "
-            f"(type={type(response).__name__}). Modifications ignored. "
-            "Use 'response' key for full replacement instead."
-        )
-        return response
 
     async def cleanup_session(self, session_id: str) -> None:
         """

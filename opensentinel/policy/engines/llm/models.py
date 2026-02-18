@@ -130,10 +130,9 @@ class ConstraintEvaluation:
 @dataclass
 class SessionContext:
     """Session state maintained across turns.
-    
+
     Tracks the agent's progress through the workflow, including
-    state history, drift scores, constraint violations, and 
-    pending interventions.
+    state history, drift scores, and constraint violations.
     """
     session_id: str
     workflow_name: str
@@ -141,7 +140,6 @@ class SessionContext:
     state_history: List[StateTransition] = field(default_factory=list)
     drift_score: float = 0.0
     violation_buffer: List[ConstraintEvaluation] = field(default_factory=list)
-    pending_intervention: Optional[str] = None
     turn_count: int = 0
     
     # Ring buffer for recent confidences (max 3)
@@ -237,7 +235,6 @@ class SessionContext:
             ],
             "drift_score": self.drift_score,
             "turn_count": self.turn_count,
-            "pending_intervention": self.pending_intervention,
             "is_structurally_drifting": self.is_structurally_drifting(),
             "created_at": self.created_at.isoformat(),
             "last_updated_at": self.last_updated_at.isoformat(),
