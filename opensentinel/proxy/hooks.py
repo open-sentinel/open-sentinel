@@ -414,11 +414,28 @@ class SentinelCallback(CustomLogger):
             if result.modified_data:
                 data = result.modified_data
 
+                # Extract intervention name from results
+                intervention_name = "pre_call_modification"
+                for r in result.results:
+                    if r.decision == PolicyDecision.MODIFY:
+                        # Check violations first
+                        for v in r.violations:
+                            if v.intervention:
+                                intervention_name = v.intervention
+                                break
+                        
+                        # Check modified_data metadata
+                        if r.modified_data and "intervention_name" in r.modified_data:
+                            intervention_name = str(r.modified_data["intervention_name"])
+                            
+                        if intervention_name != "pre_call_modification":
+                            break
+
                 # Log intervention via OTEL
                 if self.tracer:
                     self.tracer.log_intervention(
                         session_id=session_id,
-                        intervention_name="pre_call_modification",
+                        intervention_name=intervention_name,
                         context={"num_checkers": len(result.results)},
                     )
 
