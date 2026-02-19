@@ -194,14 +194,17 @@ class NemoCompiler(LLMPolicyCompiler):
             errors.append(f"config_yml is not valid YAML: {e}")
             return CompilationResult.failure(errors, warnings)
 
-        # Validate colang files are non-empty
+        # Filter out empty colang files (e.g. output_rails.co when policy is input-only)
+        non_empty_colang: Dict[str, str] = {}
         for filename, content in colang_files.items():
             if not content or not content.strip():
                 warnings.append(f"Colang file '{filename}' is empty")
+            else:
+                non_empty_colang[filename] = content
 
         config = {
             "config_yml": config_yml,
-            "colang_files": colang_files,
+            "colang_files": non_empty_colang,
         }
 
         return CompilationResult(
