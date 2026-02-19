@@ -161,6 +161,36 @@ class TestParseCompilationResponse:
         )
         assert result.metadata["colang_file_count"] == 2
 
+    def test_empty_colang_files_are_dropped(self, compiler):
+        """Empty colang files (e.g. output_rails.co for input-only policies) are
+        dropped from the config rather than kept as empty strings."""
+        response = {
+            "config_yml": "models:\n  - type: main\n",
+            "colang_files": {
+                "input_rails.co": "define flow check input\n  pass\n",
+                "output_rails.co": "",
+            },
+        }
+        result = compiler._parse_compilation_response(response, "test")
+        assert result.success is True
+        assert "input_rails.co" in result.config["colang_files"]
+        assert "output_rails.co" not in result.config["colang_files"]
+        assert any("output_rails.co" in w for w in result.warnings)
+
+    def test_input_only_policy_passes_validation(self, compiler):
+        """A policy that only produces input rails should compile and validate."""
+        result = CompilationResult(
+            success=True,
+            config={
+                "config_yml": "models:\n  - type: main\n",
+                "colang_files": {
+                    "input_rails.co": "define flow check input\n  pass\n",
+                },
+            },
+        )
+        errors = compiler.validate_result(result)
+        assert errors == []
+
 
 class TestValidateResult:
     """Test validate_result."""
