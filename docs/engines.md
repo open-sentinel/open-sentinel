@@ -76,6 +76,13 @@ judge:
 
 Full configuration reference: [docs/configuration.md](configuration.md#judge-engine)
 
+### Policy Generation
+
+You can generate judge rubrics from natural language using the CLI:
+```bash
+osentinel compile "be professional, never leak PII" --engine judge -o policy.yaml
+```
+
 Deep dive: [opensentinel/policy/engines/judge/README.md](../opensentinel/policy/engines/judge/README.md)
 
 ---
@@ -143,6 +150,13 @@ policy: ./workflow.yaml
 
 Full configuration reference: [docs/configuration.md](configuration.md#fsm-engine)
 
+### Policy Generation
+
+You can generate FSM workflows from sequence descriptions:
+```bash
+osentinel compile "verify identity before refunds" --engine fsm -o workflow.yaml
+```
+
 Deep dive: [opensentinel/policy/engines/fsm/README.md](../opensentinel/policy/engines/fsm/README.md)
 
 ---
@@ -183,7 +197,6 @@ Uses a lightweight sidecar LLM for state classification, drift detection, and so
 
 ```yaml
 engine: llm
-policy: ./workflow.yaml
 llm:
   model: anthropic/claude-3-5-sonnet-latest
 ```
@@ -238,6 +251,13 @@ policy: ./nemo_config/
 ```
 
 Full configuration reference: [docs/configuration.md](configuration.md#nemo-guardrails-engine)
+
+### Policy Generation
+
+You can generate NeMo configurations (Colang flows + config.yml):
+```bash
+osentinel compile "block hacking requests" --engine nemo -o ./nemo_config
+```
 
 Deep dive: [opensentinel/policy/engines/nemo/README.md](../opensentinel/policy/engines/nemo/README.md)
 

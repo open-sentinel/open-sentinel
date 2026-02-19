@@ -60,7 +60,7 @@ Demonstrates NeMo Guardrails integration.
    python nemo_agent.py
    ```
 
-## 4. NLP Policy Compiler (Experimental)
+## 4. NLP Policy Compiler
 
 Compile natural language policies into executable workflows.
 

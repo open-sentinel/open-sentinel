@@ -185,22 +185,25 @@ osentinel init --quick                                    # non-interactive defa
 osentinel serve                         # start proxy (default: 0.0.0.0:4000)
 osentinel serve -p 8080 -c custom.yaml  # custom port and config
 
-# Compile policies
+# Compile policies (natural language to YAML)
 osentinel compile "verify identity before refunds" --engine fsm -o workflow.yaml
 osentinel compile "be helpful, never leak PII" --engine judge -o policy.yaml
+osentinel compile "block hacking" --engine nemo -o ./nemo_rails
 
 # Validate and inspect
 osentinel validate workflow.yaml                          # check schema + report stats
 osentinel info workflow.yaml -v                           # detailed state/transition/constraint view
+
+See [Policy Compilation](docs/compilation.md) for full details.
 ```
 
 ## Performance
 
 The proxy adds zero latency to your LLM calls in the default configuration:
 
-- **Sync pre-call**: Applies deferred interventions (prompt string manipulation — microseconds).
-- **LLM call**: Forwarded directly to provider via LiteLLM. No modification.
-- **Async post-call**: Response evaluation runs in a background `asyncio.Task`. The response is returned to your app immediately.
+-   **Sync pre-call**: Applies deferred interventions (prompt string manipulation — microseconds).
+-   **LLM call**: Forwarded directly to provider via LiteLLM. No modification.
+-   **Async post-call**: Response evaluation runs in a background `asyncio.Task`. The response is returned to your app immediately.
 
 FSM classification overhead (when sync): tool call matching is instant, regex is ~1ms, embedding fallback is ~50ms on CPU. ONNX backend available for faster inference.
 
