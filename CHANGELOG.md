@@ -4,6 +4,37 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## 0.2.0
+
+### Added
+
+- **`osentinel init -q`**: Quick (non-interactive) init — auto-detects your API key and writes a minimal config in one shot.
+- **CLI output formatting**: Rich-formatted console output for all CLI commands (headings, YAML previews, success/error indicators).
+- **Model auto-detection**: Automatically resolves the best LLM model from whichever API key is present (`OPENAI_API_KEY` → `gpt-4o-mini`, `GEMINI_API_KEY` → `gemini/gemini-2.5-flash`, etc.).
+- **Model & API-key validation**: `osentinel serve` and `osentinel init` now validate that the required API key exists for the configured model before starting.
+- **YAML as single source of truth**: `osentinel.yaml` is now the primary configuration surface. Removed the `OSNTL_*` environment-variable prefix; API keys are still read from env vars / `.env`.
+- **Path resolution**: Relative paths in `osentinel.yaml` (e.g. `policy: ./workflow.yaml`) are resolved relative to the config file location.
+- **Config validation at startup**: `osentinel serve` checks that referenced policy files exist and that the required API key is present; exits with a clear error if not.
+- **API-key syncing**: Keys loaded from `.env` are synced into `os.environ` so downstream libraries (LiteLLM, LangChain) work without explicit `load_dotenv()`.
+- **Langfuse env-var aliases**: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and `LANGFUSE_HOST` are read directly from the environment alongside YAML config.
+- **Engine-specific `osentinel compile`**: The policy compiler now accepts `--engine` to target a specific engine format (judge, fsm, llm, nemo).
+- **`docs/configuration.md`**: Full configuration reference for `osentinel.yaml`.
+
+### Changed
+
+- **Default engine** changed from `nemo` to `judge` — works out of the box with inline rules; no external config directory required.
+- **Tracing disabled by default**: `tracing.enabled` now defaults to `false` and `exporter_type` defaults to `none` to avoid noisy OTLP connection errors on first run.
+- **`proxy.default_model`** defaults to `None` instead of eagerly auto-detecting; the model is resolved at startup via YAML or auto-detection.
+- **Intervention merge logic** refactored for consistency across FSM and LLM engines.
+- **Policy compiler** refactored into per-engine modules (`fsm`, `llm`, `judge`, `nemo`).
+- **Docs updated**: `developing.md`, `examples/README.md`, and `README.md` updated to reflect YAML-first configuration.
+
+### Fixed
+
+- Judge engine: score clamping, criterion failure checks, JSON validation, timezone-aware timestamps.
+- Session ID propagation for internal LLM calls in the Judge engine.
+- `intervention` and `classifier` YAML sections now correctly map to `SentinelSettings`.
+
 ## 0.1.0 (alpha)
 
 Initial release.
