@@ -43,11 +43,6 @@ class LLMClient:
         timeout: float = 10.0,
         max_retries: int = 2,
     ):
-        if model is None:
-            # Lazy import to avoid circular dependencies with settings
-            from opensentinel.config.settings import get_default_model
-            model = get_default_model()
-            
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens

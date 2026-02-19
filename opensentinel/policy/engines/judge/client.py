@@ -37,7 +37,7 @@ class JudgeClient:
 
         Args:
             name: Logical name for this judge (e.g., "primary").
-            model: Model identifier (e.g., "gpt-4o-mini"). If None, use system default.
+            model: Model identifier (e.g., "gpt-4o-mini").
             temperature: Sampling temperature.
             max_tokens: Max response tokens.
             timeout: Request timeout in seconds.

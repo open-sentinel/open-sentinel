@@ -102,13 +102,13 @@ class JudgePolicyEngine(PolicyEngine):
         
         if not models:
             # No explicit models — create a primary model entry.
-            # model may be None; LLMClient will resolve via get_default_model().
+            # model comes from config (injected by SentinelSettings.get_policy_config).
             models = [{
                 "name": "primary",
                 "model": config.get("default_model") or config.get("llm_model"),
                 "temperature": 0.0,
             }]
-            logger.info("No judge models explicitly configured; using system default model")
+            logger.info("No judge models explicitly configured; using default_model from config")
 
         for model_config in models:
             self._client.add_model(

@@ -23,7 +23,27 @@ from opensentinel.cli_ui import (
     warning,
     yaml_preview,
 )
-from opensentinel.config.settings import detect_available_model
+import os
+from typing import Optional, Tuple
+
+
+def detect_available_model() -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """Check env vars and return the best available model for interactive setup.
+
+    Returns:
+        (model_id, provider_name, env_var_name) tuple.
+    """
+    if os.environ.get("OPENAI_API_KEY"):
+        return ("gpt-4o-mini", "OpenAI", "OPENAI_API_KEY")
+    if os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY"):
+        env_var = (
+            "GOOGLE_API_KEY" if os.environ.get("GOOGLE_API_KEY") else "GEMINI_API_KEY"
+        )
+        return ("gemini/gemini-2.5-flash", "Google Gemini", env_var)
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return ("anthropic/claude-sonnet-4-5", "Anthropic", "ANTHROPIC_API_KEY")
+
+    return (None, None, None)
 
 
 def get_yaml_dumper():  # type: ignore[no-untyped-def]

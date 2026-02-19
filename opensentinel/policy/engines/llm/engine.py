@@ -120,7 +120,7 @@ class LLMPolicyEngine(StatefulPolicyEngine):
         self._workflow = WorkflowDefinition(**workflow_dict)
         
         # Create LLM client
-        # model=None tells LLMClient to resolve via settings.get_default_model()
+        # model comes from config (injected by SentinelSettings.get_policy_config)
         model = config.get("llm_model") or config.get("default_model") or None
         self._llm_client = LLMClient(
             model=model,
