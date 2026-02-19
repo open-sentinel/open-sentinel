@@ -14,6 +14,23 @@ async def test_judge_compiler_registration():
     compiler = PolicyCompilerRegistry.create("judge")
     assert isinstance(compiler, JudgeCompiler)
 
+def test_get_compiler_via_engine():
+    """get_compiler() via engine instance should return a JudgeCompiler."""
+    from opensentinel.policy.engines.judge.engine import JudgePolicyEngine
+    engine = JudgePolicyEngine()
+    compiler = engine.get_compiler()
+    assert isinstance(compiler, JudgeCompiler)
+
+def test_get_compiler_forwards_kwargs():
+    """get_compiler(model=..., api_key=...) should forward to JudgeCompiler."""
+    from opensentinel.policy.engines.judge.engine import JudgePolicyEngine
+    engine = JudgePolicyEngine()
+    compiler = engine.get_compiler(model="gpt-4o", api_key="sk-test", base_url="http://localhost:8080")
+    assert isinstance(compiler, JudgeCompiler)
+    assert compiler.model == "gpt-4o"
+    assert compiler._api_key == "sk-test"
+    assert compiler._base_url == "http://localhost:8080"
+
 @pytest.mark.asyncio
 async def test_build_compilation_prompt(judge_compiler):
     policy = "Be professional and never share PII."

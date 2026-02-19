@@ -14,10 +14,9 @@ def client():
 
 
 def test_default_model_selection():
-    """Test that LLMClient picks up system default if no model is provided."""
-    with patch("opensentinel.config.settings.get_default_model", return_value="custom-default-model"):
-        client = LLMClient()
-        assert client.model == "custom-default-model"
+    """Test that LLMClient with model=None stores None (no auto-detect)."""
+    client = LLMClient()
+    assert client.model is None
 
 
 class TestJSONParsing:

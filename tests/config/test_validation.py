@@ -76,10 +76,13 @@ class TestConfigValidation:
         assert os.environ.get("OPENAI_API_KEY") == "sk-explicit-test"
 
     def test_default_config_is_judge_and_valid(self, monkeypatch):
-        """Test that default configuration without any file uses judge engine and passes validation if API key present."""
+        """Test that default configuration without any file uses judge engine and passes validation if API key and model present."""
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         
-        settings = SentinelSettings(_env_file=None)
+        settings = SentinelSettings(
+            proxy={"default_model": "gpt-4o-mini"},
+            _env_file=None,
+        )
         assert settings.policy.engine.type == "judge"
         
         # Should not raise

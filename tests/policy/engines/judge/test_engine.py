@@ -116,25 +116,21 @@ class TestInitialization:
         assert engine._conversation_eval_interval == 5
 
     @pytest.mark.asyncio
-    async def test_initialize_uses_default_model_when_no_models_configured(self, engine):
-        """Test that engine uses get_default_model via LLMClient when none configured."""
-        import os
-        with patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}, clear=True):
-            await engine.initialize({})
-            assert engine._initialized
-            # LLMClient resolves model=None via get_default_model()
-            assert engine._client.primary_model == "primary"
-            assert engine._client.get_model_id("primary") == "gpt-4o-mini"
+    async def test_initialize_uses_default_model_from_config(self, engine):
+        """Test that engine uses default_model from config when no models list provided."""
+        await engine.initialize({"default_model": "gpt-4o-mini"})
+        assert engine._initialized
+        assert engine._client.primary_model == "primary"
+        assert engine._client.get_model_id("primary") == "gpt-4o-mini"
 
     @pytest.mark.asyncio
-    async def test_initialize_falls_back_to_default_without_api_keys(self, engine):
-        """Test that engine falls back to default model when no API keys available."""
-        import os
-        with patch.dict(os.environ, {}, clear=True):
-            # get_default_model() -> detect_available_model() always returns a model
-            await engine.initialize({})
-            assert engine._initialized
-            assert engine._client.primary_model == "primary"
+    async def test_initialize_without_model_still_succeeds(self, engine):
+        """Test that engine initializes even without a model (error deferred to call time)."""
+        await engine.initialize({})
+        assert engine._initialized
+        assert engine._client.primary_model == "primary"
+        # Model is None — will error when an actual LLM call is made
+        assert engine._client.get_model_id("primary") is None
 
 
 class TestEvaluateRequest:
