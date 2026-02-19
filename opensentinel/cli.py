@@ -392,6 +392,9 @@ def _detect_engine_type(policy_text: str) -> str:
     return "judge"
 
 
+
+
+
 @main.command()
 @click.argument("policy", type=str)
 @click.option(
@@ -480,48 +483,45 @@ def compile(
         context["domain"] = domain
 
     async def run_compile() -> None:
-        import os
         from opensentinel.policy.compiler import PolicyCompilerRegistry
         from opensentinel.policy.registry import PolicyEngineRegistry
         from opensentinel.cli_init import ensure_model_and_key
         from opensentinel.config.settings import SentinelSettings
 
         try:
-            # --- Resolve model (yaml > interactive) ---
-            resolved_model = None
+            # --- Resolve model (yaml > interactive) and validate API key ---
+            yaml_model = None
             try:
                 _settings = SentinelSettings()
-                resolved_model = _settings.proxy.default_model
+                yaml_model = _settings.proxy.default_model
             except Exception:
                 pass
 
-            if not resolved_model:
-                # No yaml or yaml has no model — prompt interactively (same as init)
-                resolved_model = ensure_model_and_key()
+            resolved_model, resolved_api_key = ensure_model_and_key(
+                model=yaml_model,
+                explicit_api_key=api_key,
+                auto_confirm=True,
+            )
 
-            # Prefer engine-based compiler access; fall back to registry
+            # --- Get compiler via engine (preferred) or registry (fallback) ---
             compiler = None
             engine_cls = PolicyEngineRegistry.get(engine)
             if engine_cls is not None:
                 eng_instance = engine_cls()
-                compiler = eng_instance.get_compiler()
+                compiler = eng_instance.get_compiler(
+                    model=resolved_model,
+                    api_key=resolved_api_key,
+                    base_url=base_url,
+                )
 
             if compiler is None:
                 compiler = PolicyCompilerRegistry.create(engine)
-
-            if hasattr(compiler, "model"):
-                compiler.model = resolved_model
-
-            if base_url and hasattr(compiler, "_base_url"):
-                compiler._base_url = base_url
-
-            resolved_api_key = api_key
-            if not resolved_api_key and resolved_model.startswith("gemini"):
-                resolved_api_key = os.getenv("GOOGLE_API_KEY") or os.getenv(
-                    "GEMINI_API_KEY"
-                )
-            if resolved_api_key and hasattr(compiler, "_api_key"):
-                compiler._api_key = resolved_api_key
+                if hasattr(compiler, "model"):
+                    compiler.model = resolved_model
+                if resolved_api_key and hasattr(compiler, "_api_key"):
+                    compiler._api_key = resolved_api_key
+                if base_url and hasattr(compiler, "_base_url"):
+                    compiler._base_url = base_url
 
             key_value("Engine", engine)
             key_value("Model", resolved_model)
@@ -589,6 +589,8 @@ def compile(
                     ]
                 )
 
+        except click.ClickException:
+            raise
         except ValueError as e:
             error(str(e))
             raise SystemExit(1)

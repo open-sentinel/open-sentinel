@@ -65,37 +65,6 @@ class LLMPolicyCompiler(PolicyCompiler):
         self.system_prompt = system_prompt or DEFAULT_COMPILER_SYSTEM_PROMPT
         self._api_key = api_key
         self._base_url = base_url
-        self._client: Any = None
-
-    def _get_client(self) -> Any:
-        """
-        Get or create the LLM client.
-
-        Returns:
-            OpenAI-compatible client instance
-
-        Raises:
-            ImportError: If openai package not installed
-        """
-        if self._client is None:
-            try:
-                from openai import AsyncOpenAI
-            except ImportError:
-                raise ImportError(
-                    "openai package required for policy compilation. "
-                    "Install with: pip install openai"
-                )
-
-            kwargs: Dict[str, Any] = {}
-            if self._api_key:
-                kwargs["api_key"] = self._api_key
-            if self._base_url:
-                kwargs["base_url"] = self._base_url
-
-            self._client = AsyncOpenAI(**kwargs)
-
-        return self._client
-
     async def _call_llm(
         self,
         user_prompt: str,
@@ -103,7 +72,7 @@ class LLMPolicyCompiler(PolicyCompiler):
         response_format: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
-        Call the LLM with a prompt.
+        Call the LLM with a prompt using litellm.
 
         Args:
             user_prompt: User message content
@@ -116,7 +85,7 @@ class LLMPolicyCompiler(PolicyCompiler):
         Raises:
             Exception: If LLM call fails
         """
-        client = self._get_client()
+        import litellm
 
         messages = [
             {"role": "system", "content": system_prompt or self.system_prompt},
@@ -129,12 +98,16 @@ class LLMPolicyCompiler(PolicyCompiler):
             "temperature": self.temperature,
         }
 
+        if self._api_key:
+            kwargs["api_key"] = self._api_key
+        if self._base_url:
+            kwargs["base_url"] = self._base_url
         if response_format:
             kwargs["response_format"] = response_format
 
         logger.debug(f"Calling LLM with model={self.model}, prompt length={len(user_prompt)}")
 
-        response = await client.chat.completions.create(**kwargs)
+        response = await litellm.acompletion(**kwargs)
 
         content = response.choices[0].message.content or ""
         logger.debug(f"LLM response length={len(content)}")
