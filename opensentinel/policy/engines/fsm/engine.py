@@ -362,10 +362,22 @@ class FSMPolicyEngine(StatefulPolicyEngine):
         await self._state_machine.reset_session(session_id)
         logger.debug(f"Session {session_id} reset")
 
-    def get_compiler(self) -> Optional["PolicyCompiler"]:
+    def get_compiler(
+        self,
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ) -> Optional["PolicyCompiler"]:
         """Return an FSMCompiler instance."""
         from opensentinel.policy.engines.fsm.compiler import FSMCompiler
-        return FSMCompiler()
+        kwargs: Dict[str, Any] = {}
+        if model:
+            kwargs["model"] = model
+        if api_key:
+            kwargs["api_key"] = api_key
+        if base_url:
+            kwargs["base_url"] = base_url
+        return FSMCompiler(**kwargs)
 
     def get_intervention_handler(self) -> Optional[InterventionHandlerProtocol]:
         """Return the FSM intervention handler."""

@@ -345,10 +345,22 @@ class JudgePolicyEngine(PolicyEngine):
         """Reset session state."""
         self._sessions.pop(session_id, None)
 
-    def get_compiler(self) -> Optional["PolicyCompiler"]:
+    def get_compiler(
+        self,
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ) -> Optional["PolicyCompiler"]:
         """Return a JudgeCompiler instance."""
         from opensentinel.policy.engines.judge.compiler import JudgeCompiler
-        return JudgeCompiler()
+        kwargs: Dict[str, Any] = {}
+        if model:
+            kwargs["model"] = model
+        if api_key:
+            kwargs["api_key"] = api_key
+        if base_url:
+            kwargs["base_url"] = base_url
+        return JudgeCompiler(**kwargs)
 
     async def shutdown(self) -> None:
         """Cleanup resources."""

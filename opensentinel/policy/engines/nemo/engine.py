@@ -503,10 +503,22 @@ class NemoGuardrailsPolicyEngine(PolicyEngine):
             del self._session_contexts[session_id]
         logger.debug(f"NeMo session {session_id} reset")
 
-    def get_compiler(self) -> Optional["PolicyCompiler"]:
+    def get_compiler(
+        self,
+        model: Optional[str] = None,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+    ) -> Optional["PolicyCompiler"]:
         """Return a NemoCompiler instance."""
         from opensentinel.policy.engines.nemo.compiler import NemoCompiler
-        return NemoCompiler()
+        kwargs: Dict[str, Any] = {}
+        if model:
+            kwargs["model"] = model
+        if api_key:
+            kwargs["api_key"] = api_key
+        if base_url:
+            kwargs["base_url"] = base_url
+        return NemoCompiler(**kwargs)
 
     def resolve_intervention(
         self,
