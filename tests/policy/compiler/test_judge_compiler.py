@@ -10,8 +10,9 @@ def judge_compiler():
 
 @pytest.mark.asyncio
 async def test_judge_compiler_registration():
-    from opensentinel.policy.compiler.registry import PolicyCompilerRegistry
-    compiler = PolicyCompilerRegistry.create("judge")
+    from opensentinel.policy.engines.judge.engine import JudgePolicyEngine
+    engine = JudgePolicyEngine()
+    compiler = engine.get_compiler()
     assert isinstance(compiler, JudgeCompiler)
 
 def test_get_compiler_via_engine():

@@ -22,8 +22,11 @@ class TestFSMCompilerRegistration:
         assert PolicyCompilerRegistry.is_registered("fsm")
 
     def test_create_fsm_compiler(self):
-        """Test creating FSMCompiler via registry."""
-        compiler = PolicyCompilerRegistry.create("fsm")
+        """Test creating FSMCompiler via engine.get_compiler()."""
+        from opensentinel.policy.engines.fsm.engine import FSMPolicyEngine
+
+        engine = FSMPolicyEngine()
+        compiler = engine.get_compiler()
 
         assert isinstance(compiler, FSMCompiler)
         assert compiler.engine_type == "fsm"
