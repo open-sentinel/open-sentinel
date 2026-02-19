@@ -94,6 +94,21 @@ def serve(port: int, host: str, config: Path, debug: bool) -> None:
     from opensentinel.config.settings import SentinelSettings
     from opensentinel.proxy.server import start_proxy
 
+    # Gate: require osentinel.yaml (or explicit --config) before doing anything.
+    # This ensures users always run `osentinel init` first.
+    if config is None:
+        from pathlib import Path as _Path
+        _yaml_candidates = [_Path("osentinel.yaml"), _Path("osentinel.yml")]
+        _env_path = __import__("os").environ.get("OSNTL_CONFIG")
+        if _env_path:
+            _yaml_candidates.insert(0, _Path(_env_path))
+        if not any(p.is_file() for p in _yaml_candidates):
+            error(
+                "No osentinel.yaml found in the current directory.",
+                hint="Run: osentinel init",
+            )
+            raise SystemExit(1)
+
     try:
         with spinner("Loading configuration..."):
             settings = SentinelSettings(
@@ -105,14 +120,14 @@ def serve(port: int, host: str, config: Path, debug: bool) -> None:
             settings.validate()
 
         # Show config summary
-        engine = getattr(settings, "engine", "judge")
-        model = getattr(settings, "model", "default")
-        fail_open = getattr(settings.policy, "fail_open", True) if hasattr(settings, "policy") else True
+        engine_type = settings.policy.engine.type
+        display_model = settings.proxy.default_model or "(none)"
+        fail_open = settings.policy.fail_open
         config_panel(
             "Open Sentinel Proxy",
             {
-                "Engine": str(engine),
-                "Model": str(model),
+                "Engine": engine_type,
+                "Model": display_model,
                 "Host": f"{host}:{port}",
                 "Fail Open": str(fail_open),
             },
@@ -125,6 +140,8 @@ def serve(port: int, host: str, config: Path, debug: bool) -> None:
         )
         console.print()
 
+    except SystemExit:
+        raise
     except Exception as e:
         error(str(e), hint="Check your osentinel.yaml or run: osentinel init")
         if debug:
@@ -390,13 +407,7 @@ def _detect_engine_type(policy_text: str) -> str:
     type=click.Path(path_type=Path),
     help="Output file path (default: auto-selected based on engine)",
 )
-@click.option(
-    "--model",
-    "-m",
-    type=str,
-    default="gpt-4o-mini",
-    help="LLM model for compilation (default: gpt-4o-mini)",
-)
+
 @click.option(
     "--domain",
     "-d",
@@ -429,7 +440,6 @@ def compile(
     policy: str,
     engine: str,
     output: Path,
-    model: str,
     domain: str,
     validate: bool,
     base_url: str,
@@ -473,8 +483,22 @@ def compile(
         import os
         from opensentinel.policy.compiler import PolicyCompilerRegistry
         from opensentinel.policy.registry import PolicyEngineRegistry
+        from opensentinel.cli_init import ensure_model_and_key
+        from opensentinel.config.settings import SentinelSettings
 
         try:
+            # --- Resolve model (yaml > interactive) ---
+            resolved_model = None
+            try:
+                _settings = SentinelSettings()
+                resolved_model = _settings.proxy.default_model
+            except Exception:
+                pass
+
+            if not resolved_model:
+                # No yaml or yaml has no model — prompt interactively (same as init)
+                resolved_model = ensure_model_and_key()
+
             # Prefer engine-based compiler access; fall back to registry
             compiler = None
             engine_cls = PolicyEngineRegistry.get(engine)
@@ -486,13 +510,13 @@ def compile(
                 compiler = PolicyCompilerRegistry.create(engine)
 
             if hasattr(compiler, "model"):
-                compiler.model = model
+                compiler.model = resolved_model
 
             if base_url and hasattr(compiler, "_base_url"):
                 compiler._base_url = base_url
 
             resolved_api_key = api_key
-            if not resolved_api_key and model.startswith("gemini"):
+            if not resolved_api_key and resolved_model.startswith("gemini"):
                 resolved_api_key = os.getenv("GOOGLE_API_KEY") or os.getenv(
                     "GEMINI_API_KEY"
                 )
@@ -500,7 +524,7 @@ def compile(
                 compiler._api_key = resolved_api_key
 
             key_value("Engine", engine)
-            key_value("Model", model)
+            key_value("Model", resolved_model)
             if base_url:
                 key_value("Base URL", base_url)
 

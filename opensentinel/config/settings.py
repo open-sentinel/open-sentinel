@@ -59,12 +59,6 @@ def detect_available_model() -> Tuple[Optional[str], Optional[str], Optional[str
     return (None, None, None)
 
 
-def get_default_model() -> Optional[str]:
-    """Helper for Pydantic default_factory to get a detected model.
-    This ensures that the settings' idea of 'default_model' is consistent
-    with the autodetect logic.
-    """
-    return detect_available_model()[0]
 
 
 class OTelConfig(BaseModel):
@@ -100,7 +94,7 @@ class ProxyConfig(BaseModel):
     timeout: int = 600
     master_key: Optional[str] = None
     # Model routing
-    default_model: Optional[str] = Field(default_factory=get_default_model)
+    default_model: Optional[str] = None
     model_list: List[dict] = Field(default_factory=list)
 
 
@@ -577,15 +571,6 @@ class SentinelSettings(BaseSettings):
         self._sync_env_var("TOGETHERAI_API_KEY", self.togetherai_api_key)
         self._sync_env_var("OPENROUTER_API_KEY", self.openrouter_api_key)
 
-        # Re-evaluate auto-detection if we're using the fallback default
-        # and better options are available via strictly loaded keys
-        if self.proxy.default_model == "gpt-4o-mini" and not self.openai_api_key:
-            if self.google_api_key or self.gemini_api_key:
-                self.proxy.default_model = "gemini/gemini-2.5-flash"
-                logger.info("Auto-detected Gemini model based on API key")
-            elif self.anthropic_api_key:
-                self.proxy.default_model = "anthropic/claude-sonnet-4-5"
-                logger.info("Auto-detected Claude model based on API key")
 
     def _sync_env_var(self, key: str, value: Optional[str]) -> None:
         """Set env var if present in settings but missing in os.environ."""
