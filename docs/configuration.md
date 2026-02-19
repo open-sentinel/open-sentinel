@@ -3,7 +3,7 @@
 OpenSentinel reads configuration from three sources, applied in this order (highest priority wins):
 
 1. `osentinel.yaml` (or `osentinel.yml`) in the working directory
-2. Environment variables with `OSNTL_` prefix
+2. API key environment variables (e.g., `OPENAI_API_KEY`)
 3. Built-in defaults
 
 API keys are always read from environment variables or `.env` files. Never put keys in YAML.
@@ -232,21 +232,15 @@ When `tracing.type: langfuse`:
 
 ## Environment Variables
 
-All settings can be overridden via environment variables with the `OSNTL_` prefix. Nested keys use `__` (double underscore) as delimiter.
+Environment variables are primarily used for LLM API keys. Generic settings should be configured via `osentinel.yaml`.
 
-### Mapping Rules
+### Config File Discovery
 
-| YAML Path | Environment Variable |
-|-----------|---------------------|
-| `debug` | `OSNTL_DEBUG` |
-| `log_level` | `OSNTL_LOG_LEVEL` |
-| (proxy port) | `OSNTL_PROXY__PORT` |
-| (proxy host) | `OSNTL_PROXY__HOST` |
-| (engine type) | `OSNTL_POLICY__ENGINE__TYPE` |
-| (engine config path) | `OSNTL_POLICY__ENGINE__CONFIG_PATH` |
-| (tracing exporter) | `OSNTL_OTEL__EXPORTER_TYPE` |
-| (tracing endpoint) | `OSNTL_OTEL__ENDPOINT` |
-| (config file path) | `OSNTL_CONFIG` |
+You can override the configuration file path via the environment:
+
+| Variable | Description |
+|----------|-------------|
+| `OSNTL_CONFIG` | Path to `osentinel.yaml` |
 
 ### API Keys
 
@@ -266,12 +260,13 @@ If multiple keys are present, the auto-detected model uses the first one found i
 
 ### Langfuse via Environment
 
-```bash
-OSNTL_OTEL__EXPORTER_TYPE=langfuse
-OSNTL_OTEL__LANGFUSE_PUBLIC_KEY=pk-lf-...
-OSNTL_OTEL__LANGFUSE_SECRET_KEY=sk-lf-...
-OSNTL_OTEL__LANGFUSE_HOST=https://us.cloud.langfuse.com
-```
+While most settings are in YAML, Langfuse keys are also supported via environment variables for convenience:
+
+| Variable | YAML Equivalent |
+|----------|-----------------|
+| `LANGFUSE_PUBLIC_KEY` | `tracing.langfuse_public_key` |
+| `LANGFUSE_SECRET_KEY` | `tracing.langfuse_secret_key` |
+| `LANGFUSE_HOST` | `tracing.langfuse_host` |
 
 ## .env File
 

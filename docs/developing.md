@@ -34,10 +34,10 @@ osentinel serve
 # base_url="http://localhost:4000/v1"
 ```
 
-Override engine selection with environment variables:
+Override engine selection at startup:
 
 ```bash
-OSNTL_POLICY__ENGINE__TYPE=fsm OSNTL_POLICY__ENGINE__CONFIG_PATH=workflow.yaml osentinel serve
+osentinel serve --config custom_config.yaml
 ```
 
 ## Code Conventions
@@ -311,15 +311,17 @@ class SentinelSettings(BaseSettings):
     my_component: MyComponentConfig = Field(default_factory=MyComponentConfig)
 ```
 
-Environment variables follow the pattern `OSNTL_MY_COMPONENT__OPTION_A=value`.
+Configuration is primarily handled via `osentinel.yaml`.
 
 ## Debugging
 
 Enable debug logging:
 
 ```bash
-OSNTL_DEBUG=true osentinel serve
+DEBUG=true osentinel serve
 ```
+
+(If using standard env vars) or set `debug: true` in `osentinel.yaml`.
 
 Target specific loggers:
 
@@ -341,8 +343,7 @@ counts = get_fail_open_counts()
 ### OpenTelemetry Tracing
 
 ```bash
-export OSNTL_OTEL__ENDPOINT=http://localhost:4317
-export OSNTL_OTEL__SERVICE_NAME=opensentinel
+Set `tracing:` section in `osentinel.yaml`.
 
 # Local Jaeger instance
 docker run -d -p 4317:4317 -p 16686:16686 jaegertracing/all-in-one:latest
@@ -383,7 +384,7 @@ The state machine uses `asyncio.Lock` per session. Sessions are stored in memory
 ## Troubleshooting
 
 **"No workflow configured - running in pass-through mode"**
-Set `OSNTL_POLICY__ENGINE__CONFIG_PATH` to point to your workflow file or NeMo config directory.
+Ensure your `osentinel.yaml` has the correct `policy:` path or inline rules.
 
 **"Failed to load embedding model"**
 Install `sentence-transformers` and check disk space. The model downloads ~100MB on first use.
