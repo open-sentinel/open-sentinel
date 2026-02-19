@@ -70,7 +70,7 @@ policy:
   - "No financial advice"
   - "Be professional"
 judge:
-  model: anthropic/claude-sonnet-4-5
+  model: anthropic/claude-3-5-sonnet-latest
   mode: balanced
 ```
 
@@ -185,7 +185,7 @@ Uses a lightweight sidecar LLM for state classification, drift detection, and so
 engine: llm
 policy: ./workflow.yaml
 llm:
-  model: anthropic/claude-sonnet-4-5
+  model: anthropic/claude-3-5-sonnet-latest
 ```
 
 Full configuration reference: [docs/configuration.md](configuration.md#llm-engine)

@@ -410,7 +410,7 @@ Pydantic v1/v2 conflict between LangChain and OpenSentinel. Pin compatible versi
 
 ### LLM Engine-Specific
 
-**Low classification confidence** -- Add more descriptive state descriptions and exemplars. Try a more capable model. Check `turn_window` size.
+**Low classification confidence** -- Add more descriptive state descriptions and exemplars. Try a more capable model (e.g., GPT-4o or Claude 3.5 Sonnet). Check `turn_window` size.
 
 **Excessive interventions** -- Increase `cooldown_turns`. Lower `self_correction_margin` to detect self-correction more aggressively.
 

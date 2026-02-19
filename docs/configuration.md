@@ -41,7 +41,7 @@ This uses the judge engine with inline rules, auto-detected model, default port 
 | `debug` | bool | `false` | Enable debug logging |
 | `log_level` | string | `INFO` | Log level: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 
-Model auto-detection priority: `OPENAI_API_KEY` -> `gpt-4o-mini`, `GOOGLE_API_KEY`/`GEMINI_API_KEY` -> `gemini/gemini-2.5-flash`, `ANTHROPIC_API_KEY` -> `anthropic/claude-sonnet-4-5`.
+Model auto-detection priority: `OPENAI_API_KEY` -> `gpt-4o-mini`, `GOOGLE_API_KEY`/`GEMINI_API_KEY` -> `gemini/gemini-1.5-flash`, `ANTHROPIC_API_KEY` -> `anthropic/claude-3-5-sonnet-latest`.
 
 ## Policy
 
@@ -114,7 +114,7 @@ judge:
   aggregation_strategy: mean_score
   models:
     - name: primary
-      model: anthropic/claude-sonnet-4-5
+      model: anthropic/claude-3-5-sonnet-latest
       temperature: 0.0
       max_tokens: 2048
       timeout: 15.0
@@ -293,14 +293,14 @@ If validation fails, the server prints the error and exits with code 1. Use `--d
 
 ```yaml
 engine: judge
-model: gemini/gemini-2.5-flash
+model: gemini/gemini-1.5-flash
 port: 4000
 debug: false
 
 policy: ./policy.yaml
 
 judge:
-  model: anthropic/claude-sonnet-4-5
+  model: anthropic/claude-3-5-sonnet-latest
   mode: balanced
   pass_threshold: 0.6
   pre_call_enabled: false
