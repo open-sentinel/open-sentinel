@@ -12,7 +12,7 @@ from opensentinel.cli import main
 
 def _invoke(args):
     """Invoke CLI and capture both Click output and Rich stdout."""
-    runner = CliRunner(mix_stderr=False)
+    runner = CliRunner()
     # Rich writes to sys.stdout; CliRunner captures click.echo output.
     # We need to capture both.
     buf = StringIO()
@@ -48,7 +48,7 @@ class TestValidateCommand:
 
     def test_validate_valid_workflow(self):
         """Test validate with a mock workflow parser."""
-        runner = CliRunner(mix_stderr=False)
+        runner = CliRunner()
         with runner.isolated_filesystem():
             Path("test.yaml").write_text("name: test\nversion: '1.0'")
 
@@ -85,12 +85,15 @@ class TestInitCommand:
         result, _ = _invoke(["init", "-i"])
         assert result.exit_code != 0
 
-    def test_init_from_flag_exists(self):
-        """Verify --from flag still works."""
+    def test_init_quick_flag_exists(self):
+        """Verify --quick flag works."""
         runner = CliRunner()
         with runner.isolated_filesystem():
-            result = runner.invoke(main, ["init", "--from", "be professional"])
-            assert "Error: No such option" not in result.output
+            # Mock run_init since it might try to write files or check env
+            with patch("opensentinel.cli_init.run_init") as mock_run:
+                result = runner.invoke(main, ["init", "--quick"])
+                assert result.exit_code == 0
+                mock_run.assert_called_once_with(quick=True)
 
     def test_init_non_tty_without_from(self):
         """Without --from and without TTY, should show error."""

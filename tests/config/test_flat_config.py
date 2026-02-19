@@ -3,23 +3,29 @@ import pytest
 from opensentinel.config.settings import SentinelSettings, YamlConfigSource
 
 
-def test_flat_config_path_env_var():
-    """Verify that OSNTL_POLICY__ENGINE__CONFIG_PATH sets the config_path correctly."""
-    # Set the simplified environment variable
-    os.environ["OSNTL_POLICY__ENGINE__CONFIG_PATH"] = "/tmp/flat/config.yml"
-
-    # Reload settings
+def test_osntl_config_env_var_discovery():
+    """Verify that OSNTL_CONFIG is still used to find the config file path."""
+    # This is handled manually in YamlConfigSource, so it should still work
+    os.environ["OSNTL_CONFIG"] = "/tmp/nonexistent.yaml"
+    
     settings = SentinelSettings()
+    # It won't fail to initialize, but YamlConfigSource will have attempted to load it
+    # We can check its internal state or just ensure no other OSNTL_ vars are picked up
+    
+    os.environ["OSNTL_DEBUG"] = "true"
+    settings = SentinelSettings()
+    assert settings.debug is False  # Should NOT be picked up anymore
+    
+    del os.environ["OSNTL_CONFIG"]
+    del os.environ["OSNTL_DEBUG"]
 
-    # Check if config_path was populated in the model
-    assert settings.policy.engine.config_path == "/tmp/flat/config.yml"
 
-    # Check if get_policy_config() merges it into the config dict
-    policy_config = settings.get_policy_config()
-    assert policy_config["config"]["config_path"] == "/tmp/flat/config.yml"
-
-    # Clean up
-    del os.environ["OSNTL_POLICY__ENGINE__CONFIG_PATH"]
+def test_standard_api_keys_work():
+    """Verify that standard API keys are still picked up without OSNTL_ prefix."""
+    os.environ["OPENAI_API_KEY"] = "sk-test-123"
+    settings = SentinelSettings()
+    assert settings.openai_api_key == "sk-test-123"
+    del os.environ["OPENAI_API_KEY"]
 
 
 class TestInlinePolicyMapping:

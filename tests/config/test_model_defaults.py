@@ -25,6 +25,7 @@ class TestModelDefaults:
         """Test that GEMINI_API_KEY triggers auto-detection of gemini model."""
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
         monkeypatch.setenv("GEMINI_API_KEY", "dummy_key")
         
         settings = SentinelSettings(_env_file=None)
@@ -39,6 +40,7 @@ class TestModelDefaults:
         """Test that ANTHROPIC_API_KEY triggers auto-detection of claude model."""
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
         monkeypatch.setenv("ANTHROPIC_API_KEY", "dummy_key")
         
         settings = SentinelSettings(_env_file=None)
@@ -66,6 +68,7 @@ class TestModelDefaults:
         
     def test_mixed_keys_priority(self, monkeypatch):
         """Test that OpenAI key takes priority if multiple keys are present."""
+        monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
         monkeypatch.setenv("OPENAI_API_KEY", "dummy_key")
         monkeypatch.setenv("GEMINI_API_KEY", "dummy_key")
         
