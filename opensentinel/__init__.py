@@ -10,11 +10,15 @@ Supports multiple policy engines:
 - Composite: Combine multiple engines together
 
 Quick Start:
-    Configure via environment variables:
+    Configure via `osentinel.yaml`:
+    ```yaml
+    engine: judge
+    policy:
+      - "Be helpful and professional"
+    ```
+    Then run:
     ```bash
-    export OSNTL_POLICY__ENGINE__TYPE=fsm
-    export OSNTL_POLICY__ENGINE__CONFIG__WORKFLOW_PATH=workflow.yaml
-    osentinel serve --port 4000
+    osentinel serve
     ```
 
     Or programmatically:

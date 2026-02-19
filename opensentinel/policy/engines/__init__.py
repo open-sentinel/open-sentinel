@@ -5,6 +5,8 @@ This package contains all available policy engine implementations:
 
 - fsm: Finite State Machine based workflow enforcement
 - nemo: NVIDIA NeMo Guardrails integration
+- judge: LLM-as-a-Judge rubric evaluation
+- llm: LLM-based state classification and drift detection
 - composite: Combine multiple engines together
 
 Engines are auto-registered when imported.
@@ -16,6 +18,7 @@ from opensentinel.policy.engines import fsm
 from opensentinel.policy.engines import nemo
 from opensentinel.policy.engines import composite
 from opensentinel.policy.engines import llm
+from opensentinel.policy.engines import judge
 
-__all__ = ["fsm", "nemo", "composite", "llm"]
+__all__ = ["fsm", "nemo", "composite", "llm", "judge"]
 

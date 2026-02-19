@@ -6,6 +6,8 @@ supporting multiple policy mechanisms including:
 
 - FSM (Finite State Machine): Workflow enforcement using states and transitions
 - NeMo Guardrails: NVIDIA's guardrails for input/output filtering
+- Judge: LLM-as-a-Judge evaluating responses against rubrics
+- LLM: Semantic state tracking and drift detection
 - Composite: Combine multiple engines together
 
 Usage:

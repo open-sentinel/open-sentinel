@@ -4,11 +4,10 @@ Open Sentinel configuration management using Pydantic Settings.
 Configuration can be provided via:
 1. osentinel.yaml config file (primary — see config/schema.yaml for full reference)
 2. Environment variables (ONLY for API keys like OPENAI_API_KEY, GEMINI_API_KEY, etc.)
-3. OSNTL_* env vars (for overrides, but prefer YAML)
-4. .env file
-5. Direct instantiation
+3. .env file
+4. Direct instantiation
 
-Priority (highest wins): osentinel.yaml > env vars > defaults
+Priority (highest wins): osentinel.yaml > API keys > defaults
 
 The simplified osentinel.yaml format:
     engine: judge
@@ -85,10 +84,10 @@ class OTelConfig(BaseModel):
     insecure: bool = True  # Use insecure connection (no TLS) for local dev
 
     # Langfuse-specific settings (used when exporter_type="langfuse")
-    langfuse_public_key: Optional[str] = None
-    langfuse_secret_key: Optional[str] = None
-    langfuse_host: str = (
-        "https://cloud.langfuse.com"  # EU region, use https://us.cloud.langfuse.com for US
+    langfuse_public_key: Optional[str] = Field(None, validation_alias="LANGFUSE_PUBLIC_KEY")
+    langfuse_secret_key: Optional[str] = Field(None, validation_alias="LANGFUSE_SECRET_KEY")
+    langfuse_host: str = Field(
+        "https://cloud.langfuse.com", validation_alias="LANGFUSE_HOST"
     )
 
 
@@ -156,7 +155,7 @@ class PolicyEngineConfig(BaseModel):
     def model_dump(self, **kwargs):
         """Custom dump to merge config_path into config dict for engines."""
         data = super().model_dump(**kwargs)
-        # If config_path is set, use it to populate/override config dict
+        # If data.get("config_path") is set, use it to populate/override config dict
         if data.get("config_path"):
             data["config"]["config_path"] = data["config_path"]
         return data
@@ -524,8 +523,13 @@ class SentinelSettings(BaseSettings):
     """
     Main Open Sentinel configuration.
 
-    A osentinel.yaml config file is also supported (config takes priority).
-    Pass _config_path to override the config file location.
+    Configuration can be provided via:
+    1. osentinel.yaml config file (primary — see config/schema.yaml for full reference)
+    2. Environment variables (ONLY for API keys like OPENAI_API_KEY, GEMINI_API_KEY, etc.)
+    3. .env file
+    4. Direct instantiation
+
+    Priority (highest wins): osentinel.yaml > API keys > defaults
     """
 
     model_config = SettingsConfigDict(
@@ -550,7 +554,7 @@ class SentinelSettings(BaseSettings):
     policy: PolicyConfig = Field(default_factory=PolicyConfig)
 
     # API Keys (loaded from env vars or .env file)
-    # We use validation_alias to bypass the OSNTL_ prefix for these standard keys
+    # We use validation_alias to map standard keys to these fields
     openai_api_key: Optional[str] = Field(None, validation_alias="OPENAI_API_KEY")
     anthropic_api_key: Optional[str] = Field(None, validation_alias="ANTHROPIC_API_KEY")
     google_api_key: Optional[str] = Field(None, validation_alias="GOOGLE_API_KEY")

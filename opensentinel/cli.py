@@ -380,7 +380,7 @@ def _detect_engine_type(policy_text: str) -> str:
 @click.option(
     "--engine",
     "-e",
-    type=click.Choice(["fsm", "judge", "auto"]),
+    type=click.Choice(["fsm", "judge", "nemo", "auto"]),
     default="auto",
     help="Target engine type (default: auto)",
 )

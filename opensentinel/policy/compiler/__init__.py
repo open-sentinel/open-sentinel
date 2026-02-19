@@ -5,7 +5,8 @@ This module provides infrastructure for compiling natural language policy
 descriptions into engine-specific configurations:
 
 - FSM: Natural language → workflow.yaml (WorkflowDefinition)
-- NeMo: Natural language → Colang + config (future)
+- NeMo: Natural language → Colang + config
+- Judge: Natural language → rubric.yaml
 
 Usage:
     ```python
@@ -62,6 +63,11 @@ try:
 except ImportError:
     JudgeCompiler = None  # type: ignore
 
+try:
+    from opensentinel.policy.engines.nemo.compiler import NemoCompiler
+except ImportError:
+    NemoCompiler = None  # type: ignore
+
 __all__ = [
     # Protocol
     "PolicyCompiler",
@@ -75,4 +81,5 @@ __all__ = [
     # Compilers (may be None if engine not available)
     "FSMCompiler",
     "JudgeCompiler",
+    "NemoCompiler",
 ]
