@@ -46,7 +46,7 @@ interventions:
 """
 
 from typing import Optional, List, Dict, Any, Literal
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
 from enum import Enum
 
 
@@ -90,13 +90,18 @@ class State(BaseModel):
     # Classification configuration
     classification: ClassificationHint = Field(default_factory=ClassificationHint)
 
+    model_config = ConfigDict(populate_by_name=True)
+
     # State metadata
-    is_initial: bool = False
-    is_terminal: bool = False
-    is_error: bool = False
+    is_initial: bool = Field(default=False, validation_alias="initial")
+    is_terminal: bool = Field(default=False, validation_alias="terminal")
+    is_error: bool = Field(default=False, validation_alias="error")
 
     # Allowed dwell time (for temporal constraints)
     max_duration_seconds: Optional[float] = Field(default=None, ge=0)
+
+    # Support inline transitions
+    transitions: List[Dict[str, Any]] = Field(default_factory=list)
 
     @field_validator("name")
     @classmethod
@@ -133,8 +138,10 @@ class Transition(BaseModel):
     If no transitions are defined FROM a state, any state can follow.
     """
 
-    from_state: str
-    to_state: str
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_state: str = Field(..., validation_alias="from")
+    to_state: str = Field(..., validation_alias="target")
 
     # Optional guard conditions
     guard: Optional[TransitionGuard] = None
@@ -143,7 +150,7 @@ class Transition(BaseModel):
     priority: int = Field(default=0, ge=0)
 
     # Optional description
-    description: Optional[str] = None
+    description: Optional[str] = Field(default=None, validation_alias="trigger")
 
 
 class ConstraintType(str, Enum):
@@ -271,6 +278,51 @@ class WorkflowDefinition(BaseModel):
 
     # Metadata
     metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def collect_state_transitions(cls, data: Any) -> Any:
+        """Collect transitions defined inside states into the top-level transitions list."""
+        if not isinstance(data, dict):
+            return data
+
+        states = data.get("states", [])
+        if not isinstance(states, list):
+            return data
+
+        transitions = data.get("transitions", [])
+        if not isinstance(transitions, list):
+            transitions = []
+
+        for state in states:
+            if not isinstance(state, dict):
+                continue
+            
+            state_name = state.get("name")
+            state_transitions = state.get("transitions", [])
+            
+            if not state_name or not isinstance(state_transitions, list):
+                continue
+                
+            for trans in state_transitions:
+                if not isinstance(trans, dict):
+                    continue
+                
+                # If from_state is not specified, use the current state
+                if "from_state" not in trans and "from" not in trans:
+                    trans["from_state"] = state_name
+                
+                # Map 'target' to 'to_state' if needed (handled by alias anyway, but good to be explicit here)
+                if "target" in trans and "to_state" not in trans:
+                    trans["to_state"] = trans["target"]
+                    
+                transitions.append(trans)
+            
+            # Remove inline transitions after collecting them
+            # state.pop("transitions", None) # Keep them for now to avoid issues with State model validation
+
+        data["transitions"] = transitions
+        return data
 
     @field_validator("states")
     @classmethod

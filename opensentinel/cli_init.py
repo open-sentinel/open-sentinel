@@ -313,7 +313,10 @@ def run_interactive_init() -> None:
 
     yaml_preview(yaml_content, title="osentinel.yaml")
     success(f"Configuration saved to {config_path}")
-    next_steps(["osentinel serve"])
+    next_steps([
+        "osentinel serve",
+        "osentinel compile \"your policy\" --engine " + engine_type + "  # optional: generate complex rules",
+    ])
 
 
 def run_quick_init() -> None:
