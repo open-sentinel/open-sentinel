@@ -13,7 +13,7 @@ def examples_dir() -> Path:
 @pytest.fixture
 def sample_workflow_path(examples_dir: Path) -> Path:
     """Get path to sample customer support workflow."""
-    return examples_dir / "gemini_fsm" / "customer_support.yaml"
+    return examples_dir / "fsm_workflow" / "customer_support.yaml"
 
 
 @pytest.fixture

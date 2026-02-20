@@ -1,7 +1,6 @@
-"""Smoke tests for example scripts: ensure they are importable and expose expected entrypoints."""
+"""Smoke tests for example scripts: ensure they are valid Python and contain expected patterns."""
 
-import importlib.util
-import sys
+import ast
 from pathlib import Path
 
 import pytest
@@ -9,36 +8,72 @@ import pytest
 EXAMPLES_DIR = Path(__file__).resolve().parent.parent / "examples"
 
 
-def _load_example_module(relative_path: str):
-    """Load an example script as a module by file path."""
+def _parse_example(relative_path: str) -> ast.Module:
+    """Parse an example script as an AST (no execution — avoids needing API keys)."""
     path = EXAMPLES_DIR / relative_path
     if not path.exists():
         pytest.skip(f"Example not found: {path}")
-    spec = importlib.util.spec_from_file_location(path.stem, path)
-    if spec is None or spec.loader is None:
-        pytest.fail(f"Could not create spec for {path}")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
+    source = path.read_text()
+    return ast.parse(source, filename=str(path))
 
 
-def test_judge_example_import_and_entrypoint():
-    """Judge example module imports and exposes run_judge_conversation."""
-    mod = _load_example_module("judge/llm_judge.py")
-    assert hasattr(mod, "run_judge_conversation"), "llm_judge should define run_judge_conversation"
-    assert callable(mod.run_judge_conversation)
+def _has_function(tree: ast.Module, name: str) -> bool:
+    """Check if the AST contains a top-level function with the given name."""
+    return any(
+        isinstance(node, ast.FunctionDef) and node.name == name
+        for node in ast.walk(tree)
+    )
 
 
-def test_gemini_fsm_example_import_and_entrypoint():
-    """Gemini FSM example module imports and exposes run_support_conversation."""
-    mod = _load_example_module("gemini_fsm/gemini_agent.py")
-    assert hasattr(mod, "run_support_conversation"), "gemini_agent should define run_support_conversation"
-    assert callable(mod.run_support_conversation)
+def _has_import(tree: ast.Module, module: str) -> bool:
+    """Check if the AST imports the given module."""
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == module:
+                    return True
+        if isinstance(node, ast.ImportFrom) and node.module == module:
+            return True
+    return False
 
 
-def test_nemo_example_import_and_entrypoint():
-    """NeMo Guardrails example module imports and exposes run_nemo_conversation."""
-    mod = _load_example_module("nemo_guardrails/nemo_agent.py")
-    assert hasattr(mod, "run_nemo_conversation"), "nemo_agent should define run_nemo_conversation"
-    assert callable(mod.run_nemo_conversation)
+class TestQuickstart:
+    def test_parses(self):
+        tree = _parse_example("quickstart/quickstart.py")
+        assert _has_function(tree, "detect_model")
+        assert _has_import(tree, "openai")
+
+    def test_config_exists(self):
+        assert (EXAMPLES_DIR / "quickstart" / "osentinel.yaml").exists()
+
+
+class TestPromptInjection:
+    def test_parses(self):
+        tree = _parse_example("judge/prompt_injection.py")
+        assert _has_function(tree, "detect_model")
+        assert _has_import(tree, "openai")
+
+    def test_config_exists(self):
+        assert (EXAMPLES_DIR / "judge" / "osentinel.yaml").exists()
+
+
+class TestWorkflowEnforcement:
+    def test_parses(self):
+        tree = _parse_example("fsm_workflow/workflow_enforcement.py")
+        assert _has_function(tree, "detect_model")
+        assert _has_function(tree, "execute_tool")
+        assert _has_import(tree, "openai")
+
+    def test_config_exists(self):
+        assert (EXAMPLES_DIR / "fsm_workflow" / "osentinel.yaml").exists()
+        assert (EXAMPLES_DIR / "fsm_workflow" / "customer_support.yaml").exists()
+
+
+class TestContentSafety:
+    def test_parses(self):
+        tree = _parse_example("nemo_guardrails/content_safety.py")
+        assert _has_function(tree, "detect_model")
+        assert _has_import(tree, "openai")
+
+    def test_config_exists(self):
+        assert (EXAMPLES_DIR / "nemo_guardrails" / "osentinel.yaml").exists()
