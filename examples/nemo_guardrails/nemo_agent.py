@@ -1,106 +1,94 @@
-import os
-import dotenv
-from openai import OpenAI
-import time
-import uuid
+"""
+Open Sentinel — NeMo Guardrails Engine Example
 
-dotenv.load_dotenv()
+Demonstrates NVIDIA NeMo Guardrails as a policy engine. NeMo provides
+content safety rails (jailbreak detection, PII filtering, toxicity) and
+programmable dialog flows via Colang.
 
-# =============================================================================
-# Configuration
-# =============================================================================
+Architecture (what happens on each call):
+  1. pre_call_hook: messages are passed through NeMo's INPUT rails.
+     If NeMo generates a refusal response (matched against known refusal
+     markers: "i cannot", "i'm not able to", etc.), the request is blocked
+     before it ever reaches the LLM.
+  2. LLM call: if input rails pass, forwarded to provider. Unmodified.
+  3. post_call_hook: the full conversation (including the agent's response)
+     runs through NeMo's OUTPUT rails. If NeMo blocks it, the response
+     is denied.
 
-# Open Sentinel Proxy URL
-OSNTL_URL = os.getenv("OSNTL_URL", "http://localhost:4000/v1")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+Fail-open by default:
+  If NeMo evaluation throws an exception, the request/response passes
+  through with a warning logged. Set `nemo.fail_closed: true` in config
+  to block on errors instead. Rationale: a monitoring layer that takes
+  down production is worse than one that misses a violation.
 
-# Session ID for tracking conversation state
-SESSION_ID = f"nemo-session-{uuid.uuid4().hex[:8]}"
+Prerequisites:
+  pip install 'opensentinel[nemo]'
 
-if not GOOGLE_API_KEY:
-    print("Warning: GOOGLE_API_KEY not found in environment")
-
-# =============================================================================
-# Agent Setup
-# =============================================================================
-
-
-def get_system_instruction():
-    return """You are a helpful customer support agent for TechCo.
-You help with refunds, subscriptions, and general questions.
+Run:
+  cd examples/nemo_guardrails
+  export GEMINI_API_KEY=...
+  osentinel serve
+  python nemo_agent.py
 """
 
+import os
+from openai import OpenAI
 
-def create_client():
-    """Create OpenAI client configured for Open Sentinel."""
-    return OpenAI(
-        base_url=OSNTL_URL,
-        api_key=GOOGLE_API_KEY or "dummy",
-        default_headers={"x-sentinel-session-id": SESSION_ID},
-    )
+# -- Config ------------------------------------------------------------------
+PROXY_URL = os.getenv("OSNTL_URL", "http://localhost:4000/v1")
+API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("ANTHROPIC_API_KEY") or "dummy"
+MODEL = "gemini/gemini-2.5-flash"
+SESSION_ID = "nemo-demo-001"
 
+client = OpenAI(
+    base_url=PROXY_URL,
+    api_key=API_KEY,
+    default_headers={"x-sentinel-session-id": SESSION_ID},
+)
 
-# =============================================================================
-# Example Conversation
-# =============================================================================
+messages = [
+    {"role": "system", "content": (
+        "You are a helpful customer support agent for TechCo. "
+        "You help with refunds, subscriptions, and general questions."
+    )}
+]
 
+# -- Conversation turns designed to trigger NeMo rails -------------------------
+turns = [
+    # Turn 1: benign — passes both input and output rails
+    "Hi, I need help with my subscription.",
 
-def run_nemo_conversation():
-    print("=" * 60)
-    print("NeMo Guardrails Demo with Open Sentinel")
-    print("=" * 60)
-    print(f"\nConnecting to Open Sentinel at: {OSNTL_URL}")
-    print("Note: Ensure Open Sentinel is running with NeMo engine:")
+    # Turn 2: off-topic — should be caught by NeMo's topical rails
+    # (if configured in the Colang flows under config/)
+    "What stocks should I invest in right now?",
 
-    client = create_client()
-    messages = [{"role": "system", "content": get_system_instruction()}]
+    # Turn 3: back on-topic — should pass
+    "OK nevermind. Can I get a refund for last month?",
+]
 
-    # Conversation turns designed to trigger rails
-    conversation_turns = [
-        "Hi, I need help with my subscription.",
-        "What stocks should I invest in right now?",  # Should be blocked by NeMo
-        "Okay, nevermind. Can I get a refund?",
-    ]
+for i, user_input in enumerate(turns, 1):
+    print(f"\n{'━' * 70}")
+    print(f"  Turn {i}")
+    print(f"{'━' * 70}")
+    print(f"\n  → Customer: {user_input}\n")
 
-    for i, user_input in enumerate(conversation_turns, 1):
-        print(f"\n{'─' * 60}")
-        print(f"Turn {i}")
-        print(f"{'─' * 60}")
-        print(f"\n👤 Customer: {user_input}\n")
+    messages.append({"role": "user", "content": user_input})
 
-        messages.append({"role": "user", "content": user_input})
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=messages,
+        )
+        reply = response.choices[0].message
+        print(f"  ← Agent: {reply.content}")
+        messages.append(reply)
 
-        # Call the model
-        max_retries = 5
-        base_delay = 5
+    except Exception as e:
+        if "blocked" in str(e).lower() or "violation" in str(e).lower():
+            print(f"  🚫 Blocked by NeMo rail: {e}")
+        else:
+            print(f"  ✗ Error: {e}")
 
-        for attempt in range(max_retries):
-            try:
-                response = client.chat.completions.create(
-                    model="gemini/gemini-2.5-flash",  # Matching config.yml
-                    messages=messages,
-                )
-
-                message = response.choices[0].message
-                print(f"🤖 Agent: {message.content}")
-
-                messages.append(message)
-                break  # Success, exit retry loop
-
-            except Exception as e:
-                if "429" in str(e) and attempt < max_retries - 1:
-                    print(
-                        f"⚠️ Rate limited (429). Retrying in {base_delay} seconds... (Attempt {attempt+1}/{max_retries})"
-                    )
-                    time.sleep(base_delay)
-                else:
-                    print(f"❌ Error: {e}")
-                    break
-
-    print("\n" + "=" * 60)
-    print("Conversation Complete")
-    print("=" * 60)
-
-
-if __name__ == "__main__":
-    run_nemo_conversation()
+print(f"\n{'━' * 70}")
+print("  Done. Check osentinel server logs for NeMo rail evaluations.")
+print(f"{'━' * 70}\n")

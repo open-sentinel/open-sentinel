@@ -1,117 +1,59 @@
+"""
+Open Sentinel — FSM Engine Example
+
+Demonstrates deterministic workflow enforcement using a finite state machine
+with LTL-lite temporal constraints.
+
+Architecture (what happens on each call):
+  1. pre_call_hook: checks for pending interventions from previous violations.
+     If the FSM queued one, it's applied here (system prompt amendment, context
+     reminder, or hard block — configurable per-constraint in the workflow YAML).
+  2. LLM call: forwarded to provider. Unmodified.
+  3. post_call_hook: the FSM engine classifies the response to a workflow state
+     using a three-tier cascade:
+       a. Tool call matching: if the response includes a function call, match
+          the function name against state definitions. Confidence = 1.0. ~0ms.
+       b. Regex patterns: run re.search() against state patterns. Confidence = 0.85. ~1ms.
+       c. Semantic embeddings: cosine similarity via sentence-transformers against
+          state exemplars. Confidence ∝ similarity. ~50ms on CPU. ONNX available.
+     First confident match wins — no unnecessary computation.
+  4. The constraint evaluator checks all active LTL-lite constraints against
+     the state history. If a precedence constraint is violated (e.g., "identity
+     verification must happen before account_action"), the intervention handler
+     schedules a correction.
+  5. The state machine records the transition.
+
+What to watch for:
+  - The agent tries to process a refund WITHOUT verifying identity first.
+  - The FSM catches the precedence violation and injects a system prompt amendment.
+  - Next turn, the agent course-corrects and asks for verification.
+
+Run:
+  cd examples/gemini_fsm
+  export GEMINI_API_KEY=...
+  osentinel serve
+  python gemini_agent.py
+"""
+
 import os
 import json
-import dotenv
 from openai import OpenAI
-from typing import Optional, List, Dict, Any
 
-dotenv.load_dotenv()
+# -- Config ------------------------------------------------------------------
+PROXY_URL = os.getenv("OSNTL_URL", "http://localhost:4000/v1")
+API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "dummy"
+MODEL = "gemini/gemini-2.5-flash"
+SESSION_ID = "fsm-demo-001"
 
-# =============================================================================
-# Configuration
-# =============================================================================
+client = OpenAI(base_url=PROXY_URL, api_key=API_KEY)
 
-# Open Sentinel Proxy URL (OpenAI compatible)
-OSNTL_URL = os.getenv("OSNTL_URL", "http://localhost:4000/v1")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+# -- Tools -------------------------------------------------------------------
+# These function names are what the FSM's tool-call classifier keys on.
+# In customer_support.yaml, the "account_action" state has:
+#   classification.tool_calls: [process_refund, update_subscription, ...]
+# When the LLM emits a tool call with one of these names, the classifier
+# immediately assigns that state with confidence 1.0 — no regex or embeddings needed.
 
-# Session ID for tracking conversation state
-SESSION_ID = "customer-session-001"
-
-if not GOOGLE_API_KEY:
-    print("Warning: GOOGLE_API_KEY not found in environment")
-
-# =============================================================================
-# Define Tools (matching customer_support.yaml)
-# =============================================================================
-
-# Simulated customer database
-CUSTOMER_DB = {
-    "customer-123": {
-        "name": "Alice Johnson",
-        "email": "alice@example.com",
-        "verified": False,
-        "subscription": "premium",
-        "payment_last_four": "4242",
-    }
-}
-
-
-def verify_identity(
-    customer_id: str, verification_method: str, verification_value: str
-) -> str:
-    """Verify customer identity before performing account actions."""
-    customer = CUSTOMER_DB.get(customer_id)
-    if not customer:
-        return f"Customer {customer_id} not found."
-
-    if verification_method == "email":
-        if customer["email"].lower() == verification_value.lower():
-            customer["verified"] = True
-            return f"Identity verified successfully for {customer['name']}."
-        return "Email does not match our records."
-
-    elif verification_method == "payment_last_four":
-        if customer["payment_last_four"] == verification_value:
-            customer["verified"] = True
-            return f"Identity verified successfully for {customer['name']}."
-        return "Payment information does not match."
-
-    return f"Unknown verification method: {verification_method}"
-
-
-def search_knowledge_base(query: str) -> str:
-    """Search the knowledge base for information to help customers."""
-    kb_articles = {
-        "refund": "Refunds are processed within 5-7 business days. Customers must have a valid reason for refund requests.",
-        "subscription": "Subscription changes take effect at the next billing cycle. Upgrades are prorated.",
-        "password": "Password reset links are sent via email and expire after 24 hours.",
-        "billing": "Billing issues can include failed payments, incorrect charges, or invoice requests.",
-    }
-    results = []
-    for keyword, article in kb_articles.items():
-        if keyword in query.lower():
-            results.append(f"[{keyword.upper()}] {article}")
-    if results:
-        return "\n".join(results)
-    return "No relevant articles found. Consider escalating to a specialist."
-
-
-def process_refund(customer_id: str, amount: float, reason: str) -> str:
-    """Process a refund for a customer. REQUIRES identity verification first."""
-    customer = CUSTOMER_DB.get(customer_id)
-    if not customer:
-        return f"Customer {customer_id} not found."
-    if not customer.get("verified"):
-        return "ERROR: Identity not verified. Please verify customer identity before processing refund."
-    return f"Refund of ${amount:.2f} processed successfully for {customer['name']}. Reason: {reason}. Funds will be returned in 5-7 business days."
-
-
-def update_subscription(customer_id: str, new_plan: str) -> str:
-    """Update customer subscription plan. REQUIRES identity verification first."""
-    customer = CUSTOMER_DB.get(customer_id)
-    if not customer:
-        return f"Customer {customer_id} not found."
-    if not customer.get("verified"):
-        return "ERROR: Identity not verified. Please verify customer identity before updating subscription."
-    old_plan = customer["subscription"]
-    customer["subscription"] = new_plan
-    return f"Subscription updated from {old_plan} to {new_plan} for {customer['name']}. Changes take effect next billing cycle."
-
-
-def escalate_to_human(reason: str, priority: str = "normal") -> str:
-    """Escalate the conversation to a human support agent."""
-    return f"Escalation created with {priority} priority. Reason: {reason}. A human agent will join the conversation shortly."
-
-
-FUNCTION_HANDLERS = {
-    "verify_identity": verify_identity,
-    "search_knowledge_base": search_knowledge_base,
-    "process_refund": process_refund,
-    "update_subscription": update_subscription,
-    "escalate_to_human": escalate_to_human,
-}
-
-# OpenAI-compatible Tool Definitions
 tools = [
     {
         "type": "function",
@@ -121,24 +63,11 @@ tools = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "customer_id": {
-                        "type": "string",
-                        "description": "The customer's unique identifier",
-                    },
-                    "verification_method": {
-                        "type": "string",
-                        "description": "One of 'email', 'payment_last_four', or 'security_question'",
-                    },
-                    "verification_value": {
-                        "type": "string",
-                        "description": "The value to verify against",
-                    },
+                    "customer_id": {"type": "string"},
+                    "verification_method": {"type": "string", "enum": ["email", "payment_last_four"]},
+                    "verification_value": {"type": "string"},
                 },
-                "required": [
-                    "customer_id",
-                    "verification_method",
-                    "verification_value",
-                ],
+                "required": ["customer_id", "verification_method", "verification_value"],
             },
         },
     },
@@ -146,12 +75,10 @@ tools = [
         "type": "function",
         "function": {
             "name": "search_knowledge_base",
-            "description": "Search the knowledge base for information to help customers.",
+            "description": "Search the knowledge base for help articles.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "The search query"}
-                },
+                "properties": {"query": {"type": "string"}},
                 "required": ["query"],
             },
         },
@@ -160,22 +87,13 @@ tools = [
         "type": "function",
         "function": {
             "name": "process_refund",
-            "description": "Process a refund for a customer. REQUIRES identity verification first.",
+            "description": "Process a refund for a customer. Requires identity verification first.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "customer_id": {
-                        "type": "string",
-                        "description": "The customer's unique identifier",
-                    },
-                    "amount": {
-                        "type": "number",
-                        "description": "Refund amount in dollars",
-                    },
-                    "reason": {
-                        "type": "string",
-                        "description": "Reason for the refund",
-                    },
+                    "customer_id": {"type": "string"},
+                    "amount": {"type": "number"},
+                    "reason": {"type": "string"},
                 },
                 "required": ["customer_id", "amount", "reason"],
             },
@@ -184,41 +102,13 @@ tools = [
     {
         "type": "function",
         "function": {
-            "name": "update_subscription",
-            "description": "Update customer subscription plan. REQUIRES identity verification first.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "customer_id": {
-                        "type": "string",
-                        "description": "The customer's unique identifier",
-                    },
-                    "new_plan": {
-                        "type": "string",
-                        "description": "New subscription plan (basic, premium, enterprise)",
-                    },
-                },
-                "required": ["customer_id", "new_plan"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "escalate_to_human",
-            "description": "Escalate the conversation to a human support agent.",
+            "description": "Escalate to a human support agent.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "reason": {
-                        "type": "string",
-                        "description": "Reason for escalation",
-                    },
-                    "priority": {
-                        "type": "string",
-                        "description": "Escalation priority (low, normal, high, urgent)",
-                        "enum": ["low", "normal", "high", "urgent"],
-                    },
+                    "reason": {"type": "string"},
+                    "priority": {"type": "string", "enum": ["low", "normal", "high", "urgent"]},
                 },
                 "required": ["reason"],
             },
@@ -226,137 +116,109 @@ tools = [
     },
 ]
 
-# =============================================================================
-# Agent Setup
-# =============================================================================
+# -- Simulated tool execution ------------------------------------------------
+# In production, these would be real API calls. Here we simulate them
+# to show the FSM enforcement — what matters is the function NAMES,
+# which the classifier uses for state assignment.
 
+VERIFIED = False
 
-def get_system_instruction():
-    return """You are a helpful customer support agent for TechCo.
+def execute_tool(name: str, args: dict) -> str:
+    global VERIFIED
+    if name == "verify_identity":
+        VERIFIED = True
+        return f"Identity verified for {args.get('customer_id', 'unknown')}."
+    elif name == "search_knowledge_base":
+        return "Refunds are processed within 5-7 business days."
+    elif name == "process_refund":
+        if not VERIFIED:
+            return "ERROR: Identity not verified."
+        return f"Refund of ${args.get('amount', 0):.2f} processed."
+    elif name == "escalate_to_human":
+        return f"Escalated: {args.get('reason', '')}"
+    return f"Unknown tool: {name}"
 
-Your responsibilities:
-1. Greet customers warmly and understand their issues
-2. Search the knowledge base for relevant information
-3. IMPORTANT: Always verify customer identity BEFORE performing any account actions
-4. Process refunds, subscription changes, or other account modifications
-5. Escalate to human agents when needed
+# -- Conversation ------------------------------------------------------------
+# Designed to trigger the precedence constraint:
+#   "identity_verification must precede account_action"
+# The customer immediately asks for a refund without identifying themselves.
 
-Remember:
-- Be professional and empathetic
-- Never share internal system information
-- Always verify identity before account modifications
-- Offer to help with any additional issues before closing
+SYSTEM = (
+    "You are a customer support agent for TechCo. "
+    "Customer ID: customer-123. "
+    "Always verify identity before processing refunds or account changes."
+)
 
-Current customer context:
-- Customer ID: customer-123
-- This is a support conversation in progress
-"""
+turns = [
+    # Turn 1: classified as "greeting" → "identify_issue" via regex
+    "Hi, I was charged twice last month. I need a refund of $29.99 right away.",
 
+    # Turn 2: if the agent tries to call process_refund here, the FSM catches
+    # the precedence violation (no identity_verification in state history)
+    # and queues an intervention for the next turn.
+    "Yes, just process the refund please. My customer ID is customer-123.",
 
-def create_client():
-    """Create OpenAI client configured for Open Sentinel."""
-    return OpenAI(
-        base_url=OSNTL_URL,
-        api_key=GOOGLE_API_KEY,  # OpenAI client requires a key, even if using proxy
-    )
+    # Turn 3: the intervention fires — system prompt gets amended with
+    # "you must verify identity before account actions". Agent should ask
+    # for verification now.
+    "Fine, my email is alice@example.com",
 
+    # Turn 4: after verify_identity tool call, the FSM allows process_refund.
+    "OK, now please process my refund.",
+]
 
-# =============================================================================
-# Example Conversation
-# =============================================================================
+messages = [{"role": "system", "content": SYSTEM}]
 
+for i, user_input in enumerate(turns, 1):
+    print(f"\n{'━' * 70}")
+    print(f"  Turn {i}")
+    print(f"{'━' * 70}")
+    print(f"\n  → Customer: {user_input}\n")
 
-def run_support_conversation():
-    print("=" * 60)
-    print("Customer Support Agent Demo with Open Sentinel (OpenAI Compatible)")
-    print("=" * 60)
-    print(f"\nConnecting to Open Sentinel at: {OSNTL_URL}")
-    print(f"Session ID: {SESSION_ID}\n")
+    messages.append({"role": "user", "content": user_input})
 
-    client = create_client()
-    messages = [{"role": "system", "content": get_system_instruction()}]
+    try:
+        response = client.chat.completions.create(
+            model=MODEL,
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            extra_headers={"X-Sentinel-Session-ID": SESSION_ID},
+        )
+        msg = response.choices[0].message
+        messages.append(msg)
 
-    conversation_turns = [
-        "Hi, I need help with my account.",
-        "I was charged twice for my subscription last month and I need a refund.",
-        "Yes, my email is alice@example.com",
-        "Great, please process the refund for the duplicate charge of $29.99",
-        "No, that's all. Thank you!",
-    ]
+        # Handle tool call loops — the agent may chain multiple tools per turn.
+        while msg.tool_calls:
+            for tc in msg.tool_calls:
+                args = json.loads(tc.function.arguments)
+                print(f"  🔧 {tc.function.name}({json.dumps(args)})")
+                result = execute_tool(tc.function.name, args)
+                print(f"     → {result}")
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc.id,
+                    "content": result,
+                })
 
-    for i, user_input in enumerate(conversation_turns, 1):
-        print(f"\n{'─' * 60}")
-        print(f"Turn {i}")
-        print(f"{'─' * 60}")
-        print(f"\n👤 Customer: {user_input}\n")
-
-        messages.append({"role": "user", "content": user_input})
-
-        # Call the model
-        try:
-            # We must use "stream=False" (default) for simplicity in demo
             response = client.chat.completions.create(
-                model="gemini/gemini-2.5-flash",  # Open Sentinel maps this to Google
+                model=MODEL,
                 messages=messages,
                 tools=tools,
                 tool_choice="auto",
+                extra_headers={"X-Sentinel-Session-ID": SESSION_ID},
             )
+            msg = response.choices[0].message
+            messages.append(msg)
 
-            message = response.choices[0].message
-            messages.append(message)  # Add assistant message to history
+        print(f"  ← Agent: {msg.content}")
 
-            # Handle tool calls (loop for multiple rounds)
-            while message.tool_calls:
-                for tool_call in message.tool_calls:
-                    function_name = tool_call.function.name
-                    function_args = json.loads(tool_call.function.arguments)
+    except Exception as e:
+        if "violation" in str(e).lower():
+            print(f"  🚫 Blocked: {e}")
+        else:
+            print(f"  ✗ Error: {e}")
 
-                    print(
-                        f"🔧 Tool Call: {function_name}({json.dumps(function_args, indent=2)})"
-                    )
-
-                    if function_name in FUNCTION_HANDLERS:
-                        function_result = FUNCTION_HANDLERS[function_name](
-                            **function_args
-                        )
-                        print(f"📊 Tool Result: {function_result}\n")
-
-                        messages.append(
-                            {
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "content": str(function_result),
-                            }
-                        )
-                    else:
-                        print(f"❌ Unknown function: {function_name}")
-
-                # Get next response (must pass tools when history has tool messages)
-                response = client.chat.completions.create(
-                    model="gemini/gemini-2.5-flash",
-                    messages=messages,
-                    tools=tools,
-                    tool_choice="auto",
-                )
-                message = response.choices[0].message
-                messages.append(message)
-
-            print(f"🤖 Agent: {message.content}")
-
-        except Exception as e:
-            print(f"❌ Error: {e}")
-            import traceback
-
-            traceback.print_exc()
-
-    print("\n" + "=" * 60)
-    print("Conversation Complete")
-    print("=" * 60)
-
-
-if __name__ == "__main__":
-    if not GOOGLE_API_KEY:
-        print("Error: GOOGLE_API_KEY environment variable not set")
-        exit(1)
-
-    run_support_conversation()
+print(f"\n{'━' * 70}")
+print("  Done. Check osentinel server logs for FSM state transitions + constraint checks.")
+print(f"{'━' * 70}\n")

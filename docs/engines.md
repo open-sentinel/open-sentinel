@@ -1,18 +1,32 @@
 # Policy Engines
 
-OpenSentinel ships five policy engines. Each implements the same `PolicyEngine` interface but uses a different mechanism to evaluate agent behavior.
+Four engines, same interface (`PolicyEngine` protocol). Pick one based on your enforcement needs.
+
+## How to choose
+
+```
+Do you need deterministic, auditable enforcement?
+  ├─ Yes → Is behavior defined by tool calls and sequencing?
+  │         ├─ Yes → FSM engine (zero LLM cost, ~0ms)
+  │         └─ No  → LLM engine (handles ambiguous workflows)
+  └─ No  → Is the concern content quality / safety / policy compliance?
+            ├─ Yes → Judge engine (async default, 0ms critical-path)
+            └─ No  → Do you already have NeMo Guardrails configs?
+                      ├─ Yes → NeMo engine
+                      └─ No  → LLM engine (handles ambiguous workflows)
+```
 
 ## Comparison
 
-| Property | Judge | FSM | LLM | NeMo | Composite |
-|----------|-------|-----|-----|------|-----------|
-| What it does | Scores responses against rubrics using a separate LLM | Enforces state machine workflows with temporal constraints | Classifies state and detects drift using a sidecar LLM | Runs NVIDIA NeMo Guardrails input/output rails | Combines multiple engines, merges results |
-| Deterministic | No | Yes | No | No | Depends on children |
-| Requires LLM calls | Yes (judge model) | No (tool calls, regex, local embeddings) | Yes (classification + constraint eval) | Yes (NeMo's LLM) | Depends on children |
-| Stateful | Per-turn + periodic conversation eval | Full FSM with state history | Full with drift tracking and evidence memory | Minimal (NeMo manages internally) | Delegates to children |
-| Latency overhead | 200-800ms (LLM round-trip) | ~0ms (local computation) | 100-500ms (LLM API calls) | 200-800ms (NeMo LLM calls) | Sum or max of children |
-| External deps | None beyond litellm | sentence-transformers (optional, for embedding fallback) | litellm, sentence-transformers | nemoguardrails | None (uses child engines) |
-| Best for | Content quality, safety screening, policy compliance | Well-defined tool-based workflows with ordering requirements | Conversational workflows where classification is ambiguous | Jailbreak detection, PII filtering, content moderation | Layered enforcement (workflow + safety) |
+| Property | Judge | FSM | LLM | NeMo |
+|----------|-------|-----|-----|------|
+| What it does | Scores responses against rubrics using a separate LLM | Enforces state machine workflows with temporal constraints | Classifies state and detects drift using a sidecar LLM | Runs NVIDIA NeMo Guardrails input/output rails |
+| Deterministic | No | Yes | No | No |
+| Requires LLM calls | Yes (judge model) | No (tool calls, regex, local embeddings) | Yes (classification + constraint eval) | Yes (NeMo's LLM) |
+| Stateful | Per-turn + periodic conversation eval | Full FSM with state history | Full with drift tracking and evidence memory | Minimal (NeMo manages internally) |
+| Latency overhead | **0ms critical-path** (async default); 200-800ms total in background | ~0ms (local computation) | 100-500ms (LLM API calls) | 200-800ms (NeMo LLM calls) |
+| External deps | None beyond litellm | sentence-transformers (optional, for embedding fallback) | litellm, sentence-transformers | nemoguardrails |
+| Best for | Content quality, safety screening, policy compliance | Well-defined tool-based workflows with ordering requirements | Conversational workflows where classification is ambiguous | Jailbreak detection, PII filtering, content moderation |
 
 ## Judge Engine
 
@@ -261,56 +275,4 @@ osentinel compile "block hacking requests" --engine nemo -o ./nemo_config
 
 Deep dive: [opensentinel/policy/engines/nemo/README.md](../opensentinel/policy/engines/nemo/README.md)
 
----
 
-## Composite Engine
-
-**Config key**: `engine: composite`
-
-Runs multiple child engines and merges their results. Does not evaluate policies itself. The merge rule is most-restrictive-wins: if any engine returns DENY, the final result is DENY regardless of other engines.
-
-### When to use it
-
-- Defense-in-depth: FSM for workflow enforcement + NeMo for safety guardrails
-- Combining deterministic and LLM-based evaluation
-- Running different engines for different concerns in parallel
-
-### How it works
-
-1. All child engines are initialized from the `engines` list in config
-2. On each request/response, all engines run (in parallel by default via `asyncio.gather`)
-3. Results are merged: decision = most restrictive, violations = all collected, intervention = first one wins
-4. If a child engine throws an exception, it produces a WARN result with an error violation; other engines continue
-
-### Merge rules
-
-| Field | Rule |
-|-------|------|
-| Decision | Most restrictive: DENY > MODIFY > WARN > ALLOW |
-| Violations | Union of all violations from all engines |
-| Intervention | First engine that requests one wins |
-| Modified request | First engine that returns MODIFY wins |
-| Metadata | Merged by engine name under `metadata.engines` |
-
-### Strategies
-
-- **`all`** (default): Run all engines, merge all results.
-- **`first_deny`**: Stop after the first engine that returns DENY. Useful with `parallel: false` for early exit when a fast engine (NeMo) runs first.
-
-### Minimal config
-
-```yaml
-engine: composite
-composite:
-  engines:
-    - type: fsm
-      config:
-        config_path: ./workflow.yaml
-    - type: nemo
-      config:
-        config_path: ./nemo_config/
-```
-
-Full configuration reference: [docs/configuration.md](configuration.md#composite-engine)
-
-Deep dive: [opensentinel/policy/engines/composite/README.md](../opensentinel/policy/engines/composite/README.md)
