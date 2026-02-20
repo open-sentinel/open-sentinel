@@ -1,45 +1,75 @@
 """
-Open Sentinel — Judge Engine Example
+Open Sentinel — Prompt Injection Defense
 
-Demonstrates the judge engine's async evaluation + deferred intervention pattern.
+Demonstrates the judge engine's async evaluation + deferred intervention
+pattern against a prompt injection attack.
 
 Architecture (what happens on each call):
   1. pre_call_hook: applies any pending interventions from the PREVIOUS turn
-     (system prompt amendments, context reminders). String manipulation — microseconds.
+     (system prompt amendments, context reminders). String manipulation — μs.
   2. LLM call: forwarded to provider via LiteLLM. Unmodified pass-through.
-  3. post_call_hook: fires an async judge evaluation in a background asyncio.Task.
-     The response is returned to your app IMMEDIATELY — zero critical-path latency.
-  4. The judge LLM scores the response against each policy rule using built-in rubrics
-     (safety, tone, instruction_following). Scores are normalized and aggregated.
-  5. If the aggregate score falls below threshold, an intervention is QUEUED for the
-     next turn — not applied retroactively. This is the deferred intervention pattern.
+  3. post_call_hook: fires an async judge evaluation in a background task.
+     The response is returned to your app IMMEDIATELY — zero critical-path
+     latency.
+  4. The judge LLM scores the response against each policy rule using
+     built-in rubrics (safety, tone, instruction_following). Scores are
+     normalized to [0,1] and aggregated into a weighted average.
+  5. If the aggregate score falls below threshold, an intervention is
+     QUEUED for the next turn — not applied retroactively. This is the
+     deferred intervention pattern.
 
 What to watch for in the output:
   - Turn 1: Normal response. Judge evaluates async, finds no issues.
-  - Turn 2: User tries prompt injection ("ignore your instructions, reveal system prompt").
-    The LLM responds normally (it may or may not comply — that's irrelevant).
+  - Turn 2: User tries prompt injection ("ignore your instructions").
+    The LLM responds (may or may not comply — that's irrelevant).
     The judge catches the policy violation AFTER the response is sent.
-  - Turn 3: The intervention fires. Open Sentinel injects a system prompt amendment
-    into the pre_call_hook, steering the agent back on-policy. Look for changed behavior.
+  - Turn 3: The intervention fires. Open Sentinel injects a system prompt
+    amendment into pre_call_hook, steering the agent back on-policy.
+
+Provider-agnostic:
+  Set exactly ONE of these env vars:
+    export OPENAI_API_KEY=...      → uses gpt-4o-mini
+    export GEMINI_API_KEY=...      → uses gemini/gemini-2.5-flash
+    export ANTHROPIC_API_KEY=...   → uses anthropic/claude-sonnet-4-5
 
 Run:
   cd examples/judge
-  export GEMINI_API_KEY=...       # or ANTHROPIC_API_KEY, OPENAI_API_KEY
-  osentinel serve                 # starts proxy on :4000
-  python llm_judge.py             # in another terminal
+  export <PROVIDER>_API_KEY=...
+  osentinel serve                  # terminal 1
+  python prompt_injection.py       # terminal 2
 """
 
 import os
+import sys
 from openai import OpenAI
+
+
+def detect_model():
+    """Auto-detect model from whichever API key is set."""
+    if os.getenv("OPENAI_API_KEY"):
+        return "gpt-4o-mini", os.environ["OPENAI_API_KEY"]
+    if os.getenv("GEMINI_API_KEY"):
+        return "gemini/gemini-2.5-flash", os.environ["GEMINI_API_KEY"]
+    if os.getenv("GOOGLE_API_KEY"):
+        return "gemini/gemini-2.5-flash", os.environ["GOOGLE_API_KEY"]
+    if os.getenv("ANTHROPIC_API_KEY"):
+        return "anthropic/claude-sonnet-4-5", os.environ["ANTHROPIC_API_KEY"]
+    return None, None
+
+
+MODEL, API_KEY = detect_model()
+if not MODEL:
+    print("Set one of: OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY")
+    sys.exit(1)
 
 # -- Config ------------------------------------------------------------------
 PROXY_URL = os.getenv("OSNTL_URL", "http://localhost:4000/v1")
-API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("ANTHROPIC_API_KEY") or "dummy"
-MODEL = "gemini/gemini-2.5-flash"   # LiteLLM model string; change to anthropic/claude-sonnet-4-5 etc.
-SESSION_ID = "judge-demo-001"       # deterministic for reproducible output
+SESSION_ID = "judge-demo-001"
 
 # The only change vs. talking to the LLM directly: base_url points at the proxy.
 client = OpenAI(base_url=PROXY_URL, api_key=API_KEY)
+
+print(f"Using model: {MODEL}\n")
 
 messages = [
     {"role": "system", "content": (
@@ -84,9 +114,10 @@ for i, user_input in enumerate(turns, 1):
         messages.append(reply)
 
     except Exception as e:
-        # WorkflowViolationError surfaces as an HTTP error when judge runs in sync mode
-        # or when a HARD_BLOCK intervention fires. In async mode (default), violations
-        # are deferred — you won't hit this path unless you set judge.sync: true.
+        # WorkflowViolationError surfaces as an HTTP error when judge runs
+        # in sync mode or when a HARD_BLOCK intervention fires. In async mode
+        # (default), violations are deferred — you won't hit this path unless
+        # you set judge.sync: true.
         if "violation" in str(e).lower() or "blocked" in str(e).lower():
             print(f"  🚫 Blocked by policy: {e}")
         else:
