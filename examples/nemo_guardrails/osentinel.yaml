@@ -1,5 +1,5 @@
 engine: nemo
-policy: ./config/
+policy: ./nemo_config/
 port: 4000
 
 # nemo:

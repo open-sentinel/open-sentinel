@@ -1,5 +1,5 @@
 """
-Open Sentinel — NeMo Guardrails Engine Example
+Open Sentinel — Content Safety Rails (NeMo Engine)
 
 Demonstrates NVIDIA NeMo Guardrails as a policy engine. NeMo provides
 content safety rails (jailbreak detection, PII filtering, toxicity) and
@@ -24,20 +24,43 @@ Fail-open by default:
 Prerequisites:
   pip install 'opensentinel[nemo]'
 
+Note on providers:
+  NeMo Guardrails has its own model config (config/config.yml) for the
+  rails evaluation LLM. The MODEL below is for the agent's LLM — it goes
+  through Open Sentinel's proxy. Both are independently configurable.
+
 Run:
   cd examples/nemo_guardrails
-  export GEMINI_API_KEY=...
+  export <PROVIDER>_API_KEY=...
   osentinel serve
-  python nemo_agent.py
+  python content_safety.py
 """
 
 import os
+import sys
 from openai import OpenAI
+
+
+def detect_model():
+    """Auto-detect model from whichever API key is set."""
+    if os.getenv("OPENAI_API_KEY"):
+        return "gpt-4o-mini", os.environ["OPENAI_API_KEY"]
+    if os.getenv("GEMINI_API_KEY"):
+        return "gemini/gemini-2.5-flash", os.environ["GEMINI_API_KEY"]
+    if os.getenv("GOOGLE_API_KEY"):
+        return "gemini/gemini-2.5-flash", os.environ["GOOGLE_API_KEY"]
+    if os.getenv("ANTHROPIC_API_KEY"):
+        return "anthropic/claude-sonnet-4-5", os.environ["ANTHROPIC_API_KEY"]
+    return None, None
+
+
+MODEL, API_KEY = detect_model()
+if not MODEL:
+    print("Set one of: OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY")
+    sys.exit(1)
 
 # -- Config ------------------------------------------------------------------
 PROXY_URL = os.getenv("OSNTL_URL", "http://localhost:4000/v1")
-API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or os.getenv("ANTHROPIC_API_KEY") or "dummy"
-MODEL = "gemini/gemini-2.5-flash"
 SESSION_ID = "nemo-demo-001"
 
 client = OpenAI(
@@ -45,6 +68,8 @@ client = OpenAI(
     api_key=API_KEY,
     default_headers={"x-sentinel-session-id": SESSION_ID},
 )
+
+print(f"Using model: {MODEL}\n")
 
 messages = [
     {"role": "system", "content": (
