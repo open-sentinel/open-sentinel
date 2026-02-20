@@ -552,6 +552,34 @@ class SentinelSettings(BaseSettings):
         self._sync_env_var("TOGETHERAI_API_KEY", self.togetherai_api_key)
         self._sync_env_var("OPENROUTER_API_KEY", self.openrouter_api_key)
 
+        # Auto-detect default model from available API keys when not explicitly set
+        if not self.proxy.default_model:
+            self.proxy.default_model = self._auto_detect_model()
+
+    def _auto_detect_model(self) -> Optional[str]:
+        """Pick a default model based on which API key is available.
+
+        Priority mirrors detect_available_model() in cli_init.py:
+          1. OpenAI  -> gpt-4o-mini
+          2. Gemini  -> gemini/gemini-2.5-flash
+          3. Anthropic -> anthropic/claude-sonnet-4-5
+          4. Groq    -> groq/llama3-8b-8192
+          5. Together -> together_ai/meta-llama/Llama-3-8b-chat-hf
+          6. OpenRouter -> openrouter/auto
+        """
+        if self.openai_api_key:
+            return "gpt-4o-mini"
+        if self.google_api_key or self.gemini_api_key:
+            return "gemini/gemini-2.5-flash"
+        if self.anthropic_api_key:
+            return "anthropic/claude-sonnet-4-5"
+        if self.groq_api_key:
+            return "groq/llama3-8b-8192"
+        if self.togetherai_api_key:
+            return "together_ai/meta-llama/Llama-3-8b-chat-hf"
+        if self.openrouter_api_key:
+            return "openrouter/auto"
+        return None
 
     def _sync_env_var(self, key: str, value: Optional[str]) -> None:
         """Set env var if present in settings but missing in os.environ."""
@@ -657,7 +685,7 @@ class SentinelSettings(BaseSettings):
             # we must enforce that the user provides at least one key or sets a model manually.
             raise ValueError(
                 "No LLM API keys detected. Please set one of OPENAI_API_KEY, ANTHROPIC_API_KEY, "
-                "or GEMINI_API_KEY, or explicitly configure a `model` in osentinel.yaml."
+                "or GEMINI_API_KEY."
             )
 
         if "gpt" in default_model and not self.openai_api_key:
