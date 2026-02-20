@@ -144,8 +144,7 @@ Wraps [NVIDIA NeMo Guardrails](https://github.com/NVIDIA/NeMo-Guardrails) for co
 
 ```yaml
 engine: nemo
-nemo:
-  config_dir: ./nemo_config    # standard NeMo Guardrails config directory
+policy: ./nemo_config/    # path to NeMo Guardrails config directory (contains config.yml + .co files)
 ```
 
 Full engine documentation: [docs/engines.md](docs/engines.md)
@@ -188,7 +187,7 @@ osentinel serve -p 8080 -c custom.yaml  # custom port and config
 # Compile policies (natural language to YAML)
 osentinel compile "verify identity before refunds" --engine fsm -o workflow.yaml
 osentinel compile "be helpful, never leak PII" --engine judge -o policy.yaml
-osentinel compile "block hacking" --engine nemo -o ./nemo_rails
+osentinel compile "block hacking" --engine nemo -o ./nemo_config
 
 # Validate and inspect
 osentinel validate workflow.yaml                          # check schema + report stats
