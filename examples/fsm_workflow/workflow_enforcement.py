@@ -1,8 +1,9 @@
 """
-Open Sentinel — FSM Engine Example
+Open Sentinel — Workflow Enforcement (FSM Engine)
 
 Demonstrates deterministic workflow enforcement using a finite state machine
-with LTL-lite temporal constraints.
+with LTL-lite temporal constraints. A customer support agent is required to
+verify identity before processing account actions.
 
 Architecture (what happens on each call):
   1. pre_call_hook: checks for pending interventions from previous violations.
@@ -13,7 +14,7 @@ Architecture (what happens on each call):
      using a three-tier cascade:
        a. Tool call matching: if the response includes a function call, match
           the function name against state definitions. Confidence = 1.0. ~0ms.
-       b. Regex patterns: run re.search() against state patterns. Confidence = 0.85. ~1ms.
+       b. Regex patterns: run re.search() against state patterns. Conf = 0.85. ~1ms.
        c. Semantic embeddings: cosine similarity via sentence-transformers against
           state exemplars. Confidence ∝ similarity. ~50ms on CPU. ONNX available.
      First confident match wins — no unnecessary computation.
@@ -28,31 +29,57 @@ What to watch for:
   - The FSM catches the precedence violation and injects a system prompt amendment.
   - Next turn, the agent course-corrects and asks for verification.
 
+Provider-agnostic:
+  Set exactly ONE of these env vars:
+    export OPENAI_API_KEY=...      → uses gpt-4o-mini
+    export GEMINI_API_KEY=...      → uses gemini/gemini-2.5-flash
+    export ANTHROPIC_API_KEY=...   → uses anthropic/claude-sonnet-4-5
+
 Run:
-  cd examples/gemini_fsm
-  export GEMINI_API_KEY=...
-  osentinel serve
-  python gemini_agent.py
+  cd examples/fsm_workflow
+  export <PROVIDER>_API_KEY=...
+  osentinel serve                      # terminal 1
+  python workflow_enforcement.py       # terminal 2
 """
 
 import os
+import sys
 import json
 from openai import OpenAI
 
+
+def detect_model():
+    """Auto-detect model from whichever API key is set."""
+    if os.getenv("OPENAI_API_KEY"):
+        return "gpt-4o-mini", os.environ["OPENAI_API_KEY"]
+    if os.getenv("GEMINI_API_KEY"):
+        return "gemini/gemini-2.5-flash", os.environ["GEMINI_API_KEY"]
+    if os.getenv("GOOGLE_API_KEY"):
+        return "gemini/gemini-2.5-flash", os.environ["GOOGLE_API_KEY"]
+    if os.getenv("ANTHROPIC_API_KEY"):
+        return "anthropic/claude-sonnet-4-5", os.environ["ANTHROPIC_API_KEY"]
+    return None, None
+
+
+MODEL, API_KEY = detect_model()
+if not MODEL:
+    print("Set one of: OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY")
+    sys.exit(1)
+
 # -- Config ------------------------------------------------------------------
 PROXY_URL = os.getenv("OSNTL_URL", "http://localhost:4000/v1")
-API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or "dummy"
-MODEL = "gemini/gemini-2.5-flash"
 SESSION_ID = "fsm-demo-001"
 
 client = OpenAI(base_url=PROXY_URL, api_key=API_KEY)
+
+print(f"Using model: {MODEL}\n")
 
 # -- Tools -------------------------------------------------------------------
 # These function names are what the FSM's tool-call classifier keys on.
 # In customer_support.yaml, the "account_action" state has:
 #   classification.tool_calls: [process_refund, update_subscription, ...]
 # When the LLM emits a tool call with one of these names, the classifier
-# immediately assigns that state with confidence 1.0 — no regex or embeddings needed.
+# immediately assigns that state with confidence 1.0 — no regex or embeddings.
 
 tools = [
     {
