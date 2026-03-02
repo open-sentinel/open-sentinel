@@ -223,6 +223,19 @@ class SentinelTracer:
         except Exception:
             return str(obj)
 
+    def _to_timestamp_ns(self, t: Any) -> Optional[int]:
+        """Convert various time formats to nanoseconds for OTEL."""
+        if t is None:
+            return None
+        if isinstance(t, (int, float)):
+            return int(t * 1e9)
+        if hasattr(t, "timestamp"):  # datetime or similar
+            try:
+                return int(t.timestamp() * 1e9)
+            except Exception:
+                return None
+        return None
+
     @contextmanager
     def trace_block(
         self,
@@ -481,6 +494,8 @@ class SentinelTracer:
         metadata: Optional[Dict[str, Any]] = None,
         latency_ms: Optional[float] = None,
         parent_span: Optional[Any] = None,
+        start_time: Optional[Any] = None,
+        end_time: Optional[Any] = None,
     ) -> None:
         """
         Log an LLM call as an OTEL span with GenAI semantic conventions.
@@ -511,11 +526,17 @@ class SentinelTracer:
             "llm.message_count": len(messages) if messages else 0,
         }
 
-        with self._tracer.start_as_current_span(
+        start_time_ns = self._to_timestamp_ns(start_time)
+        end_time_ns = self._to_timestamp_ns(end_time)
+
+        span = self._tracer.start_span(
             "llm-call",
             context=parent_ctx,
             attributes=span_attrs,
-        ) as span:
+            start_time=start_time_ns,
+        )
+
+        with trace.use_span(span, end_on_exit=False) as current_span:
             # Set input (messages) using multiple attribute formats for compatibility
             if messages:
                 messages_json = self._safe_json(messages)
@@ -556,6 +577,7 @@ class SentinelTracer:
                 for key, value in metadata.items():
                     span.set_attribute(f"opensentinel.metadata.{key}", str(value))
 
+            span.end(end_time=end_time_ns)
             logger.info(f"Logged LLM call for session {session_id} (model={model})")
 
     def log_judge_evaluation(

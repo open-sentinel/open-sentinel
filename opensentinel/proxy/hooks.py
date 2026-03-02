@@ -29,6 +29,7 @@ https://docs.litellm.ai/docs/observability/custom_callback
 
 import asyncio
 import logging
+import time
 from typing import Optional, Union, Dict, Any, Literal, List, Callable, TypeVar
 from datetime import datetime
 
@@ -445,6 +446,11 @@ class SentinelCallback(CustomLogger):
                         context={"num_checkers": len(result.results)},
                     )
 
+        # Capture start time at the end of pre-call to accurately measure LLM latency in trace
+        if "metadata" not in data:
+             data["metadata"] = {}
+        data["metadata"]["_opensentinel_llm_start_time"] = time.time()
+
         return data
 
     async def async_moderation_hook(
@@ -499,25 +505,50 @@ class SentinelCallback(CustomLogger):
     ) -> Any:
         """Inner implementation for async_post_call_success_hook."""
         session_id = self._extract_session_id(data)
+        llm_end_time = time.time()
+        llm_start_time = data.get("metadata", {}).get("_opensentinel_llm_start_time")
 
         interceptor = await self._get_interceptor()
         policy_engine = await self._get_policy_engine()
 
-        logger.info(
-            f"post_call_success_hook: session={session_id}, "
-            f"has_interceptor={interceptor is not None}, "
-            f"has_tracer={self.tracer is not None}"
-        )
+        # Log LLM call via OTEL BEFORE interceptor
+        if self.tracer:
+            response_content = None
+            if hasattr(response, "choices") and response.choices:
+                first_choice = response.choices[0]
+                if hasattr(first_choice, "message") and first_choice.message:
+                    response_content = first_choice.message.content
+                elif hasattr(first_choice, "text"):
+                    response_content = first_choice.text
+
+            usage_info = None
+            if hasattr(response, "usage") and response.usage:
+                usage_info = {
+                    "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
+                    "completion_tokens": getattr(response.usage, "completion_tokens", 0),
+                    "total_tokens": getattr(response.usage, "total_tokens", 0),
+                }
+
+            self.tracer.log_llm_call(
+                session_id=session_id,
+                model=data.get("model", "unknown"),
+                messages=data.get("messages", []),
+                response_content=response_content,
+                response_model=getattr(response, "model", None),
+                usage=usage_info,
+                metadata={
+                    "has_interceptor": interceptor is not None,
+                    "hook": "post_call_success",
+                },
+                start_time=llm_start_time,
+                end_time=llm_end_time,
+            )
 
         if interceptor:
             # Extract response content for tracing
             response_content_for_trace = None
-            if hasattr(response, "choices") and response.choices:
-                first_choice = response.choices[0]
-                if hasattr(first_choice, "message") and first_choice.message:
-                    response_content_for_trace = first_choice.message.content
-                elif hasattr(first_choice, "text"):
-                    response_content_for_trace = first_choice.text
+            # ... use the one we just extracted
+            response_content_for_trace = response_content
 
             if self.tracer:
                 cm = self.tracer.trace_block(
@@ -560,37 +591,6 @@ class SentinelCallback(CustomLogger):
 
             # With async POST_CALL, results are deferred to next PRE_CALL.
             # run_post_call only starts async checkers; no sync gates here.
-
-        # Log LLM call via OTEL
-        if self.tracer:
-            response_content = None
-            if hasattr(response, "choices") and response.choices:
-                first_choice = response.choices[0]
-                if hasattr(first_choice, "message") and first_choice.message:
-                    response_content = first_choice.message.content
-                elif hasattr(first_choice, "text"):
-                    response_content = first_choice.text
-
-            usage_info = None
-            if hasattr(response, "usage") and response.usage:
-                usage_info = {
-                    "prompt_tokens": getattr(response.usage, "prompt_tokens", 0),
-                    "completion_tokens": getattr(response.usage, "completion_tokens", 0),
-                    "total_tokens": getattr(response.usage, "total_tokens", 0),
-                }
-
-            self.tracer.log_llm_call(
-                session_id=session_id,
-                model=data.get("model", "unknown"),
-                messages=data.get("messages", []),
-                response_content=response_content,
-                response_model=getattr(response, "model", None),
-                usage=usage_info,
-                metadata={
-                    "has_interceptor": interceptor is not None,
-                    "hook": "post_call_success",
-                },
-            )
 
         return response
 
@@ -733,6 +733,8 @@ class SentinelCallback(CustomLogger):
                     "has_interceptor": interceptor is not None,
                     "hook": "async_log_success",
                 },
+                start_time=start_time,
+                end_time=end_time,
             )
 
     async def async_log_failure_event(
