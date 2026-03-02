@@ -79,3 +79,66 @@ async def test_skip_verification_detected(engine, runner):
     assert "verify_before_account_action" in all_violation_names, (
         f"Expected 'verify_before_account_action' in violations, got: {all_violation_names}"
     )
+
+
+async def test_escalation_path_no_violations(engine, runner):
+    """Escalation path: greeting → identify → lookup → escalate → resolution.
+
+    All turns should be ALLOW with no violations since the agent follows
+    a valid workflow path without any account actions.
+    """
+    messages = json.loads((EVALS_DIR / "escalation_path.json").read_text())
+    result = await runner.run(engine, messages)
+
+    assert result.error is None
+    assert len(result.turns) > 0
+
+    for turn in result.turns:
+        assert turn.response_eval.decision == PolicyDecision.ALLOW
+        assert len(turn.response_eval.violations) == 0
+
+
+async def test_multi_issue_no_violations(engine, runner):
+    """Multi-issue: resolution → identify_issue loop with lookups.
+
+    All turns should be ALLOW with no violations since the agent handles
+    multiple issues via knowledge base lookups without account modifications.
+    """
+    messages = json.loads((EVALS_DIR / "multi_issue.json").read_text())
+    result = await runner.run(engine, messages)
+
+    assert result.error is None
+    assert len(result.turns) > 0
+
+    for turn in result.turns:
+        assert turn.response_eval.decision == PolicyDecision.ALLOW
+        assert len(turn.response_eval.violations) == 0
+
+
+async def test_direct_account_action_detected(engine, runner):
+    """Violation: agent jumps to account_action without identity verification.
+
+    The update_billing tool call should trigger the
+    verify_before_account_action constraint, producing a MODIFY or DENY.
+    """
+    messages = json.loads((EVALS_DIR / "direct_account_action.json").read_text())
+    result = await runner.run(engine, messages)
+
+    assert result.error is None
+    assert len(result.turns) > 0
+
+    # At least one turn must have caught the violation
+    violation_turns = [
+        t
+        for t in result.turns
+        if t.response_eval.decision in (PolicyDecision.MODIFY, PolicyDecision.DENY)
+    ]
+    assert len(violation_turns) > 0, "Expected at least one turn with a violation decision"
+
+    # The specific constraint name should appear in violations
+    all_violation_names = [
+        v.name for t in result.turns for v in t.response_eval.violations
+    ]
+    assert "verify_before_account_action" in all_violation_names, (
+        f"Expected 'verify_before_account_action' in violations, got: {all_violation_names}"
+    )
