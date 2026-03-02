@@ -5,6 +5,7 @@ Commands:
 - osentinel init: Initialize a new Open Sentinel project
 - osentinel serve: Start the proxy server
 - osentinel compile: Compile natural language policy to engine config
+- osentinel eval: Run evaluation scenarios against a policy engine
 - osentinel validate: Validate a workflow file
 - osentinel info: Show workflow information
 """
@@ -333,6 +334,162 @@ def version() -> None:
             (f" v{__version__}", "dim"),
         )
     )
+
+
+@main.command(name="eval")
+@click.option(
+    "--config",
+    "-c",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="Path to osentinel.yaml config file",
+)
+@click.option(
+    "--json-output",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Export results to JSON file",
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    help="Show per-turn details",
+)
+@click.option(
+    "--debug/--no-debug",
+    default=False,
+    help="Enable debug logging",
+)
+def eval_cmd(config: Path | None, json_output: Path | None, verbose: bool, debug: bool) -> None:
+    """Run evaluation scenarios against a policy engine.
+
+    Loads engine configuration and scenario paths from the `eval` section
+    of osentinel.yaml, replays conversations through the engine, and
+    prints a summary report.
+
+    Examples:
+
+        osentinel eval
+        osentinel eval -c examples/fsm_workflow/osentinel.yaml
+        osentinel eval --json-output results.json --verbose
+    """
+    import asyncio
+    import glob as globmod
+    import json
+
+    import yaml
+
+    from opensentinel.eval import EvalRunner, export_json, print_report
+    from opensentinel.eval.mocks import apply_mock_provider
+    from opensentinel.policy.registry import PolicyEngineRegistry
+
+    setup_logging(debug)
+
+    # --- Discover config file ---
+    config_path = config
+    if config_path is None:
+        for name in ("osentinel.yaml", "osentinel.yml"):
+            candidate = Path(name)
+            if candidate.is_file():
+                config_path = candidate
+                break
+        env_path = __import__("os").environ.get("OSNTL_CONFIG")
+        if config_path is None and env_path:
+            config_path = Path(env_path)
+
+    if config_path is None or not config_path.is_file():
+        error("No osentinel.yaml found.", hint="Run: osentinel init")
+        raise SystemExit(1)
+
+    # --- Load YAML ---
+    try:
+        with open(config_path) as f:
+            raw = yaml.safe_load(f) or {}
+    except Exception as e:
+        error(f"Failed to load config: {e}")
+        raise SystemExit(1)
+
+    eval_section = raw.get("eval")
+    if not eval_section or not isinstance(eval_section, dict):
+        error(
+            "No 'eval' section found in config.",
+            hint="Add an eval section with scenario paths to your osentinel.yaml",
+        )
+        raise SystemExit(1)
+
+    # --- Resolve scenario paths (relative to config file, with glob expansion) ---
+    config_dir = config_path.parent
+    raw_paths = eval_section.get("scenarios", [])
+    scenario_paths: list[Path] = []
+    for p in raw_paths:
+        expanded = globmod.glob(str(config_dir / p))
+        if not expanded:
+            warning(f"No files matched: {p}")
+        for ep in sorted(expanded):
+            scenario_paths.append(Path(ep))
+
+    if not scenario_paths:
+        error("No scenario files found.", hint="Check the 'eval.scenarios' paths in your config.")
+        raise SystemExit(1)
+
+    # --- Determine engine type and config ---
+    engine_type = raw.get("engine", "judge")
+
+    async def run_eval() -> None:
+        # Build engine config from the full YAML (reuse SentinelSettings logic)
+        from opensentinel.config.settings import SentinelSettings
+
+        try:
+            with spinner("Loading engine..."):
+                settings = SentinelSettings(_config_path=str(config_path), debug=debug)
+                policy_config = settings.get_policy_config()
+
+                engine = await PolicyEngineRegistry.create_and_initialize(
+                    policy_config["type"],
+                    policy_config.get("config", {}),
+                )
+        except Exception as e:
+            error(f"Failed to initialize engine: {e}")
+            if debug:
+                import traceback
+
+                traceback.print_exc()
+            raise SystemExit(1)
+
+        # Apply mock provider if configured
+        mock_cfg = eval_section.get("mock_provider", {})
+        if mock_cfg and isinstance(mock_cfg, dict):
+            mock_responses = mock_cfg.get("responses")
+            apply_mock_provider(engine, engine_type, mock_responses)
+
+        # Run scenarios
+        runner = EvalRunner()
+        dim(f"Running {len(scenario_paths)} scenario(s)...")
+        console.print()
+
+        try:
+            results = await runner.run_suite(engine, scenario_paths)
+        except Exception as e:
+            error(f"Evaluation failed: {e}")
+            if debug:
+                import traceback
+
+                traceback.print_exc()
+            raise SystemExit(1)
+        finally:
+            await engine.shutdown()
+
+        # Report
+        print_report(results, verbose=verbose)
+
+        # JSON export
+        if json_output:
+            export_data = export_json(results)
+            json_output.write_text(json.dumps(export_data, indent=2))
+            success(f"Results exported to {json_output}")
+
+    asyncio.run(run_eval())
 
 
 def _detect_engine_type(policy_text: str) -> str:

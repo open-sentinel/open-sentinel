@@ -1,4 +1,4 @@
-.PHONY: install install-dev test lint typecheck format serve clean build publish publish-test clean-build
+.PHONY: install install-dev test lint typecheck format serve eval clean build publish publish-test clean-build
 
 install:
 	pip install -e .
@@ -24,6 +24,9 @@ format:
 
 serve:
 	osentinel serve
+
+eval:
+	osentinel eval
 
 validate:
 	osentinel validate $(file)

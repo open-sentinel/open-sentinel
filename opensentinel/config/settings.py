@@ -276,6 +276,7 @@ class YamlConfigSource(PydanticBaseSettingsSource):
             "log_level",
             "model",
             "tracing",
+            "eval",
             # Engine-specific sections are handled below
             "judge",
             "llm",
