@@ -30,7 +30,7 @@ import os
 from pathlib import Path
 from typing import Optional, Literal, List, Dict, Any, Tuple, Type, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from pydantic_settings import (
     BaseSettings,
     SettingsConfigDict,
@@ -51,6 +51,8 @@ class OTelConfig(BaseModel):
     - console: Print traces to console (for debugging)
     - none: Disable tracing
     """
+
+    model_config = ConfigDict(populate_by_name=True)
 
     enabled: bool = False
     endpoint: str = "http://localhost:4317"

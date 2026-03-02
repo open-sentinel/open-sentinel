@@ -268,6 +268,12 @@ class SentinelCallback(CustomLogger):
             except Exception as e:
                 logger.error(f"Error shutting down policy engine: {e}")
 
+        if self._tracer is not None:
+            try:
+                self._tracer.shutdown()
+            except Exception as e:
+                logger.error(f"Error shutting down tracer: {e}")
+
         logger.info("SentinelCallback shutdown complete")
 
     @property
